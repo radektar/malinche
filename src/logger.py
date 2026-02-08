@@ -1,4 +1,4 @@
-"""Logging configuration for Olympus Transcriber."""
+"""Logging configuration for Malinche."""
 
 import logging
 import sys
@@ -11,7 +11,7 @@ from src.config import config
 
 
 def setup_logger(
-    name: str = "olympus_transcriber",
+    name: str = "malinche",
     level: int = logging.INFO,
     log_to_file: bool = True,
     log_to_console: bool = True,

@@ -10,7 +10,7 @@
 
 ## Overview
 
-Transrec to system automatycznie transkrybujący pliki audio z dowolnego dysku zewnętrznego (rekorder, karta SD, pendrive).
+Malinche to system automatycznie transkrybujący pliki audio z dowolnego dysku zewnętrznego (rekorder, karta SD, pendrive).
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐

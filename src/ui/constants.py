@@ -2,10 +2,10 @@
 
 # Application metadata
 APP_VERSION = "2.0.0"
-APP_NAME = "Transrec"
-APP_AUTHOR = "Transrec Team"
-APP_WEBSITE = "https://transrec.app"
-APP_GITHUB = "https://github.com/radektar/transrec"
+APP_NAME = "Malinche"
+APP_AUTHOR = "Malinche Team"
+APP_WEBSITE = "https://malinche.app"
+APP_GITHUB = "https://github.com/radektar/malinche"
 
 # UI texts dictionary (for future localization)
 TEXTS = {

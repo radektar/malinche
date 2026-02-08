@@ -1,5 +1,5 @@
 ---
-title: "Transrec - Documentation Structure"
+title: "Malinche - Documentation Structure"
 description: "Documentation organization and guidelines"
 globs: "**/*.md"
 alwaysApply: true

@@ -1,5 +1,5 @@
 ---
-title: "Transrec - Freemium Architecture"
+title: "Malinche - Freemium Architecture"
 description: "Guidelines for FREE/PRO feature development"
 globs: "src/**/*.py"
 alwaysApply: true

@@ -1,4 +1,4 @@
-"""Setup utilities for Transrec."""
+"""Setup utilities for Malinche."""
 
 from src.setup.downloader import DependencyDownloader
 from src.setup.errors import (

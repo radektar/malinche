@@ -26,7 +26,7 @@ class TestDependencyDownloader:
         """Fixture tworzący downloader z tymczasowym katalogiem."""
         # Utwórz downloader i nadpisz ścieżki
         d = DependencyDownloader()
-        d.support_dir = tmp_path / "Transrec"
+        d.support_dir = tmp_path / "Malinche"
         d.bin_dir = d.support_dir / "bin"
         d.models_dir = d.support_dir / "models"
         d.downloads_dir = d.support_dir / "downloads"

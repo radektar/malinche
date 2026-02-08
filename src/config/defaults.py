@@ -13,7 +13,7 @@ DEFAULT_OUTPUT_DIR = (
     / "Obsidian"
     / "11-Transcripts"
 )
-CONFIG_DIR = Path.home() / "Library" / "Application Support" / "Transrec"
+CONFIG_DIR = Path.home() / "Library" / "Application Support" / "Malinche"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 # Tryby monitorowania

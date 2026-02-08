@@ -1,4 +1,4 @@
-# Konfiguracja Full Disk Access dla Transrec
+# Konfiguracja Full Disk Access dla Malinche
 
 > **Wersja:** v2.0.0
 >
@@ -12,7 +12,7 @@ Aplikacja uruchomiona przez `launchd` lub jako `.app` nie ma dostępu do plików
 
 ## Rozwiązanie
 
-Aplikacja `Transrec.app` musi być dodana do **Full Disk Access** w ustawieniach systemowych.
+Aplikacja `Malinche.app` musi być dodana do **Full Disk Access** w ustawieniach systemowych.
 
 ## Instrukcja krok po kroku
 
@@ -33,12 +33,12 @@ open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
    - Naciśnij **Cmd + Shift + G** (Go to Folder)
    - Wklej: `~/Applications` lub `/Applications`
    - Naciśnij **Enter**
-3. Wybierz **Transrec.app**
+3. Wybierz **Malinche.app**
 4. Kliknij **Open**
 
 ### 3. Włącz dostęp
 
-- Upewnij się, że checkbox obok **Transrec.app** jest **zaznaczony**
+- Upewnij się, że checkbox obok **Malinche.app** jest **zaznaczony**
 - Jeśli nie jest, kliknij go aby włączyć
 
 ### 4. Zrestartuj aplikację
@@ -47,12 +47,12 @@ Po dodaniu do Full Disk Access, aplikacja musi być zrestartowana:
 
 ```bash
 # Zatrzymaj obecną instancję
-pkill -f "Transrec"
+pkill -f "Malinche"
 
 # Uruchom ponownie
-open ~/Applications/Transrec.app
+open ~/Applications/Malinche.app
 # lub
-open /Applications/Transrec.app
+open /Applications/Malinche.app
 ```
 
 ### 5. Weryfikacja
@@ -82,7 +82,7 @@ Sprawdź:
 
 1. Znajdź lokalizację aplikacji:
    ```bash
-   mdfind -name "Transrec.app"
+   mdfind -name "Malinche.app"
    ```
 2. Dodaj ręcznie przez przycisk "+"
 

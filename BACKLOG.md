@@ -1,4 +1,4 @@
-# Backlog projektu „Transrec"
+# Backlog projektu „Malinche"
 
 > **Wersja:** v1.11.0 → v2.0.0
 >
@@ -55,6 +55,12 @@
 - [ ] API: /v1/license, /v1/summarize, /v1/tags
 - [ ] Integracja z aplikacją
 - [ ] Strona transrec.app z zakupem
+
+#### v2.2.0+ Knowledge Base (Przyszłość PRO)
+- [ ] **Faza A:** Speaker Diarization (identyfikacja osób na nagraniach)
+- [ ] **Faza B:** Domain Lexicon Engine (rozpoznawanie języka branżowego)
+- [ ] **Faza C:** Knowledge Base Builder (ekstrakcja faktów i budowanie bazy wiedzy)
+- [ ] Zobacz szczegóły: [Docs/future/knowledge-base-engine.md](Docs/future/knowledge-base-engine.md)
 
 ### Wymagane decyzje (przed Fazą 1)
 - [x] ~~Zatwierdzenie planu~~ ✓
@@ -131,7 +137,7 @@ git checkout -b feature/faza-1-universal-sources
     - Login Items,
     - (opcjonalnie) LaunchAgenta.
 - **Kryteria akceptacji**:
-  - `open Transrec.app` nie pokazuje komunikatu o niekończącym się zadaniu Automatora.
+  - `open Malinche.app` nie pokazuje komunikatu o niekończącym się zadaniu Automatora.
   - Start z Login Items zachowuje się identycznie jak obecnie (transkrypcje działają).
 
 ## 2. Poprawka UX: Graficzny wybór folderu w wizardzie
@@ -343,7 +349,7 @@ Po Fazie 4 bundle `.app` ma rozmiar **43MB**, podczas gdy cel to **<20MB** (bez 
 
 ### 4.4. Zadania
 
-- [ ] Przeanalizować rozmiar komponentów bundle (`du -sh dist/Transrec.app/Contents/Resources/*`)
+- [ ] Przeanalizować rozmiar komponentów bundle (`du -sh dist/Malinche.app/Contents/Resources/*`)
 - [ ] Zidentyfikować największe pakiety
 - [ ] Sprawdzić które moduły PyObjC są faktycznie używane
 - [ ] Dodać agresywniejsze excludes w `setup_app.py`

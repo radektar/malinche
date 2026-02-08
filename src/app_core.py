@@ -1,4 +1,4 @@
-"""Core application orchestrator for Olympus Transcriber."""
+"""Core application orchestrator for Malinche."""
 
 import os
 import time
@@ -14,7 +14,7 @@ from src.file_monitor import FileMonitor
 from src.app_status import AppStatus, AppState
 
 
-class OlympusTranscriber:
+class MalincheTranscriber:
     """Main application orchestrator.
 
     Manages the lifecycle of the transcriber daemon, coordinating
@@ -91,7 +91,7 @@ class OlympusTranscriber:
     def start(self):
         """Start the transcriber daemon."""
         logger.info("=" * 60)
-        logger.info("🚀 Olympus Transcriber starting...")
+        logger.info("🚀 Malinche starting...")
         logger.info("=" * 60)
 
         # Log configuration
@@ -102,7 +102,7 @@ class OlympusTranscriber:
         # Log TRANSCRIBE_DIR source (from config, which was migrated from ENV if needed)
         logger.info(
             f"ℹ️  TRANSCRIBE_DIR: {config.TRANSCRIBE_DIR} "
-            f"(set OLYMPUS_TRANSCRIBE_DIR env var and restart to change)"
+            f"(set MALINCHE_TRANSCRIBE_DIR env var and restart to change)"
         )
         
         # Ensure transcription directory exists
@@ -121,7 +121,7 @@ class OlympusTranscriber:
                 exc_info=True
             )
             logger.error(
-                "Please ensure OLYMPUS_TRANSCRIBE_DIR points to a valid, "
+                "Please ensure MALINCHE_TRANSCRIBE_DIR points to a valid, "
                 "accessible directory (same vault path on all computers to avoid duplicates)"
             )
             raise

@@ -83,7 +83,7 @@ class UserSettings:
             Path.home()
             / "Library"
             / "Application Support"
-            / "Transrec"
+            / "Malinche"
             / "config.json"
         )
 

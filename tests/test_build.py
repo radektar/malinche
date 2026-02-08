@@ -49,8 +49,8 @@ class TestSetupAppConfig:
         content = setup_path.read_text()
         
         # Check for bundle identifier in content
-        assert "com.transrec.app" in content, \
-            "Bundle identifier should be 'com.transrec.app'"
+        assert "com.malinche.app" in content, \
+            "Bundle identifier should be 'com.malinche.app'"
         assert "CFBundleIdentifier" in content, \
             "CFBundleIdentifier should be set in plist"
 
@@ -142,20 +142,20 @@ class TestBundleStructure:
     @pytest.mark.slow
     def test_bundle_exists_after_build(self, tmp_path):
         """Test that bundle exists after build (if build was run)."""
-        # This test checks if dist/Transrec.app exists
+        # This test checks if dist/Malinche.app exists
         # It will pass if build was already run, skip otherwise
         dist_dir = Path(__file__).parent.parent / "dist"
-        bundle = dist_dir / "Transrec.app"
+        bundle = dist_dir / "Malinche.app"
         
         if not bundle.exists():
             pytest.skip("Bundle not found - run build first")
         
-        assert bundle.is_dir(), "Transrec.app should be a directory"
+        assert bundle.is_dir(), "Malinche.app should be a directory"
 
     @pytest.mark.slow
     def test_info_plist_exists(self):
         """Test that Info.plist exists in bundle."""
-        bundle = Path(__file__).parent.parent / "dist" / "Transrec.app"
+        bundle = Path(__file__).parent.parent / "dist" / "Malinche.app"
         
         if not bundle.exists():
             pytest.skip("Bundle not found - run build first")
@@ -166,19 +166,19 @@ class TestBundleStructure:
     @pytest.mark.slow
     def test_executable_exists(self):
         """Test that main executable exists in bundle."""
-        bundle = Path(__file__).parent.parent / "dist" / "Transrec.app"
+        bundle = Path(__file__).parent.parent / "dist" / "Malinche.app"
         
         if not bundle.exists():
             pytest.skip("Bundle not found - run build first")
         
-        executable = bundle / "Contents" / "MacOS" / "Transrec"
+        executable = bundle / "Contents" / "MacOS" / "Malinche"
         assert executable.exists(), "Main executable should exist in bundle"
         assert executable.is_file(), "Main executable should be a file"
 
     @pytest.mark.slow
     def test_bundle_size_reasonable(self):
         """Test that bundle size is reasonable (<50MB without models - relaxed for now)."""
-        bundle = Path(__file__).parent.parent / "dist" / "Transrec.app"
+        bundle = Path(__file__).parent.parent / "dist" / "Malinche.app"
         
         if not bundle.exists():
             pytest.skip("Bundle not found - run build first")

@@ -1,9 +1,9 @@
 #!/bin/bash
-# Restart Olympus Transcriber daemon
+# Restart Malinche daemon
 
 PLIST_PATH="$HOME/Library/LaunchAgents/com.user.olympus-transcriber.plist"
 
-echo "🔄 Restarting Olympus Transcriber daemon..."
+echo "🔄 Restarting Malinche daemon..."
 echo ""
 
 # Unload if loaded

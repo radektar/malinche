@@ -105,7 +105,7 @@ tail -f ~/Library/Logs/olympus_transcriber.log
 
 ```bash
 # Usuń config.json jeśli istnieje
-rm -f ~/Library/Application\ Support/Transrec/config.json
+rm -f ~/Library/Application\ Support/Malinche/config.json
 ```
 
 #### Steps
@@ -139,7 +139,7 @@ rm -f ~/Library/Application\ Support/Transrec/config.json
 
 #### Kryteria sukcesu
 
-- [ ] Tytuł: "🎙️ Witaj w Transrec!"
+- [ ] Tytuł: "🎙️ Witaj w Malinche!"
 - [ ] Wiadomość zawiera opis aplikacji
 - [ ] Przycisk "Rozpocznij →" przechodzi dalej
 - [ ] Przycisk "Anuluj" zamyka wizard
@@ -154,7 +154,7 @@ rm -f ~/Library/Application\ Support/Transrec/config.json
 
 ```bash
 # Upewnij się że zależności są zainstalowane
-# (nie usuwaj ~/Library/Application Support/Transrec/bin/)
+# (nie usuwaj ~/Library/Application Support/Malinche/bin/)
 ```
 
 #### Steps
@@ -179,8 +179,8 @@ rm -f ~/Library/Application\ Support/Transrec/config.json
 
 ```bash
 # Usuń zależności
-rm -rf ~/Library/Application\ Support/Transrec/bin/
-rm -rf ~/Library/Application\ Support/Transrec/models/
+rm -rf ~/Library/Application\ Support/Malinche/bin/
+rm -rf ~/Library/Application\ Support/Malinche/models/
 ```
 
 #### Steps
@@ -197,9 +197,9 @@ rm -rf ~/Library/Application\ Support/Transrec/models/
 - [ ] Status w menu bar pokazuje postęp (jeśli dostępny)
 - [ ] Po zakończeniu pojawia się komunikat "✅ Pobrano"
 - [ ] Wszystkie pliki są pobrane:
-  - `~/Library/Application Support/Transrec/bin/whisper-cli`
-  - `~/Library/Application Support/Transrec/bin/ffmpeg`
-  - `~/Library/Application Support/Transrec/models/ggml-small.bin`
+  - `~/Library/Application Support/Malinche/bin/whisper-cli`
+  - `~/Library/Application Support/Malinche/bin/ffmpeg`
+  - `~/Library/Application Support/Malinche/models/ggml-small.bin`
 
 ---
 
@@ -233,7 +233,7 @@ rm -rf ~/Library/Application\ Support/Transrec/models/
 
 ```bash
 # Upewnij się że FDA NIE jest nadane
-# (usuń Transrec z System Preferences -> Privacy -> Full Disk Access)
+# (usuń Malinche z System Preferences -> Privacy -> Full Disk Access)
 ```
 
 #### Steps

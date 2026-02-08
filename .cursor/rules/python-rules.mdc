@@ -1,6 +1,6 @@
 ---
-title: "Transrec - Python Standards"
-description: "Python coding standards for Transrec project"
+title: "Malinche - Python Standards"
+description: "Python coding standards for Malinche project"
 globs: "src/**/*.py"
 alwaysApply: true
 ---

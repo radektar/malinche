@@ -128,7 +128,7 @@ class SetupWizard:
         percent = int(progress * 100)
         if percent % 10 == 0 or percent == 100:
             rumps.notification(
-                title="Transrec - Pobieranie",
+                title="Malinche - Pobieranie",
                 subtitle=f"{name}",
                 message=f"Postęp: {percent}%"
             )
@@ -136,9 +136,9 @@ class SetupWizard:
     def _show_welcome(self) -> str:
         """Ekran powitalny."""
         response = rumps.alert(
-            title="🎙️ Witaj w Transrec!",
+            title="🎙️ Witaj w Malinche!",
             message=(
-                "Transrec automatycznie transkrybuje nagrania "
+                "Malinche automatycznie transkrybuje nagrania "
                 "z Twojego dyktafonu lub karty SD.\n\n"
                 "Przeprowadzimy Cię przez szybką konfigurację.\n\n"
                 "Zajmie to około 3-5 minut."
@@ -157,7 +157,7 @@ class SetupWizard:
         response = rumps.alert(
             title="📥 Pobieranie silnika transkrypcji",
             message=(
-                "Transrec wymaga pobrania silnika transkrypcji (~500MB).\n\n"
+                "Malinche wymaga pobrania silnika transkrypcji (~500MB).\n\n"
                 "Wymagane komponenty:\n"
                 "• whisper.cpp (~10MB)\n"
                 "• ffmpeg (~15MB)\n"
@@ -266,12 +266,12 @@ class SetupWizard:
         response = rumps.alert(
             title="🔐 Uprawnienia dostępu do dysków",
             message=(
-                "Aby automatycznie wykrywać dyktafon, Transrec "
+                "Aby automatycznie wykrywać dyktafon, Malinche "
                 "potrzebuje uprawnień 'Full Disk Access'.\n\n"
                 "Instrukcja:\n"
                 "1. Kliknij 'Otwórz Ustawienia'\n"
                 "2. Odblokuj kłódkę 🔒 (hasło administratora)\n"
-                "3. Znajdź 'Transrec' i zaznacz ☑\n"
+                "3. Znajdź 'Malinche' i zaznacz ☑\n"
                 "4. Wróć do tej aplikacji\n\n"
                 "Możesz też pominąć ten krok i wybierać pliki ręcznie."
             ),
@@ -453,7 +453,7 @@ class SetupWizard:
         response = rumps.alert(
             title="🤖 AI Podsumowania (opcjonalne)",
             message=(
-                "Transrec może generować inteligentne podsumowania "
+                "Malinche może generować inteligentne podsumowania "
                 "i tytuły używając Claude AI.\n\n"
                 "Wymaga to klucza API z anthropic.com\n"
                 "(koszt ~$0.01-0.05 za transkrypcję)\n\n"
@@ -492,10 +492,10 @@ class SetupWizard:
     def _show_finish(self) -> str:
         """Ekran zakończenia."""
         rumps.alert(
-            title="✅ Transrec jest gotowy!",
+            title="✅ Malinche jest gotowy!",
             message=(
                 "Konfiguracja zakończona.\n\n"
-                "Podłącz dyktafon lub kartę SD, a Transrec "
+                "Podłącz dyktafon lub kartę SD, a Malinche "
                 "automatycznie przetworzy Twoje nagrania.\n\n"
                 "Ikona 🎙️ pojawi się w pasku menu (góra ekranu).\n\n"
                 "Miłego transkrybowania!"

@@ -33,7 +33,7 @@
 
 2. Uruchom aplikację:
    ```bash
-   open dist/Transrec.app
+   open dist/Malinche.app
    ```
 
 ---
@@ -41,7 +41,7 @@
 ### M7.1: Date picker - 7 dni
 
 **Kroki:**
-1. Kliknij ikonę Transrec w pasku menu
+1. Kliknij ikonę Malinche w pasku menu
 2. Wybierz "Resetuj pamięć od..."
 3. W dialogu wybierz opcję "7 dni"
 
@@ -58,7 +58,7 @@
 ### M7.2: Date picker - 30 dni
 
 **Kroki:**
-1. Kliknij ikonę Transrec w pasku menu
+1. Kliknij ikonę Malinche w pasku menu
 2. Wybierz "Resetuj pamięć od..."
 3. W dialogu wybierz opcję "30 dni"
 
@@ -75,7 +75,7 @@
 ### M7.3: Date picker - custom data
 
 **Kroki:**
-1. Kliknij ikonę Transrec w pasku menu
+1. Kliknij ikonę Malinche w pasku menu
 2. Wybierz "Resetuj pamięć od..."
 3. W dialogu wybierz "Inna data..."
 4. Wpisz datę w formacie YYYY-MM-DD (np. 2025-12-01)
@@ -92,7 +92,7 @@
 ### M7.4: Date picker - błędna data
 
 **Kroki:**
-1. Kliknij ikonę Transrec w pasku menu
+1. Kliknij ikonę Malinche w pasku menu
 2. Wybierz "Resetuj pamięć od..."
 3. W dialogu wybierz "Inna data..."
 4. Wpisz nieprawidłową datę (np. "invalid-date" lub "2025-13-45")
@@ -109,7 +109,7 @@
 ### M7.5: Folder picker - NSOpenPanel
 
 **Kroki:**
-1. Uruchom wizard (jeśli nie był uruchomiony, usuń `~/Library/Application Support/Transrec/config.json`)
+1. Uruchom wizard (jeśli nie był uruchomiony, usuń `~/Library/Application Support/Malinche/config.json`)
 2. Przejdź do kroku "Folder na transkrypcje"
 3. Kliknij "Wybierz folder..."
 
@@ -152,12 +152,12 @@
 ### M7.8: About dialog
 
 **Kroki:**
-1. Kliknij ikonę Transrec w pasku menu
+1. Kliknij ikonę Malinche w pasku menu
 2. Wybierz "O aplikacji..."
 
 **Oczekiwany wynik:**
 - Dialog pokazuje:
-  - Nazwę aplikacji: "Transrec"
+  - Nazwę aplikacji: "Malinche"
   - Wersję: "v2.0.0"
   - Link do strony: https://transrec.app
   - Link do GitHub: https://github.com/radektar/transrec

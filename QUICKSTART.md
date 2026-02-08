@@ -1,4 +1,4 @@
-# Olympus Transcriber - Quick Start Guide
+# Malinche - Quick Start Guide
 
 Szybki przewodnik uruchomienia w 5 minut.
 
@@ -106,7 +106,7 @@ python src/main.py
 
 **Oczekiwany output:**
 ```
-🚀 Olympus Transcriber starting...
+🚀 Malinche starting...
 ✓ Found whisper.cpp at: /Users/username/whisper.cpp/main
 ✓ Found ffmpeg at: /opt/homebrew/bin/ffmpeg
 ✓ Core ML model found - GPU acceleration enabled
@@ -136,7 +136,7 @@ Podłącz recorder - powinno pokazać:
 2. Kliknij przycisk **"+"** (plus)
 3. Naciśnij **Cmd + Shift + G** (Go to Folder)
 4. Wklej: `~/Applications`
-5. Wybierz **Transrec.app**
+5. Wybierz **Malinche.app**
 6. Kliknij **Open**
 7. Upewnij się, że checkbox obok aplikacji jest **zaznaczony**
 
@@ -148,11 +148,11 @@ Podłącz recorder - powinno pokazać:
 
 **Opcja A: Użyj aplikacji .app (Zalecane)**
 
-Aplikacja `Transrec.app` została już utworzona w `~/Applications/`. 
+Aplikacja `Malinche.app` została już utworzona w `~/Applications/`. 
 
 **Automatyczne uruchamianie przy logowaniu:**
 - System Settings → General → **Login Items**
-- Upewnij się, że `Transrec.app` jest na liście
+- Upewnij się, że `Malinche.app` jest na liście
 
 **Lub użyj LaunchAgent:**
 ```bash
@@ -162,7 +162,7 @@ make setup-daemon
 **Opcja B: Ręczne uruchomienie**
 
 ```bash
-open ~/Applications/Transrec.app
+open ~/Applications/Malinche.app
 ```
 
 **Gotowe!** Aplikacja działa w tle i automatycznie uruchomi się przy następnym logowaniu.

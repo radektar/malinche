@@ -1,4 +1,4 @@
-"""State management for Olympus Transcriber."""
+"""State management for Malinche."""
 
 import json
 from pathlib import Path

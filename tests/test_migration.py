@@ -108,7 +108,7 @@ class TestMigration:
         assert result.setup_completed is True
         
         # Should have saved migrated config
-        config_path = tmp_path / "Library" / "Application Support" / "Transrec" / "config.json"
+        config_path = tmp_path / "Library" / "Application Support" / "Malinche" / "config.json"
         assert config_path.exists()
     
     def test_perform_migration_if_needed_no_old_config(self, tmp_path, monkeypatch):

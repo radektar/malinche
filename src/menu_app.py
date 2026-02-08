@@ -1,4 +1,4 @@
-"""macOS menu bar application for Olympus Transcriber."""
+"""macOS menu bar application for Malinche."""
 
 import sys
 import threading
@@ -43,8 +43,8 @@ from src.ui.constants import TEXTS
 from src.ui.settings_window import show_settings_window
 
 
-class OlympusMenuApp(rumps.App):
-    """macOS menu bar application wrapper for Olympus Transcriber."""
+class MalincheMenuApp(rumps.App):
+    """macOS menu bar application wrapper for Malinche."""
 
     def __init__(self):
         """Initialize menu bar application."""
@@ -53,7 +53,7 @@ class OlympusMenuApp(rumps.App):
                 "rumps not available. Install with: pip install rumps"
             )
 
-        super(OlympusMenuApp, self).__init__(
+        super(MalincheMenuApp, self).__init__(
             "🎙️",
             template=False
         )
@@ -138,7 +138,7 @@ class OlympusMenuApp(rumps.App):
             rumps.alert(
                 title="Konfiguracja niekompletna",
                 message=(
-                    "Transrec wymaga konfiguracji do działania.\n\n"
+                    "Malinche wymaga konfiguracji do działania.\n\n"
                     "Uruchom aplikację ponownie, aby dokończyć konfigurację."
                 ),
                 ok="OK",
@@ -168,7 +168,7 @@ class OlympusMenuApp(rumps.App):
             response = rumps.alert(
                 title="📥 Pobieranie zależności",
                 message=(
-                    "Transrec wymaga pobrania silnika transkrypcji (~500MB).\n\n"
+                    "Malinche wymaga pobrania silnika transkrypcji (~500MB).\n\n"
                     "Czy chcesz pobrać teraz?\n\n"
                     "Wymagane:\n"
                     "• whisper.cpp (~10MB)\n"
@@ -226,7 +226,7 @@ class OlympusMenuApp(rumps.App):
                 title="⚠️ Brak połączenia",
                 message=(
                     "Brak połączenia z internetem.\n\n"
-                    "Transrec wymaga jednorazowego pobrania silnika transkrypcji (~500MB).\n"
+                    "Malinche wymaga jednorazowego pobrania silnika transkrypcji (~500MB).\n"
                     "Połącz się z internetem i spróbuj ponownie."
                 ),
                 ok="OK"
@@ -324,7 +324,7 @@ class OlympusMenuApp(rumps.App):
             # Use send_notification instead of rumps.notification for better reliability
             # Note: send_notification signature is (title, message, subtitle="")
             send_notification(
-                title="Transrec",
+                title="Malinche",
                 message=f"Od: {target_date.strftime('%Y-%m-%d')}",
                 subtitle=TEXTS["reset_memory_success"]
             )
@@ -452,7 +452,7 @@ class OlympusMenuApp(rumps.App):
         
         # Send start notification
         send_notification(
-            title="Olympus Transcriber",
+            title="Malinche",
             subtitle="Rozpoczęto retranskrypcję",
             message=f"Plik: {audio_path.name}"
         )
@@ -465,20 +465,20 @@ class OlympusMenuApp(rumps.App):
                     
                     if success:
                         send_notification(
-                            title="Olympus Transcriber",
+                            title="Malinche",
                             subtitle="Retranskrypcja zakończona",
                             message=f"Plik: {audio_path.name}"
                         )
                     else:
                         send_notification(
-                            title="Olympus Transcriber",
+                            title="Malinche",
                             subtitle="Retranskrypcja nieudana",
                             message=f"Sprawdź logi: {audio_path.name}"
                         )
             except Exception as e:
                 logger.error(f"Retranscribe error: {e}", exc_info=True)
                 send_notification(
-                    title="Olympus Transcriber",
+                    title="Malinche",
                     subtitle="Błąd",
                     message=str(e)[:50]
                 )
@@ -524,7 +524,7 @@ class OlympusMenuApp(rumps.App):
         except Exception as e:
             logger.error(f"Error in daemon thread: {e}", exc_info=True)
             rumps.notification(
-                title="Olympus Transcriber",
+                title="Malinche",
                 subtitle="Błąd",
                 message=f"Błąd uruchomienia: {e}"
             )
@@ -546,7 +546,7 @@ class OlympusMenuApp(rumps.App):
     def run(self):
         """Start the menu bar application."""
         logger.info("=" * 60)
-        logger.info("🚀 Olympus Transcriber Menu App starting...")
+        logger.info("🚀 Malinche Menu App starting...")
         logger.info("=" * 60)
 
         # If wizard is not needed, start daemon immediately
@@ -564,7 +564,7 @@ def main():
         sys.exit(1)
 
     try:
-        app = OlympusMenuApp()
+        app = MalincheMenuApp()
         app.run()
     except KeyboardInterrupt:
         logger.info("Interrupted by user")

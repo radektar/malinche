@@ -1,4 +1,4 @@
-"""Main entry point for Olympus Transcriber daemon."""
+"""Main entry point for Malinche daemon."""
 
 import sys
 
@@ -20,13 +20,13 @@ perform_migration_if_needed()
 get_config()
 
 from src.logger import logger
-from src.app_core import OlympusTranscriber
+from src.app_core import MalincheTranscriber
 
 
 def main():
     """Main entry point."""
     try:
-        app = OlympusTranscriber()
+        app = MalincheTranscriber()
         app.start()
     except Exception as e:
         logger.error(f"Fatal error: {e}", exc_info=True)

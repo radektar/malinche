@@ -1,4 +1,4 @@
-# 📦 Plan Dystrybucji Publicznej - Transrec
+# 📦 Plan Dystrybucji Publicznej - Malinche
 
 **Wersja:** 1.1 (Freemium)  
 **Data utworzenia:** 2025-12-17  
@@ -30,7 +30,7 @@
 
 ### Cel projektu
 
-Przekształcenie Transrec z narzędzia developerskiego w aplikację gotową do publicznej dystrybucji, z:
+Przekształcenie Malinche z narzędzia developerskiego w aplikację gotową do publicznej dystrybucji, z:
 - Prostą instalacją (drag & drop do Applications)
 - Wsparciem dla dowolnego recordera/karty SD
 - Profesjonalnym UX (code signing, notaryzacja)
@@ -160,18 +160,18 @@ Schemat: MAJOR.MINOR.PATCH
 
 ```
 ~/Applications/
-└── Transrec.app/                        (~15MB download)
+└── Malinche.app/                        (~15MB download)
     └── Contents/
         ├── Info.plist
         ├── MacOS/
-        │   └── Transrec                 (main executable)
+        │   └── Malinche                 (main executable)
         ├── Resources/
         │   ├── icon.icns
         │   ├── lib/                     (Python runtime + packages)
         │   └── ffmpeg                   (statycznie zlinkowany, ~15MB)
         └── Frameworks/
 
-~/Library/Application Support/Transrec/  (pobierane przy pierwszym uruchomieniu)
+~/Library/Application Support/Malinche/  (pobierane przy pierwszym uruchomieniu)
 ├── whisper.cpp/
 │   └── whisper-cli                      (~10MB)
 ├── models/
@@ -194,9 +194,9 @@ Schemat: MAJOR.MINOR.PATCH
 │                                                                  │
 │  KROK 1: Powitanie                                              │
 │  ┌────────────────────────────────────────────────────────┐     │
-│  │  🎙️ Witaj w Transrec!                                  │     │
+│  │  🎙️ Witaj w Malinche!                                  │     │
 │  │                                                        │     │
-│  │  Transrec automatycznie transkrybuje nagrania          │     │
+│  │  Malinche automatycznie transkrybuje nagrania          │     │
 │  │  z Twojego dyktafonu lub karty SD.                     │     │
 │  │                                                        │     │
 │  │  Przeprowadzimy Cię przez szybką konfigurację.         │     │
@@ -218,14 +218,14 @@ Schemat: MAJOR.MINOR.PATCH
 │                                                                  │
 │  KROK 3: Uprawnienia dostępu do dysków                          │
 │  ┌────────────────────────────────────────────────────────┐     │
-│  │  🔐 Transrec potrzebuje dostępu do dysków              │     │
+│  │  🔐 Malinche potrzebuje dostępu do dysków              │     │
 │  │                                                        │     │
-│  │  Aby automatycznie wykrywać dyktafon, Transrec         │     │
+│  │  Aby automatycznie wykrywać dyktafon, Malinche         │     │
 │  │  potrzebuje uprawnień "Full Disk Access".              │     │
 │  │                                                        │     │
 │  │  1. Kliknij "Otwórz Ustawienia"                        │     │
 │  │  2. Odblokuj kłódkę 🔒 (hasło administratora)          │     │
-│  │  3. Znajdź "Transrec" i zaznacz ☑                      │     │
+│  │  3. Znajdź "Malinche" i zaznacz ☑                      │     │
 │  │  4. Wróć tutaj                                         │     │
 │  │                                                        │     │
 │  │  [📖 Pokaż instrukcję]  [Otwórz Ustawienia →]          │     │
@@ -275,7 +275,7 @@ Schemat: MAJOR.MINOR.PATCH
 │  ┌────────────────────────────────────────────────────────┐     │
 │  │  🤖 Chcesz automatyczne podsumowania AI?               │     │
 │  │                                                        │     │
-│  │  Transrec może generować inteligentne podsumowania     │     │
+│  │  Malinche może generować inteligentne podsumowania     │     │
 │  │  i tytuły używając Claude AI (wymaga klucza API).      │     │
 │  │                                                        │     │
 │  │  ○ Włącz podsumowania AI                               │     │
@@ -289,12 +289,12 @@ Schemat: MAJOR.MINOR.PATCH
 │                                                                  │
 │  KROK 8: Gotowe!                                                │
 │  ┌────────────────────────────────────────────────────────┐     │
-│  │  ✅ Transrec jest gotowy do pracy!                     │     │
+│  │  ✅ Malinche jest gotowy do pracy!                     │     │
 │  │                                                        │     │
-│  │  Podłącz dyktafon, a Transrec automatycznie            │     │
+│  │  Podłącz dyktafon, a Malinche automatycznie            │     │
 │  │  przetworzy Twoje nagrania.                            │     │
 │  │                                                        │     │
-│  │  Ikona Transrec pojawi się w pasku menu (góra ekranu). │     │
+│  │  Ikona Malinche pojawi się w pasku menu (góra ekranu). │     │
 │  │                                                        │     │
 │  │  [🎉 Rozpocznij!]                                      │     │
 │  └────────────────────────────────────────────────────────┘     │
@@ -341,7 +341,7 @@ src/
 │
 ├── services/                  # 🆕 FREEMIUM: PRO services
 │   ├── __init__.py
-│   ├── api_client.py         # Transrec API client
+│   ├── api_client.py         # Malinche API client
 │   ├── cloud_sync.py         # Cloud sync service (PRO)
 │   └── analytics.py          # Usage analytics (opt-in)
 │
@@ -468,7 +468,7 @@ class UserSettings:
     
     @staticmethod
     def _config_path() -> Path:
-        return Path.home() / "Library" / "Application Support" / "Transrec" / "config.json"
+        return Path.home() / "Library" / "Application Support" / "Malinche" / "config.json"
 ```
 
 #### 1.2. Rozbudowa FileMonitor
@@ -561,7 +561,7 @@ class DependencyDownloader:
     
     def __init__(self, progress_callback: Optional[Callable[[str, float], None]] = None):
         self.progress_callback = progress_callback
-        self.support_dir = Path.home() / "Library" / "Application Support" / "Transrec"
+        self.support_dir = Path.home() / "Library" / "Application Support" / "Malinche"
     
     def is_whisper_installed(self) -> bool:
         """Sprawdź czy whisper.cpp jest zainstalowany."""
@@ -744,9 +744,9 @@ class SetupWizard:
     def _show_welcome(self) -> str:
         """Ekran powitalny."""
         response = rumps.alert(
-            title="🎙️ Witaj w Transrec!",
+            title="🎙️ Witaj w Malinche!",
             message=(
-                "Transrec automatycznie transkrybuje nagrania "
+                "Malinche automatycznie transkrybuje nagrania "
                 "z Twojego dyktafonu lub karty SD.\n\n"
                 "Przeprowadzimy Cię przez szybką konfigurację."
             ),
@@ -772,11 +772,11 @@ class SetupWizard:
         response = rumps.alert(
             title="🔐 Uprawnienia dostępu",
             message=(
-                "Aby automatycznie wykrywać dyktafon, Transrec "
+                "Aby automatycznie wykrywać dyktafon, Malinche "
                 "potrzebuje uprawnień 'Full Disk Access'.\n\n"
                 "1. Kliknij 'Otwórz Ustawienia'\n"
                 "2. Odblokuj kłódkę 🔒\n"
-                "3. Znajdź 'Transrec' i zaznacz ☑\n"
+                "3. Znajdź 'Malinche' i zaznacz ☑\n"
                 "4. Wróć tutaj"
             ),
             ok="Otwórz Ustawienia",
@@ -866,8 +866,8 @@ OPTIONS = {
     'argv_emulation': False,
     'iconfile': 'assets/icon.icns',
     'plist': {
-        'CFBundleName': 'Transrec',
-        'CFBundleDisplayName': 'Transrec',
+        'CFBundleName': 'Malinche',
+        'CFBundleDisplayName': 'Malinche',
         'CFBundleIdentifier': 'com.yourname.transrec',
         'CFBundleVersion': '2.0.0',
         'CFBundleShortVersionString': '2.0.0',
@@ -875,8 +875,8 @@ OPTIONS = {
         'LSMinimumSystemVersion': '12.0',  # macOS Monterey+
         'NSRequiresAquaSystemAppearance': False,  # Dark mode support
         'NSHighResolutionCapable': True,
-        'NSAppleEventsUsageDescription': 'Transrec needs to control system events.',
-        'NSMicrophoneUsageDescription': 'Transrec does not use the microphone.',
+        'NSAppleEventsUsageDescription': 'Malinche needs to control system events.',
+        'NSMicrophoneUsageDescription': 'Malinche does not use the microphone.',
     },
     'packages': [
         'rumps',
@@ -896,7 +896,7 @@ OPTIONS = {
 }
 
 setup(
-    name='Transrec',
+    name='Malinche',
     app=APP,
     data_files=DATA_FILES,
     options={'py2app': OPTIONS},
@@ -912,7 +912,7 @@ setup(
 #!/bin/bash
 set -e
 
-echo "🔨 Building Transrec.app..."
+echo "🔨 Building Malinche.app..."
 
 # Wyczyść poprzednie buildy
 rm -rf build dist
@@ -927,10 +927,10 @@ pip install py2app
 python setup_app.py py2app
 
 # Skopiuj dodatkowe zasoby
-cp -r assets/instructions dist/Transrec.app/Contents/Resources/
+cp -r assets/instructions dist/Malinche.app/Contents/Resources/
 
-echo "✅ Build complete: dist/Transrec.app"
-echo "📦 Size: $(du -sh dist/Transrec.app | cut -f1)"
+echo "✅ Build complete: dist/Malinche.app"
+echo "📦 Size: $(du -sh dist/Malinche.app | cut -f1)"
 ```
 
 #### 4.3. Zadania
@@ -962,7 +962,7 @@ echo "📦 Size: $(du -sh dist/Transrec.app | cut -f1)"
 #!/bin/bash
 set -e
 
-APP_PATH="dist/Transrec.app"
+APP_PATH="dist/Malinche.app"
 BUNDLE_ID="com.yourname.transrec"
 DEVELOPER_ID="Developer ID Application: Your Name (TEAM_ID)"
 APPLE_ID="your@email.com"
@@ -984,29 +984,29 @@ echo "✅ Signature verified"
 echo "📦 Creating DMG..."
 # Utwórz DMG
 create-dmg \
-    --volname "Transrec" \
+    --volname "Malinche" \
     --window-pos 200 120 \
     --window-size 600 400 \
     --icon-size 100 \
-    --icon "Transrec.app" 175 190 \
+    --icon "Malinche.app" 175 190 \
     --app-drop-link 425 190 \
-    "dist/Transrec-2.0.0.dmg" \
+    "dist/Malinche-2.0.0.dmg" \
     "$APP_PATH"
 
 echo "🔏 Signing DMG..."
-codesign --sign "$DEVELOPER_ID" "dist/Transrec-2.0.0.dmg"
+codesign --sign "$DEVELOPER_ID" "dist/Malinche-2.0.0.dmg"
 
 echo "📤 Submitting for notarization..."
-xcrun notarytool submit "dist/Transrec-2.0.0.dmg" \
+xcrun notarytool submit "dist/Malinche-2.0.0.dmg" \
     --apple-id "$APPLE_ID" \
     --password "$APP_PASSWORD" \
     --team-id "$TEAM_ID" \
     --wait
 
 echo "📎 Stapling notarization ticket..."
-xcrun stapler staple "dist/Transrec-2.0.0.dmg"
+xcrun stapler staple "dist/Malinche-2.0.0.dmg"
 
-echo "✅ Done! Ready for distribution: dist/Transrec-2.0.0.dmg"
+echo "✅ Done! Ready for distribution: dist/Malinche-2.0.0.dmg"
 ```
 
 #### 5.3. Entitlements
@@ -1061,10 +1061,10 @@ brew install create-dmg
 │                                                                │
 │                                                                │
 │     🎙️                                    📁                   │
-│   [Transrec]  ─────────────────────────→  Applications        │
+│   [Malinche]  ─────────────────────────→  Applications        │
 │                                                                │
 │                                                                │
-│          Przeciągnij Transrec do Applications                  │
+│          Przeciągnij Malinche do Applications                  │
 │                                                                │
 └────────────────────────────────────────────────────────────────┘
 ```
@@ -1118,7 +1118,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/Transrec-*.dmg
+          files: dist/Malinche-*.dmg
           generate_release_notes: true
 ```
 
@@ -1364,10 +1364,10 @@ class LicenseManager:
         license_file.write_text(json.dumps({"key": self._license_key}))
     
     def _license_path(self) -> Path:
-        return Path.home() / "Library" / "Application Support" / "Transrec" / "license.json"
+        return Path.home() / "Library" / "Application Support" / "Malinche" / "license.json"
     
     def _cache_path(self) -> Path:
-        return Path.home() / "Library" / "Application Support" / "Transrec" / "license_cache.json"
+        return Path.home() / "Library" / "Application Support" / "Malinche" / "license_cache.json"
     
     def _load_cache(self) -> Optional[dict]:
         cache_file = self._cache_path()
@@ -1402,16 +1402,16 @@ def show_pro_activation():
     
     if features.ai_summaries:
         rumps.alert(
-            title="✅ Transrec PRO",
+            title="✅ Malinche PRO",
             message="Masz już aktywną licencję PRO!"
         )
         return
     
     # Show upgrade prompt
     response = rumps.alert(
-        title="🚀 Transrec PRO",
+        title="🚀 Malinche PRO",
         message=(
-            "Odblokuj pełne możliwości Transrec:\n\n"
+            "Odblokuj pełne możliwości Malinche:\n\n"
             "⭐ AI Podsumowania\n"
             "⭐ Inteligentne tagi\n"
             "⭐ Cloud sync\n"
@@ -1465,7 +1465,7 @@ class Summarizer:
         return self._call_api(transcript)
     
     def _call_api(self, transcript: str) -> str:
-        """Call Transrec API for AI summary."""
+        """Call Malinche API for AI summary."""
         response = httpx.post(
             "https://api.transrec.app/v1/summarize",
             json={
@@ -1739,8 +1739,8 @@ export async function handleSummarize(request: Request, env: Env) {
 | **Manual** | Other Mac | - | Działa na Macu bez dev tools |
 
 **Checklist przed zakończeniem Fazy 5:**
-- [ ] `codesign --verify --deep --strict dist/Transrec.app` → valid
-- [ ] `spctl --assess --type exec dist/Transrec.app` → accepted
+- [ ] `codesign --verify --deep --strict dist/Malinche.app` → valid
+- [ ] `spctl --assess --type exec dist/Malinche.app` → accepted
 - [ ] Test na innym Macu: brak "unidentified developer"
 - [ ] Test pierwszego uruchomienia: brak bloków Gatekeeper
 
@@ -1932,8 +1932,8 @@ jobs:
       
       - name: Verify build
         run: |
-          test -d dist/Transrec.app
-          du -sh dist/Transrec.app
+          test -d dist/Malinche.app
+          du -sh dist/Malinche.app
 ```
 
 ### 5.6. Kryteria akceptacji release

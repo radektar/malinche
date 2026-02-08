@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build script for Transrec.app using py2app
+# Build script for Malinche.app using py2app
 # This script builds a macOS application bundle ready for distribution
 
 set -e  # Exit on error
@@ -9,7 +9,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 cd "${PROJECT_ROOT}"
 
-echo "🔨 Building Transrec.app..."
+echo "🔨 Building Malinche.app..."
 echo "Project root: ${PROJECT_ROOT}"
 
 # Check if we're on macOS
@@ -59,8 +59,8 @@ BUILD_EXIT_CODE=$?
 set -e  # Re-enable exit on error
 
 # Verify build - bundle should exist even if build ended with segfault
-if [ ! -d "dist/Transrec.app" ]; then
-    echo "❌ Error: Build failed - Transrec.app not found"
+if [ ! -d "dist/Malinche.app" ]; then
+    echo "❌ Error: Build failed - Malinche.app not found"
     exit 1
 fi
 
@@ -71,12 +71,12 @@ if [ $BUILD_EXIT_CODE -ne 0 ]; then
 fi
 
 # Check bundle size
-BUNDLE_SIZE=$(du -sh dist/Transrec.app | cut -f1)
-BUNDLE_SIZE_BYTES=$(du -sk dist/Transrec.app | cut -f1)
+BUNDLE_SIZE=$(du -sh dist/Malinche.app | cut -f1)
+BUNDLE_SIZE_BYTES=$(du -sk dist/Malinche.app | cut -f1)
 BUNDLE_SIZE_MB=$((BUNDLE_SIZE_BYTES / 1024))
 
 echo "✅ Build complete!"
-echo "📦 Bundle location: dist/Transrec.app"
+echo "📦 Bundle location: dist/Malinche.app"
 echo "📏 Bundle size: ${BUNDLE_SIZE} (${BUNDLE_SIZE_MB} MB)"
 
 # Check if size is reasonable (<20MB without models)
@@ -89,25 +89,25 @@ fi
 
 # Verify bundle structure
 echo "🔍 Verifying bundle structure..."
-if [ ! -f "dist/Transrec.app/Contents/Info.plist" ]; then
+if [ ! -f "dist/Malinche.app/Contents/Info.plist" ]; then
     echo "❌ Error: Info.plist not found"
     exit 1
 fi
 
-if [ ! -f "dist/Transrec.app/Contents/MacOS/Transrec" ]; then
+if [ ! -f "dist/Malinche.app/Contents/MacOS/Malinche" ]; then
     echo "❌ Error: Main executable not found"
     exit 1
 fi
 
 # Make executable
-chmod +x dist/Transrec.app/Contents/MacOS/Transrec
+chmod +x dist/Malinche.app/Contents/MacOS/Malinche
 
 echo ""
 echo "✅ Build verification complete!"
 echo ""
 echo "To test the app:"
-echo "  open dist/Transrec.app"
+echo "  open dist/Malinche.app"
 echo ""
 echo "To check bundle info:"
-echo "  plutil -p dist/Transrec.app/Contents/Info.plist"
+echo "  plutil -p dist/Malinche.app/Contents/Info.plist"
 

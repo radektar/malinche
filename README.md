@@ -1,4 +1,4 @@
-# Transrec
+# Malinche
 
 > **Wersja:** v1.10.0 (development) → v2.0.0 (w przygotowaniu)
 

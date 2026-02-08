@@ -1,11 +1,18 @@
 # Changelog
 
-All notable changes to Transrec will be documented in this file.
+All notable changes to Malinche will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+- **Rebranding: Malinche** - zmiana nazwy aplikacji z "Transrec" / "Olympus Transcriber" na "Malinche".
+  - Nowa ikona i nazwa w pasku menu.
+  - Zmiana ścieżki konfiguracji na `~/Library/Application Support/Malinche`.
+  - Automatyczna migracja ustawień i modeli z poprzedniej wersji (Transrec).
+  - Nowy model brandingowy oparty na postaci historycznej Malinche (tłumaczka i doradczyni).
 
 ---
 
@@ -70,6 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned Features
 - **🔒 PRO Features (v2.1.0)** - AI summaries, auto-tagging, cloud sync
+- **🚀 Knowledge Base Engine (v2.2.0+)** - Speaker diarization, domain lexicon, knowledge base extraction (architectural analysis: [Docs/future/knowledge-base-engine.md](Docs/future/knowledge-base-engine.md))
 - See `BACKLOG.md` for other upcoming features and improvements
 
 ---
@@ -228,7 +236,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - UX: Wizard - brak możliwości anulowania w większości kroków (do poprawy w Fazie 7)
 
 ### Technical Details
-- Bundle lokalizacja: `dist/Transrec.app`
+- Bundle lokalizacja: `dist/Malinche.app`
 - Rozmiar: 43-45MB (cel: <20MB, ale akceptowalne dla pierwszej wersji)
 - Architektura: arm64 (Apple Silicon only)
 - Wersja: 2.0.0
@@ -253,7 +261,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **System ustawień użytkownika** (`src/config/`)
   - Klasa `UserSettings` z persystencją do JSON
   - Domyślne wartości w `defaults.py` (języki, modele, ścieżki)
-  - Lokalizacja: `~/Library/Application Support/Transrec/config.json`
+  - Lokalizacja: `~/Library/Application Support/Malinche/config.json`
   - Obsługa load/save z automatycznym tworzeniem katalogów
 - **Moduł uprawnień** (`src/setup/permissions.py`)
   - Sprawdzanie Full Disk Access przez próbę dostępu do chronionych katalogów
@@ -309,8 +317,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (Faza 2)
 - **src/config.py** - Nowa lokalizacja zależności
-  - `WHISPER_CPP_PATH` domyślnie: `~/Library/Application Support/Transrec/bin/whisper-cli`
-  - `WHISPER_CPP_MODELS_DIR` domyślnie: `~/Library/Application Support/Transrec/models/`
+  - `WHISPER_CPP_PATH` domyślnie: `~/Library/Application Support/Malinche/bin/whisper-cli`
+  - `WHISPER_CPP_MODELS_DIR` domyślnie: `~/Library/Application Support/Malinche/models/`
   - Dodano `FFMPEG_PATH` dla bundlowanego ffmpeg
   - Backward compatibility z `~/whisper.cpp/` dla developerów
 - **src/transcriber.py** - Zmiana `_check_whisper()`
@@ -347,7 +355,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - ⏳ TEST M6: Wolne połączenie (opcjonalny, pominięty)
 
 ### Technical Details
-- Lokalizacja zależności: `~/Library/Application Support/Transrec/`
+- Lokalizacja zależności: `~/Library/Application Support/Malinche/`
   - `bin/whisper-cli` (~10MB)
   - `bin/ffmpeg` (~15MB)
   - `models/ggml-small.bin` (~466MB)
@@ -451,10 +459,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.9.0] - 2025-11-28
 
 ### Added
-- **macOS Application Bundle (`Transrec.app`)** - Native `.app` wrapper for daemon execution
+- **macOS Application Bundle (`Malinche.app`)** - Native `.app` wrapper for daemon execution
   - Resolves TCC (Transparency, Consent, and Control) issues with external drive access
   - Enables Full Disk Access configuration for daemon processes
-  - Located at `~/Applications/Transrec.app`
+  - Located at `~/Applications/Malinche.app`
 - **Full Disk Access setup guide** (`Docs/FULL_DISK_ACCESS_SETUP.md`)
   - Step-by-step instructions for configuring macOS privacy settings
   - Troubleshooting guide for external drive access issues
@@ -477,7 +485,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Architecture**: Daemon now runs as macOS application bundle instead of direct Python process
-  - LaunchAgent updated to use `Transrec.app/Contents/MacOS/Transrec`
+  - LaunchAgent updated to use `Malinche.app/Contents/MacOS/Malinche`
   - Login Items configuration now uses `.app` bundle
   - Resolves root cause: macOS TCC blocking `rglob()` access to `/Volumes` for launchd processes
 - **Logging**: Reduced verbose debug logging in `find_audio_files()` method
@@ -942,7 +950,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2025-11-19
 
 ### Added
-- Initial release of Olympus Transcriber
+- Initial release of Malinche
 - Automatic detection of Olympus LS-P1 recorder connection
 - FSEvents-based monitoring for instant recorder detection
 - Periodic fallback checker (30-second interval)

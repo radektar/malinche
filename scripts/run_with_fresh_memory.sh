@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Run Olympus Transcriber with Fresh Memory
+# Run Malinche with Fresh Memory
 #
 # Ten skrypt automatycznie resetuje pamięć i uruchamia transkrypcję.
 # Użyj tego zamiast bezpośredniego wywołania python -m src.main
@@ -26,7 +26,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_DIR"
 
 echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}"
-echo -e "${BLUE}   Olympus Transcriber - Fresh Start${NC}"
+echo -e "${BLUE}   Malinche - Fresh Start${NC}"
 echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}"
 echo ""
 

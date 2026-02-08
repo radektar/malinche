@@ -1,4 +1,4 @@
-"""File system monitoring for Transrec using FSEvents."""
+"""File system monitoring for Malinche using FSEvents."""
 
 import time
 from typing import Callable, Optional

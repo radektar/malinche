@@ -1,4 +1,4 @@
-"""Configuration module for Transrec (backward compatible wrapper)."""
+"""Configuration module for Malinche (backward compatible wrapper)."""
 
 import os
 import shutil
@@ -15,7 +15,7 @@ from src.config.defaults import defaults
 
 @dataclass
 class Config:
-    """Backward-compatible configuration wrapper for Transrec.
+    """Backward-compatible configuration wrapper for Malinche.
     
     This class maintains the old Config interface while using UserSettings
     internally. This allows existing code to continue working while we
@@ -165,9 +165,9 @@ tags: [{tags}]
         self.WHISPER_LANGUAGE = self._user_settings.language or "pl"
         
         if self.WHISPER_CPP_PATH is None:
-            # Nowa lokalizacja: ~/Library/Application Support/Transrec/bin/
+            # Nowa lokalizacja: ~/Library/Application Support/Malinche/bin/
             support_dir = (
-                Path.home() / "Library" / "Application Support" / "Transrec"
+                Path.home() / "Library" / "Application Support" / "Malinche"
             )
             new_whisper_path = support_dir / "bin" / "whisper-cli"
             

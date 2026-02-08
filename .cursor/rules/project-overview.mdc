@@ -1,11 +1,11 @@
 ---
-title: "Transrec - Project Overview"
+title: "Malinche - Project Overview"
 description: "Main project rules and context"
 globs: "**/*"
 alwaysApply: true
 ---
 
-# Transrec (Olympus Transcriber)
+# Malinche (formerly Transrec)
 
 ## O projekcie
 

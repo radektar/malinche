@@ -1,5 +1,5 @@
 #!/bin/bash
-# Reset Olympus Transcriber memory state (last_sync timestamp)
+# Reset Malinche memory state (last_sync timestamp)
 #
 # Użycie:
 #   bash scripts/reset_recorder_memory.sh            # domyślna data 2025-11-18
@@ -16,7 +16,7 @@ TARGET_DATE="${1:-2025-11-18}"
 STATE_FILE="$HOME/.olympus_transcriber_state.json"
 BACKUP_FILE="$HOME/.olympus_transcriber_state.json.backup"
 
-echo "Resetting Olympus Transcriber memory..."
+echo "Resetting Malinche memory..."
 echo ""
 
 # Backup existing state

@@ -40,7 +40,7 @@ def migrate_from_old_config() -> Optional[UserSettings]:
     new_settings = UserSettings()
     
     # Migrate output directory from environment or old config
-    env_dir = os.getenv("OLYMPUS_TRANSCRIBE_DIR")
+    env_dir = os.getenv("MALINCHE_TRANSCRIBE_DIR") or os.getenv("OLYMPUS_TRANSCRIBE_DIR")
     if env_dir:
         new_settings.output_dir = Path(env_dir).expanduser().resolve()
         _get_logger().info(f"Migrated output_dir from env: {new_settings.output_dir}")
@@ -86,15 +86,50 @@ def perform_migration_if_needed() -> UserSettings:
     Returns:
         UserSettings instance (either migrated or loaded from new config)
     """
-    new_config_path = UserSettings._config_path()
+    new_config_path = UserSettings.config_path()
     
-    # If new config exists, just load it
+    # If new config (Malinche) exists, just load it
     if new_config_path.exists():
         return UserSettings.load()
     
-    # Check if old config exists
+    # Check for Transrec config (previous v2.0.0 format)
+    transrec_config_dir = Path.home() / "Library" / "Application Support" / "Transrec"
+    transrec_config_path = transrec_config_dir / "config.json"
+    
+    if transrec_config_path.exists():
+        _get_logger().info("Transrec configuration detected, migrating to Malinche...")
+        try:
+            # Load from Transrec
+            with open(transrec_config_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            
+            # Create new settings and save to Malinche path
+            new_settings = UserSettings(**data)
+            new_settings.save()
+            
+            # Optionally migrate bin/models if they exist
+            import shutil
+            for sub in ["bin", "models", "state.json"]:
+                old_path = transrec_config_dir / sub
+                new_path = new_config_path.parent / sub
+                if old_path.exists() and not new_path.exists():
+                    try:
+                        if old_path.is_dir():
+                            shutil.copytree(old_path, new_path)
+                        else:
+                            shutil.copy2(old_path, new_path)
+                        _get_logger().info(f"Migrated {sub} from Transrec to Malinche")
+                    except Exception as e:
+                        _get_logger().warning(f"Could not migrate {sub}: {e}")
+            
+            _get_logger().info("✓ Migration from Transrec completed")
+            return new_settings
+        except Exception as e:
+            _get_logger().error(f"Migration from Transrec failed: {e}")
+
+    # Check if old config (v1.x format) exists
     old_state_file = Path.home() / ".olympus_transcriber_state.json"
-    env_dir = os.getenv("OLYMPUS_TRANSCRIBE_DIR")
+    env_dir = os.getenv("OLYMPUS_TRANSCRIBE_DIR") or os.getenv("MALINCHE_TRANSCRIBE_DIR")
     
     if old_state_file.exists() or env_dir:
         _get_logger().info("Old configuration detected, performing migration...")

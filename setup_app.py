@@ -20,9 +20,9 @@ OPTIONS = {
     'argv_emulation': False,  # Menu bar app doesn't need command line args
     'iconfile': 'assets/icon.icns' if icon_path.exists() else None,
     'plist': {
-        'CFBundleName': 'Transrec',
-        'CFBundleDisplayName': 'Transrec',
-        'CFBundleIdentifier': 'com.transrec.app',
+        'CFBundleName': 'Malinche',
+        'CFBundleDisplayName': 'Malinche',
+        'CFBundleIdentifier': 'com.malinche.app',
         'CFBundleVersion': '2.0.0',
         'CFBundleShortVersionString': '2.0.0',
         'LSUIElement': True,  # Menu bar only, no dock icon
@@ -30,10 +30,10 @@ OPTIONS = {
         'NSRequiresAquaSystemAppearance': False,  # Dark mode support
         'NSHighResolutionCapable': True,
         'NSAppleEventsUsageDescription': (
-            'Transrec needs to control system events for file monitoring.'
+            'Malinche needs to control system events for file monitoring.'
         ),
         'NSFullDiskAccessUsageDescription': (
-            'Transrec needs Full Disk Access to automatically detect '
+            'Malinche needs Full Disk Access to automatically detect '
             'external recorders and SD cards for transcription.'
         ),
     },
@@ -89,7 +89,7 @@ OPTIONS = {
 }
 
 setup(
-    name='Transrec',
+    name='Malinche',
     app=APP,
     data_files=DATA_FILES,
     options={'py2app': OPTIONS},

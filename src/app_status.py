@@ -1,4 +1,4 @@
-"""Application status management for Olympus Transcriber."""
+"""Application status management for Malinche."""
 
 import threading
 from enum import Enum

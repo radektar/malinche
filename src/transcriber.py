@@ -1,4 +1,4 @@
-"""Transcription engine for Olympus Transcriber."""
+"""Transcription engine for Malinche."""
 
 import json
 import os
@@ -1013,7 +1013,7 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
             if new_files:
                 if not self.recorder_was_notified:
                     send_notification(
-                        title="Olympus Transcriber",
+                        title="Malinche",
                         subtitle="Recorder wykryty",
                         message=f"Podłączono: {recorder.name}"
                     )
@@ -1021,7 +1021,7 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
                 
                 # Notify about new files found
                 send_notification(
-                    title="Olympus Transcriber",
+                    title="Malinche",
                     subtitle=f"Znaleziono {len(new_files)} nowych nagrań",
                     message="Rozpoczynam transkrypcję..."
                 )
@@ -1072,7 +1072,7 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
                 
                 # Send completion notification
                 send_notification(
-                    title="Olympus Transcriber",
+                    title="Malinche",
                     subtitle="Transkrypcja zakończona",
                     message=f"Przetworzono: {processed_success}/{total_processed} plików"
                 )

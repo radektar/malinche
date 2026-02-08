@@ -7,7 +7,7 @@
 > - [ARCHITECTURE.md](ARCHITECTURE.md) - Architektura systemu
 > - [DEVELOPMENT.md](DEVELOPMENT.md) - Przewodnik deweloperski
 
-Complete API reference for Transrec modules.
+Complete API reference for Malinche modules.
 
 ## Table of Contents
 

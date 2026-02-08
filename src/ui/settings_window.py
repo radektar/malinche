@@ -25,7 +25,7 @@ def show_settings_window() -> bool:
             output_dir_display = "..." + output_dir_display[-47:]
         
         response = rumps.alert(
-            title="⚙️ Ustawienia Transrec",
+            title="⚙️ Ustawienia Malinche",
             message=(
                 "Wybierz co chcesz zmienić:\n\n"
                 f"📂 Folder docelowy:\n   {output_dir_display}\n"

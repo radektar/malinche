@@ -1,5 +1,5 @@
 ---
-title: "Transrec - Git Workflow"
+title: "Malinche - Git Workflow"
 description: "Git Flow strategy and commit conventions for v2.0.0 development"
 globs: "**/*"
 alwaysApply: true

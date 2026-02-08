@@ -8,7 +8,7 @@
 > - [API.md](API.md) - Dokumentacja API modułów
 > - [PUBLIC-DISTRIBUTION-PLAN.md](PUBLIC-DISTRIBUTION-PLAN.md) - Strategia testowania per faza
 
-Comprehensive guide for testing Transrec.
+Comprehensive guide for testing Malinche.
 
 ## 📋 Test Types
 
@@ -274,7 +274,7 @@ chmod +x setup.sh
 **Expected Output:**
 ```
 ================================================
-  Olympus Transcriber - LaunchAgent Setup
+  Malinche - LaunchAgent Setup
 ================================================
 
 ✓ Python 3 found: /usr/bin/python3
@@ -654,13 +654,13 @@ For more troubleshooting, see `DEVELOPMENT.md` and application logs.
 
 **Setup:**
 - Czysty macOS (VM lub nowy użytkownik)
-- Brak poprzedniej instalacji Transrec
+- Brak poprzedniej instalacji Malinche
 - Brak whisper.cpp
 
 **Kroki:**
 1. Pobierz DMG z GitHub Releases
-2. Otwórz DMG, przeciągnij Transrec.app do Applications
-3. Uruchom Transrec.app
+2. Otwórz DMG, przeciągnij Malinche.app do Applications
+3. Uruchom Malinche.app
 4. Przejdź przez First-Run Wizard
 5. Poczekaj na pobranie whisper.cpp + model
 6. Nadaj Full Disk Access
@@ -737,7 +737,7 @@ For more troubleshooting, see `DEVELOPMENT.md` and application logs.
 
 **Kroki:**
 1. Wyłącz internet
-2. Uruchom Transrec (z już pobranym whisper)
+2. Uruchom Malinche (z już pobranym whisper)
 3. Podłącz recorder
 4. Wykonaj transkrypcję
 
@@ -766,7 +766,7 @@ For more troubleshooting, see `DEVELOPMENT.md` and application logs.
 
 1. Download: [link do DMG]
 2. Install: Drag to Applications
-3. Run: Double-click Transrec.app
+3. Run: Double-click Malinche.app
 4. Complete wizard
 5. Connect your recorder
 6. Report issues: [link do GitHub Issues]

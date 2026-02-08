@@ -54,7 +54,16 @@ def test_config_whisper_cpp_paths():
 
 def test_config_tagging_defaults(monkeypatch):
     """Tagging configuration should have sane defaults."""
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "dummy-key")
+    from src.config.settings import UserSettings
+    
+    # Mock UserSettings.load() to return settings with AI enabled
+    mock_settings = UserSettings()
+    mock_settings.enable_ai_summaries = True
+    mock_settings.ai_api_key = "dummy-key"
+    
+    # Patch UserSettings.load() to return our mock settings
+    monkeypatch.setattr(UserSettings, "load", classmethod(lambda cls: mock_settings))
+    
     cfg = Config()
 
     assert cfg.ENABLE_LLM_TAGGING is True
