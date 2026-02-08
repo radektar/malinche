@@ -344,12 +344,20 @@ Nie udało się wygenerować podsumowania.
         }
 
 
+from src.config.license import license_manager
+
 def get_summarizer() -> Optional[BaseSummarizer]:
     """Factory function to create appropriate summarizer instance.
     
     Returns:
         Summarizer instance or None if summarization is disabled/unavailable
     """
+    # PRO Check: License must support AI summaries
+    features = license_manager.get_features()
+    if not features.ai_summaries:
+        logger.info("AI summaries require PRO license - skipping")
+        return None
+
     if not config.ENABLE_SUMMARIZATION:
         logger.debug("Summarization disabled in config")
         return None

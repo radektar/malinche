@@ -41,6 +41,9 @@ from src.setup import SetupWizard
 from src.ui.dialogs import choose_date_dialog, show_about_dialog
 from src.ui.constants import TEXTS
 from src.ui.settings_window import show_settings_window
+from src.ui.pro_activation import show_pro_activation, show_pro_status
+from src.config.license import license_manager
+from src.config.features import FeatureTier
 
 
 class MalincheMenuApp(rumps.App):
@@ -92,6 +95,13 @@ class MalincheMenuApp(rumps.App):
             callback=self._show_settings
         )
         self.menu.add(self.settings_item)
+
+        # PRO Activation / Status
+        self.pro_item = rumps.MenuItem(
+            "Aktywuj PRO...",
+            callback=self._show_pro
+        )
+        self.menu.add(self.pro_item)
 
         self.about_item = rumps.MenuItem(
             "O aplikacji...",
@@ -259,6 +269,13 @@ class MalincheMenuApp(rumps.App):
 
     def _update_status(self, _):
         """Update status menu item based on current state."""
+        # Update PRO item label based on current tier
+        tier = license_manager.get_current_tier()
+        if tier == FeatureTier.FREE:
+            self.pro_item.title = "Aktywuj PRO..."
+        else:
+            self.pro_item.title = "💎 Malinche PRO"
+
         if not self.transcriber:
             self.status_item.title = "Status: Nie uruchomiono"
             return
@@ -339,6 +356,10 @@ class MalincheMenuApp(rumps.App):
     def _show_settings(self, _):
         """Show settings window."""
         show_settings_window()
+
+    def _show_pro(self, _):
+        """Show PRO activation or status dialog."""
+        show_pro_status()
 
     def _show_about(self, _):
         """Show About dialog with app information."""

@@ -1,10 +1,11 @@
 """Tests for tagger module."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from src import tagger as tagger_module
 from src.config import Config
-from src.tagger import ClaudeTagger
+from src.config.features import FeatureFlags
+from src.tagger import ClaudeTagger, get_tagger
 
 
 def _patch_anthropic(monkeypatch, response_text: str) -> None:
@@ -55,3 +56,21 @@ def test_claude_tagger_invalid_json_returns_empty(monkeypatch):
 
     assert tags == []
 
+
+def test_get_tagger_no_license(monkeypatch):
+    """Test that get_tagger returns None if license doesn't allow AI tags."""
+    with patch('src.tagger.license_manager.get_features') as mock_features:
+        mock_features.return_value = FeatureFlags(ai_smart_tags=False)
+        assert get_tagger() is None
+
+def test_get_tagger_with_license(monkeypatch):
+    """Test that get_tagger returns instance if license and config allow it."""
+    monkeypatch.setattr(tagger_module.config, "ENABLE_LLM_TAGGING", True)
+    monkeypatch.setattr(tagger_module.config, "LLM_PROVIDER", "claude")
+    monkeypatch.setattr(tagger_module.config, "LLM_API_KEY", "test-key")
+    
+    with patch('src.tagger.license_manager.get_features') as mock_features:
+        mock_features.return_value = FeatureFlags(ai_smart_tags=True)
+        # Mock ClaudeTagger initialization to avoid actual Anthropic import issues if any
+        with patch('src.tagger.ClaudeTagger', return_value=MagicMock()):
+            assert get_tagger() is not None

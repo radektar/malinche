@@ -47,7 +47,11 @@
   - [x] Okno ustawień aplikacji (zmiana folderu, języka po instalacji) ✅ *COMPLETED - zobacz BACKLOG sekcja 3*
   - [x] Możliwość zamknięcia wizarda w każdym kroku ✅ *COMPLETED - zobacz BACKLOG sekcja 4*
   - [x] Dropdown wyboru języka w wizardzie ✅ *COMPLETED - zobacz BACKLOG sekcja 5*
-- [ ] **Faza 8:** Infrastruktura Freemium (feature flags, placeholder PRO)
+- [x] **Faza 8:** Infrastruktura Freemium ✅ *COMPLETED*
+  - [x] System feature flags (3 tiery) ✅
+  - [x] License Manager (placeholder FREE) ✅
+  - [x] PRO gate w summarizerze i taggerze ✅
+  - [x] UI aktywacji w menu ✅
 - [ ] **Faza 9:** Pełny redesign UI (nowy instalator, menu, ikony, kolory) - *przed dystrybucją*
 
 #### v2.1.0 PRO (~3 tygodnie po FREE)

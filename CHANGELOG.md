@@ -86,7 +86,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - [ ] **Faza 6:** Profesjonalny DMG & GitHub Release
   - ✅ **Faza 7:** GUI Settings & polish (COMPLETED ✅ - wszystkie testy przechodzą, 9/9 manualnych)
     - ✅ Okno ustawień aplikacji (zmiana folderu, języka, modelu po instalacji)
-  - [ ] **Faza 8:** Infrastruktura Freemium (feature flags, placeholder PRO)
+  - ✅ **Faza 8:** Infrastruktura Freemium (COMPLETED ✅)
+    - ✅ System feature flags (FREE/PRO/PRO_ORG)
+    - ✅ License Manager z offline cache
+    - ✅ PRO gate dla AI podsumowań i tagów
+    - ✅ UI aktywacji PRO w menu paska stanu
   - [ ] **Faza 9:** Pełny redesign UI (nowy instalator, menu, ikony, kolory)
 
 ### Planned Features
