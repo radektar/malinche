@@ -26,7 +26,7 @@ class TestDateParsing:
     @patch("src.ui.dialogs.rumps.alert")
     def test_choose_date_30days(self, mock_alert):
         """30 days option returns correct date."""
-        mock_alert.return_value = 2  # 30 days option (other)
+        mock_alert.return_value = -1  # 30 days option (other) - rumps returns -1 for "other"
         
         result = choose_date_dialog(default_days=7)
         

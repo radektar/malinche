@@ -37,3 +37,4 @@ TEXTS = {
     "folder_picker_back": "Wstecz",
 }
 
+

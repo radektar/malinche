@@ -4,10 +4,12 @@ import os
 import shutil
 from pathlib import Path
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.config.config import Config
 
 from src.config.settings import UserSettings
-from src.config.migration import perform_migration_if_needed
 from src.config.defaults import defaults
 
 
@@ -111,9 +113,14 @@ tags: [{tags}]
         
         This method loads UserSettings and maps values to the old Config interface
         for backward compatibility.
+        
+        Note: Migration should be performed explicitly before creating Config instances
+        (e.g., in main() or app startup). This ensures deterministic behavior and
+        prevents side effects during initialization.
         """
-        # Load user settings (with migration if needed)
-        self._user_settings = perform_migration_if_needed()
+        # Load user settings (migration should have been performed already)
+        # This makes Config deterministic and testable
+        self._user_settings = UserSettings.load()
         
         # Map UserSettings to old Config attributes
         if self.RECORDER_NAMES is None:
@@ -125,7 +132,12 @@ tags: [{tags}]
                 self.RECORDER_NAMES = ["LS-P1", "OLYMPUS", "RECORDER"]
         
         if self.TRANSCRIBE_DIR is None:
-            self.TRANSCRIBE_DIR = self._user_settings.output_dir
+            # UserSettings stores output_dir as str (JSON), but legacy Config expects Path
+            out_dir = self._user_settings.output_dir
+            if isinstance(out_dir, Path):
+                self.TRANSCRIBE_DIR = out_dir
+            else:
+                self.TRANSCRIBE_DIR = Path(str(out_dir)).expanduser()
         
         if self.LOG_DIR is None:
             self.LOG_DIR = Path.home() / "Library" / "Logs"
@@ -210,28 +222,38 @@ tags: [{tags}]
                     # Default - nowa lokalizacja (będzie pobrana przez downloader)
                     self.FFMPEG_PATH = new_ffmpeg_path
         
-        # Map AI settings from UserSettings
-        self.ENABLE_SUMMARIZATION = self._user_settings.enable_ai_summaries
-        
-        # Load LLM API key from UserSettings or environment
+        # Load LLM API key from UserSettings only
+        # Environment variables should be migrated to UserSettings via perform_migration_if_needed()
+        # This ensures deterministic behavior and prevents runtime ENV reading
         if self.LLM_API_KEY is None:
             if self._user_settings.ai_api_key:
                 self.LLM_API_KEY = self._user_settings.ai_api_key
-            else:
-                # Fallback to environment for backward compatibility
-                if self.LLM_PROVIDER == "claude":
-                    self.LLM_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-                elif self.LLM_PROVIDER == "openai":
-                    self.LLM_API_KEY = os.getenv("OPENAI_API_KEY")
-                elif self.LLM_PROVIDER == "ollama":
-                    # Ollama doesn't require API key, but we can use base URL
-                    self.LLM_API_KEY = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-        
-        # Disable summarization if API key is missing (unless Ollama)
-        if self.ENABLE_SUMMARIZATION and self.LLM_PROVIDER != "ollama":
-            if not self.LLM_API_KEY:
-                self.ENABLE_SUMMARIZATION = False
+            elif self.LLM_PROVIDER == "ollama":
+                # Ollama doesn't require API key, but we can use base URL (default)
+                # This is a default value, not reading from ENV
+                self.LLM_API_KEY = "http://localhost:11434"
 
+        # Map AI settings from UserSettings, with backward-compatible defaults.
+        #
+        # If enable_ai_summaries is True in UserSettings, enable summarization (if API key available).
+        # If enable_ai_summaries is False, don't enable summarization even if API key exists.
+        # Exception: Ollama always enables summarization (no API key required).
+        enable_summarization = bool(self._user_settings.enable_ai_summaries)
+        
+        # Only enable summarization if user explicitly enabled it in settings
+        # If enable_ai_summaries is False, summarization stays False regardless of API key
+        if enable_summarization:
+            if self.LLM_PROVIDER == "ollama":
+                enable_summarization = True
+            elif self.LLM_PROVIDER != "ollama":
+                # Disable summarization if API key is missing
+                if not self.LLM_API_KEY:
+                    enable_summarization = False
+        # else: enable_summarization is already False, keep it False
+
+        self.ENABLE_SUMMARIZATION = enable_summarization
+
+        # Tagging requires summarization to be enabled (shared LLM availability).
         if self.ENABLE_LLM_TAGGING and not self.ENABLE_SUMMARIZATION:
             self.ENABLE_LLM_TAGGING = False
     
@@ -243,5 +265,39 @@ tags: [{tags}]
 
 
 # Global configuration instance
-config = Config()
+# This will be initialized after migration in main() or app startup
+# For backward compatibility, we create it lazily on first access
+_config_instance: Optional[Config] = None
+
+
+def get_config() -> Config:
+    """Get the global Config instance, creating it if necessary.
+    
+    Note: In production, migration should be performed before calling this.
+    For testing, you can set _config_instance directly.
+    """
+    global _config_instance
+    if _config_instance is None:
+        _config_instance = Config()
+    return _config_instance
+
+
+# Backward compatibility: expose config as a property-like object
+# This allows existing code using `from src.config import config` to continue working
+class _ConfigProxy:
+    """Proxy for global config instance to maintain backward compatibility."""
+    
+    def __getattr__(self, name: str):
+        return getattr(get_config(), name)
+    
+    def __setattr__(self, name: str, value):
+        # Allow setting attributes on the actual config instance
+        setattr(get_config(), name, value)
+    
+    def ensure_directories(self) -> None:
+        """Forward ensure_directories call to config instance."""
+        get_config().ensure_directories()
+
+
+config = _ConfigProxy()
 

@@ -121,10 +121,32 @@ def test_file_monitor_ignores_system_directories(mock_stream, mock_observer, moc
 @patch('src.file_monitor.Observer')
 @patch('src.file_monitor.Stream')
 @patch('src.file_monitor.time.sleep')
-def test_file_monitor_triggers_on_valid_path(mock_sleep, mock_stream, mock_observer, mock_callback):
+@patch('src.file_monitor.UserSettings')
+def test_file_monitor_triggers_on_valid_path(mock_user_settings, mock_sleep, mock_stream, mock_observer, mock_callback, tmp_path):
     """Test that valid recorder paths trigger the callback."""
     from src.file_monitor import FileMonitor
+    from src.config.settings import UserSettings
     import time
+    
+    # Create mock volume structure
+    volumes_dir = tmp_path / "Volumes"
+    volumes_dir.mkdir()
+    ls_p1_volume = volumes_dir / "LS-P1"
+    ls_p1_volume.mkdir()
+    (ls_p1_volume / "Folder").mkdir()
+    (ls_p1_volume / "Folder" / "audio.mp3").touch()
+    
+    # Mock UserSettings to return auto mode
+    mock_settings = UserSettings()
+    mock_settings.watch_mode = "auto"
+    mock_user_settings.load.return_value = mock_settings
+    
+    # Mock Path("/Volumes") to return our test volumes directory
+    original_path = Path
+    def mock_path_constructor(path_str):
+        if path_str == "/Volumes":
+            return volumes_dir
+        return original_path(path_str)
     
     monitor = FileMonitor(mock_callback)
     monitor._last_trigger_time = 0.0  # Reset debounce timer
@@ -141,15 +163,17 @@ def test_file_monitor_triggers_on_valid_path(mock_sleep, mock_stream, mock_obser
     
     mock_stream.side_effect = capture_stream
     
-    monitor.start()
-    
-    # Simulate FSEvents callback with valid audio file path
-    if on_change_callback:
-        on_change_callback("/Volumes/LS-P1/Folder/audio.mp3", 0)
-        time.sleep(0.1)  # Small delay to ensure callback processing
-    
-    # Callback should have been called
-    mock_callback.assert_called_once()
+    # Patch Path("/Volumes") in file_monitor module
+    with patch('src.file_monitor.Path', side_effect=mock_path_constructor):
+        monitor.start()
+        
+        # Simulate FSEvents callback with valid audio file path
+        if on_change_callback:
+            on_change_callback(str(ls_p1_volume / "Folder" / "audio.mp3"), 0)
+            time.sleep(0.1)  # Small delay to ensure callback processing
+        
+        # Callback should have been called
+        mock_callback.assert_called_once()
 
 
 @patch('src.file_monitor.FSEVENTS_AVAILABLE', True)
@@ -390,6 +414,7 @@ class TestFileMonitorAudioDetection:
         
         test_dir = tmp_path / "test"
         test_dir.mkdir()
+        (test_dir / "folder1" / "folder2").mkdir(parents=True)
         (test_dir / "folder1" / "folder2" / "audio.mp3").touch()
         
         result = monitor._has_audio_files(test_dir)
@@ -424,11 +449,14 @@ class TestFileMonitorAudioDetection:
         test_dir = tmp_path / "test"
         test_dir.mkdir()
         
-        # Mock rglob to raise PermissionError
-        def mock_rglob(pattern):
-            raise PermissionError("Access denied")
+        # Mock Path.rglob to raise PermissionError when called on test_dir
+        original_rglob = Path.rglob
+        def mock_rglob(self, pattern):
+            if self == test_dir:
+                raise PermissionError("Access denied")
+            return original_rglob(self, pattern)
         
-        monkeypatch.setattr(test_dir, "rglob", mock_rglob)
+        monkeypatch.setattr(Path, "rglob", mock_rglob)
         
         result = monitor._has_audio_files(test_dir)
         assert result is False

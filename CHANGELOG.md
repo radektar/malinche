@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [1.15.2] - 2026-02-08
+
+### Changed
+- **Refaktoryzacja systemu konfiguracji** - deterministyczne zachowanie i lepsza testowalność
+  - Przeniesiono `src/config.py` → `src/config/config.py` dla lepszej organizacji modułów
+  - Usunięto side effects z `Config.__post_init__` - migracja nie jest już wywoływana automatycznie
+  - Centralizacja migracji w `src/main.py` - wywołanie przed inicjalizacją innych modułów
+  - Usunięto fallback do zmiennych środowiskowych w runtime - ENV jest czytane tylko podczas migracji
+  - Dodano lazy-loading proxy dla globalnego `config` singleton
+- **Dependency Injection do Transcriber** - lepsza testowalność i izolacja
+  - Dodano parametr `config: Optional[Config] = None` do konstruktora `Transcriber`
+  - Wszystkie użycia globalnego `config` zastąpione przez `self.config`
+  - `app_core.py` przekazuje config do `Transcriber` podczas inicjalizacji
+  - Testy używają wstrzykniętego configu zamiast patchować globalny singleton
+
+### Technical Details
+- **Stabilizacja konfiguracji:** `Config` jest teraz deterministyczny - nie wykonuje migracji podczas inicjalizacji, co eliminuje problemy z globalnym stanem w testach
+- **Lepsza testowalność:** `Transcriber` może używać własnego configu w testach, co eliminuje konieczność skomplikowanego patchowania globalnego stanu
+- **Separation of concerns:** Migracja jest teraz wyraźnie oddzielona od runtime - wykonywana tylko raz podczas startu aplikacji
+- **Backward compatibility:** Wszystkie istniejące testy przechodzą (224/224 pass), kod produkcyjny działa bez zmian
+
+---
+
+## [Unreleased]
+
 ### In Progress
 - **🚀 Dystrybucja Publiczna (v2.0.0 FREE)** - Szczegółowy plan w [`Docs/PUBLIC-DISTRIBUTION-PLAN.md`](Docs/PUBLIC-DISTRIBUTION-PLAN.md)
   - ✅ **Faza 1:** Uniwersalne źródła nagrań (testy integracyjne zakończone, testy manualne wymagane)

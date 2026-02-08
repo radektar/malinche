@@ -159,12 +159,15 @@ class TestDependencyDownloader:
         result = downloader.is_model_installed()
         assert result is False
 
-    def test_check_all_true(self, downloader):
+    def test_check_all_true(self, downloader, monkeypatch):
         """Test check_all - wszystkie zainstalowane."""
         # Utwórz wszystkie pliki
         (downloader.bin_dir / "whisper-cli").write_bytes(b"fake")
         (downloader.bin_dir / "ffmpeg").write_bytes(b"fake")
         (downloader.models_dir / "ggml-small.bin").write_bytes(b"fake")
+        
+        # Mock checksum verification to return True (test files don't have real checksums)
+        monkeypatch.setattr(downloader, "verify_checksum", lambda path, checksum: True)
 
         result = downloader.check_all()
         assert result is True

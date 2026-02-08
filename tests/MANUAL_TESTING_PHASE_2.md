@@ -805,3 +805,4 @@ Testy manualne są **PASS** jeśli:
 - [Plan Fazy 2](../../.cursor/plans/faza_2_-_dependency_downloader_591ac1ca.plan.md) - Szczegółowy plan implementacji
 
 
+

@@ -56,3 +56,4 @@ Aby przetestować obsługę braku internetu, trzeba:
 4. Włącz WiFi i sprawdź czy pobieranie działa po włączeniu
 
 
+

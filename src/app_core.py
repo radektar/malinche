@@ -99,18 +99,11 @@ class OlympusTranscriber:
         logger.info(f"📄 State file: {config.STATE_FILE}")
         logger.info(f"📋 Log file: {config.LOG_FILE}")
 
-        # Validate and ensure TRANSCRIBE_DIR exists
-        transcribe_dir_source = os.getenv("OLYMPUS_TRANSCRIBE_DIR")
-        if transcribe_dir_source:
-            logger.info(
-                f"✓ TRANSCRIBE_DIR set from OLYMPUS_TRANSCRIBE_DIR: "
-                f"{transcribe_dir_source}"
-            )
-        else:
-            logger.info(
-                f"ℹ️  TRANSCRIBE_DIR using default path "
-                f"(set OLYMPUS_TRANSCRIBE_DIR to override)"
-            )
+        # Log TRANSCRIBE_DIR source (from config, which was migrated from ENV if needed)
+        logger.info(
+            f"ℹ️  TRANSCRIBE_DIR: {config.TRANSCRIBE_DIR} "
+            f"(set OLYMPUS_TRANSCRIBE_DIR env var and restart to change)"
+        )
         
         # Ensure transcription directory exists
         try:
@@ -144,7 +137,8 @@ class OlympusTranscriber:
 
         # Initialize transcriber
         try:
-            self.transcriber = Transcriber()
+            # Create transcriber with injected config for better testability
+            self.transcriber = Transcriber(config=config)
             # Inject state updater callback into transcriber
             self.transcriber.set_state_updater(self._update_state)
         except Exception as e:

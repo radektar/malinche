@@ -9,7 +9,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
-from src.config import config
+from src.config import config as default_config
+from src.config.config import Config
 from src.logger import logger
 from src.summarizer import get_summarizer, BaseSummarizer
 from src.markdown_generator import MarkdownGenerator
@@ -76,7 +77,9 @@ class ProcessLock:
             return True
         except FileExistsError:
             # Detect and clean up stale lock files left by crashed processes.
-            stale_age_seconds = config.TRANSCRIPTION_TIMEOUT + 600
+            # Note: This uses default_config since ProcessLock is created before Transcriber instance
+            # In practice, this is fine as TRANSCRIPTION_TIMEOUT is a constant
+            stale_age_seconds = default_config.TRANSCRIPTION_TIMEOUT + 600
             lock_age: Optional[float] = None
 
             try:
@@ -140,10 +143,19 @@ class Transcriber:
         recorder_monitoring: Flag if recorder is currently connected
         recorder_was_notified: Flag to track if connection notification was sent
         state_updater: Optional callback to update application state
+        config: Configuration instance (injected dependency)
     """
     
-    def __init__(self):
-        """Initialize the transcriber."""
+    def __init__(self, config: Optional[Config] = None):
+        """Initialize the transcriber.
+        
+        Args:
+            config: Configuration instance. If None, uses global default config.
+                    This allows for dependency injection in tests.
+        """
+        # Use injected config or fall back to global default
+        self.config = config if config is not None else default_config
+        
         self.transcription_in_progress: Dict[str, bool] = {}
         self.whisper_available = self._check_whisper()
         self.recorder_monitoring = False
@@ -157,7 +169,7 @@ class Transcriber:
         self.tagger: Optional[BaseTagger] = get_tagger()
         
         # Ensure output directory exists
-        config.ensure_directories()
+        self.config.ensure_directories()
     
     def set_state_updater(
         self,
@@ -196,9 +208,9 @@ class Transcriber:
             True if both whisper.cpp and ffmpeg are available, False otherwise
         """
         # Check for whisper.cpp binary
-        if not config.WHISPER_CPP_PATH.exists():
+        if not self.config.WHISPER_CPP_PATH.exists():
             logger.warning(
-                f"⚠️  whisper.cpp not found at: {config.WHISPER_CPP_PATH}\n"
+                f"⚠️  whisper.cpp not found at: {self.config.WHISPER_CPP_PATH}\n"
                 "Aplikacja spróbuje pobrać zależności automatycznie przy "
                 "pierwszym uruchomieniu."
             )
@@ -206,7 +218,7 @@ class Transcriber:
             # (UI powinno pokazać ekran pobierania)
         
         # Check for ffmpeg
-        ffmpeg_path = config.FFMPEG_PATH
+        ffmpeg_path = self.config.FFMPEG_PATH
         if not ffmpeg_path or not ffmpeg_path.exists():
             # Fallback do systemowego ffmpeg
             system_ffmpeg = shutil.which("ffmpeg")
@@ -218,14 +230,14 @@ class Transcriber:
                 )
                 # Nie zwracamy False - pozwalamy aplikacji sprawdzić czy może pobrać
         
-        if config.WHISPER_CPP_PATH.exists() and ffmpeg_path and ffmpeg_path.exists():
-            logger.info(f"✓ Found whisper.cpp at: {config.WHISPER_CPP_PATH}")
+        if self.config.WHISPER_CPP_PATH.exists() and ffmpeg_path and ffmpeg_path.exists():
+            logger.info(f"✓ Found whisper.cpp at: {self.config.WHISPER_CPP_PATH}")
             logger.info(f"✓ Found ffmpeg at: {ffmpeg_path}")
             
             # Check for Core ML model (Apple Silicon optimization)
             coreml_model = (
-                config.WHISPER_CPP_MODELS_DIR / 
-                f"ggml-{config.WHISPER_MODEL}-encoder.mlmodelc"
+                self.config.WHISPER_CPP_MODELS_DIR / 
+                f"ggml-{self.config.WHISPER_MODEL}-encoder.mlmodelc"
             )
             if coreml_model.exists():
                 logger.info("✓ Core ML model found - GPU acceleration enabled")
@@ -250,7 +262,7 @@ class Transcriber:
             return None
         
         # Check each possible recorder name
-        for name in config.RECORDER_NAMES:
+        for name in self.config.RECORDER_NAMES:
             recorder = volumes_path / name
             if recorder.exists() and recorder.is_dir():
                 logger.info(f"✓ Recorder found: {recorder}")
@@ -297,7 +309,7 @@ class Transcriber:
                     logger.debug(f"Skipping macOS metadata file: {item.name}")
                     continue
                 
-                if item.suffix.lower() not in config.AUDIO_EXTENSIONS:
+                if item.suffix.lower() not in self.config.AUDIO_EXTENSIONS:
                     continue
                 
                 # Check modification time
@@ -343,10 +355,10 @@ class Transcriber:
         """
         try:
             # Ensure staging directory exists
-            config.LOCAL_RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+            self.config.LOCAL_RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
             
             # Destination path (same filename as original)
-            staged_path = config.LOCAL_RECORDINGS_DIR / audio_file.name
+            staged_path = self.config.LOCAL_RECORDINGS_DIR / audio_file.name
             
             # Check if file already exists and matches (size and mtime)
             if staged_path.exists():
@@ -404,11 +416,11 @@ class Transcriber:
             CompletedProcess from subprocess.run
         """
         # Build whisper.cpp command
-        model_path = config.WHISPER_CPP_MODELS_DIR / f"ggml-{config.WHISPER_MODEL}.bin"
-        output_base = config.TRANSCRIBE_DIR / audio_file.stem
+        model_path = self.config.WHISPER_CPP_MODELS_DIR / f"ggml-{self.config.WHISPER_MODEL}.bin"
+        output_base = self.config.TRANSCRIBE_DIR / audio_file.stem
         
         whisper_cmd = [
-            str(config.WHISPER_CPP_PATH),
+            str(self.config.WHISPER_CPP_PATH),
             "-m", str(model_path),
             "-f", str(audio_file),
             "-otxt",
@@ -416,8 +428,8 @@ class Transcriber:
         ]
         
         # Add language if specified
-        if config.WHISPER_LANGUAGE:
-            whisper_cmd.extend(["-l", config.WHISPER_LANGUAGE])
+        if self.config.WHISPER_LANGUAGE:
+            whisper_cmd.extend(["-l", self.config.WHISPER_LANGUAGE])
         
         # Set environment for Core ML / Metal control
         env = None
@@ -435,16 +447,16 @@ class Transcriber:
             )
         
         logger.debug(
-            f"Running whisper.cpp: model={config.WHISPER_MODEL}, "
-            f"language={config.WHISPER_LANGUAGE}, "
+            f"Running whisper.cpp: model={self.config.WHISPER_MODEL}, "
+            f"language={self.config.WHISPER_LANGUAGE}, "
             f"coreml={'enabled' if use_coreml else 'disabled'}, "
-            f"timeout={config.TRANSCRIPTION_TIMEOUT}s"
+            f"timeout={self.config.TRANSCRIPTION_TIMEOUT}s"
         )
         
         return subprocess.run(
             whisper_cmd,
             capture_output=True,
-            timeout=config.TRANSCRIPTION_TIMEOUT,
+            timeout=self.config.TRANSCRIPTION_TIMEOUT,
             text=True,
             env=env,
         )
@@ -486,7 +498,7 @@ class Transcriber:
             return None
         
         # Generate expected output file path
-        output_file = config.TRANSCRIBE_DIR / f"{audio_file.stem}.txt"
+        output_file = self.config.TRANSCRIBE_DIR / f"{audio_file.stem}.txt"
         file_id = audio_file.stem
         
         # Check if already in progress
@@ -501,7 +513,7 @@ class Transcriber:
         
         # Check if markdown version exists
         md_pattern = f"{audio_file.stem}*.md"
-        existing_md = list(config.TRANSCRIBE_DIR.glob(md_pattern))
+        existing_md = list(self.config.TRANSCRIBE_DIR.glob(md_pattern))
         if existing_md:
             logger.info(f"✓ Already transcribed (markdown exists): {audio_file.name}")
             return None
@@ -512,7 +524,7 @@ class Transcriber:
         
         try:
             # Ensure output directory exists
-            config.TRANSCRIBE_DIR.mkdir(parents=True, exist_ok=True)
+            self.config.TRANSCRIBE_DIR.mkdir(parents=True, exist_ok=True)
             
             # Try with Core ML acceleration first (if available)
             logger.info("🔄 Attempting transcription with Core ML acceleration")
@@ -561,7 +573,7 @@ class Transcriber:
                     f"searching for alternative files..."
                 )
                 # List what files were actually created
-                output_dir = config.TRANSCRIBE_DIR
+                output_dir = self.config.TRANSCRIBE_DIR
                 created_files = list(output_dir.glob(f"{audio_file.stem}*"))
                 logger.debug(
                     f"Found {len(created_files)} file(s) matching pattern "
@@ -591,9 +603,9 @@ class Transcriber:
                 return None
         
         except subprocess.TimeoutExpired:
-            error_msg = f"Timeout ({config.TRANSCRIPTION_TIMEOUT}s)"
+            error_msg = f"Timeout ({self.config.TRANSCRIPTION_TIMEOUT}s)"
             logger.error(
-                f"✗ Transcription timeout ({config.TRANSCRIPTION_TIMEOUT}s): "
+                f"✗ Transcription timeout ({self.config.TRANSCRIPTION_TIMEOUT}s): "
                 f"{audio_file.name}"
             )
             self._update_state(AppStatus.ERROR, audio_file.name, error_msg)
@@ -670,7 +682,7 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
 
             # Generate tags
             tags = ["transcription"]
-            if config.ENABLE_LLM_TAGGING and self.tagger:
+            if self.config.ENABLE_LLM_TAGGING and self.tagger:
                 try:
                     existing_tags = self.tag_index.existing_tags()
                     generated_tags = self.tagger.generate_tags(
@@ -695,14 +707,14 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
                 transcript=transcript_text,
                 summary=summary,
                 metadata=metadata,
-                output_dir=config.TRANSCRIBE_DIR,
+                output_dir=self.config.TRANSCRIBE_DIR,
                 tags=tags
             )
             
             logger.info(f"✓ Markdown document created: {md_path.name}")
             
             # Delete temporary TXT file if configured
-            if config.DELETE_TEMP_TXT:
+            if self.config.DELETE_TEMP_TXT:
                 try:
                     transcript_path.unlink()
                     logger.debug(f"✓ Deleted temporary TXT file: {transcript_path.name}")
@@ -735,10 +747,10 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
             Path to existing markdown file if found, otherwise None.
         """
         try:
-            if not config.TRANSCRIBE_DIR.exists():
+            if not self.config.TRANSCRIBE_DIR.exists():
                 return None
 
-            for md_path in config.TRANSCRIBE_DIR.glob("*.md"):
+            for md_path in self.config.TRANSCRIBE_DIR.glob("*.md"):
                 try:
                     with md_path.open("r", encoding="utf-8") as md_file:
                         # Read only the first few lines – frontmatter is at top
@@ -795,7 +807,7 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
                 logger.warning(f"Could not remove {existing_md}: {e}")
         
         # Find and remove TXT file
-        txt_path = config.TRANSCRIBE_DIR / f"{audio_file.stem}.txt"
+        txt_path = self.config.TRANSCRIBE_DIR / f"{audio_file.stem}.txt"
         if txt_path.exists():
             try:
                 txt_path.unlink()
@@ -829,7 +841,7 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
         logger.info(f"🔄 Force re-transcription requested: {audio_file.name}")
         
         # Acquire process lock to prevent conflicts
-        lock = ProcessLock(config.PROCESS_LOCK_FILE)
+        lock = ProcessLock(self.config.PROCESS_LOCK_FILE)
         if not lock.acquire():
             # #region agent log
             import json; import datetime; log_path = "/Users/radoslawtaraszka/CODE/Olympus_transcription/.cursor/debug.log"; open(log_path, 'a').write(json.dumps({"location": "transcriber.py:822", "message": "Could not acquire lock", "data": {}, "timestamp": datetime.datetime.now().timestamp() * 1000, "sessionId": "debug-session", "runId": "run1", "hypothesisId": "C"}) + '\n')
@@ -905,7 +917,7 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
         # once to create markdown. This avoids generating multiple notes for
         # the same recording while still allowing migration from raw TXT.
         transcript_path = (
-            config.TRANSCRIBE_DIR / f"{audio_file.stem}.txt"
+            self.config.TRANSCRIBE_DIR / f"{audio_file.stem}.txt"
         )
         if transcript_path.exists():
             logger.info(
@@ -945,11 +957,11 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
         This is the main entry point called when recorder activity is detected.
         It orchestrates the entire transcription workflow.
         """
-        lock = ProcessLock(config.PROCESS_LOCK_FILE)
+        lock = ProcessLock(self.config.PROCESS_LOCK_FILE)
         if not lock.acquire():
             logger.info(
                 "⛔️ Skipping process_recorder because another instance holds lock %s",
-                config.PROCESS_LOCK_FILE,
+                self.config.PROCESS_LOCK_FILE,
             )
             self._update_state(AppStatus.IDLE)
             return

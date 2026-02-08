@@ -52,3 +52,4 @@ echo "4. Sprawdź logi: tail -f ~/Library/Logs/olympus_transcriber.log"
 echo "============================================================"
 
 
+

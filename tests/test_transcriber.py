@@ -13,11 +13,41 @@ from src.summarizer import BaseSummarizer
 from src.markdown_generator import MarkdownGenerator
 
 
+def update_transcriber_config(transcriber, monkeypatch, **kwargs):
+    """Helper to update both transcriber.config and global config.
+    
+    Args:
+        transcriber: Transcriber instance
+        monkeypatch: pytest monkeypatch fixture
+        **kwargs: Config attributes to update (e.g., TRANSCRIBE_DIR=path)
+    """
+    from src import config as config_module
+    
+    from src import config as config_module
+    
+    # Update transcriber's injected config
+    for key, value in kwargs.items():
+        setattr(transcriber.config, key, value)
+    
+    # Also update global config for state_manager functions
+    for key, value in kwargs.items():
+        monkeypatch.setattr(config_module.config, key, value)
+
+
 @pytest.fixture
-def transcriber():
-    """Create a transcriber instance for testing."""
+def transcriber(monkeypatch):
+    """Create a transcriber instance for testing.
+    
+    Creates Transcriber with a test Config instance to avoid global state issues.
+    """
+    from src.config.config import Config
+    
+    # Create a test config instance
+    test_config = Config()
+    
     with patch('src.transcriber.logger'):
-        return Transcriber()
+        # Pass config explicitly for dependency injection
+        return Transcriber(config=test_config)
 
 
 @pytest.fixture
@@ -147,6 +177,7 @@ def test_transcribe_file_no_whisper(transcriber, tmp_path):
 
 def test_transcribe_file_already_transcribed_txt(transcriber, tmp_path, monkeypatch):
     """Test transcribe_file when TXT output already exists."""
+    # Patch global config for state_manager functions
     from src import config as config_module
     
     transcriber.whisper_available = True
@@ -161,6 +192,9 @@ def test_transcribe_file_already_transcribed_txt(transcriber, tmp_path, monkeypa
     output_file = output_dir / "test.txt"
     output_file.write_text("Test transcript")
     
+    # Update transcriber's injected config (not global config)
+    transcriber.config.TRANSCRIBE_DIR = output_dir
+    # Also patch global for state_manager functions
     monkeypatch.setattr(config_module.config, 'TRANSCRIBE_DIR', output_dir)
     
     result = transcriber.transcribe_file(audio_file)
@@ -170,6 +204,7 @@ def test_transcribe_file_already_transcribed_txt(transcriber, tmp_path, monkeypa
 
 def test_transcribe_file_already_transcribed_md(transcriber, tmp_path, monkeypatch):
     """Test transcribe_file when MD output already exists."""
+    # Patch global config for state_manager functions
     from src import config as config_module
     
     transcriber.whisper_available = True
@@ -194,6 +229,9 @@ def test_transcribe_file_already_transcribed_md(transcriber, tmp_path, monkeypat
         "## Podsumowanie\n\nTest\n"
     )
     
+    # Update transcriber's injected config (not global config)
+    transcriber.config.TRANSCRIBE_DIR = output_dir
+    # Also patch global for state_manager functions
     monkeypatch.setattr(config_module.config, 'TRANSCRIBE_DIR', output_dir)
     
     result = transcriber.transcribe_file(audio_file)
@@ -204,12 +242,9 @@ def test_transcribe_file_already_transcribed_md(transcriber, tmp_path, monkeypat
 
 def test_postprocess_transcript_success(transcriber, tmp_path, monkeypatch):
     """Test successful post-processing of transcript."""
-    from src import config as config_module
-    
     output_dir = tmp_path / "output"
     output_dir.mkdir()
-    monkeypatch.setattr(config_module.config, 'TRANSCRIBE_DIR', output_dir)
-    monkeypatch.setattr(config_module.config, 'DELETE_TEMP_TXT', True)
+    update_transcriber_config(transcriber, monkeypatch, TRANSCRIBE_DIR=output_dir, DELETE_TEMP_TXT=True)
     
     audio_file = tmp_path / "test.mp3"
     audio_file.touch()
@@ -248,11 +283,9 @@ def test_postprocess_transcript_success(transcriber, tmp_path, monkeypatch):
 
 def test_postprocess_transcript_no_summarizer(transcriber, tmp_path, monkeypatch):
     """Test post-processing without summarizer (fallback)."""
-    from src import config as config_module
-    
     output_dir = tmp_path / "output"
     output_dir.mkdir()
-    monkeypatch.setattr(config_module.config, 'TRANSCRIBE_DIR', output_dir)
+    update_transcriber_config(transcriber, monkeypatch, TRANSCRIBE_DIR=output_dir)
     
     audio_file = tmp_path / "test.mp3"
     audio_file.touch()
@@ -291,8 +324,7 @@ def test_postprocess_transcript_passes_tags(monkeypatch, tmp_path, transcriber):
 
     output_dir = tmp_path / "output"
     output_dir.mkdir()
-    monkeypatch.setattr(config_module.config, "TRANSCRIBE_DIR", output_dir)
-    monkeypatch.setattr(config_module.config, "ENABLE_LLM_TAGGING", False)
+    update_transcriber_config(transcriber, monkeypatch, TRANSCRIBE_DIR=output_dir, ENABLE_LLM_TAGGING=False)
 
     audio_file = tmp_path / "sample.mp3"
     audio_file.touch()
@@ -342,11 +374,9 @@ def test_process_recorder_with_files(transcriber, mock_recorder_path):
 
 def test_stage_audio_file_success(transcriber, tmp_path, monkeypatch):
     """Test successful staging of audio file."""
-    from src import config as config_module
-    
     staging_dir = tmp_path / "staging"
     staging_dir.mkdir()
-    monkeypatch.setattr(config_module.config, 'LOCAL_RECORDINGS_DIR', staging_dir)
+    update_transcriber_config(transcriber, monkeypatch, LOCAL_RECORDINGS_DIR=staging_dir)
     
     recorder_file = tmp_path / "recorder" / "test.mp3"
     recorder_file.parent.mkdir()
@@ -362,11 +392,9 @@ def test_stage_audio_file_success(transcriber, tmp_path, monkeypatch):
 
 def test_stage_audio_file_not_found(transcriber, tmp_path, monkeypatch):
     """Test staging when recorder file doesn't exist."""
-    from src import config as config_module
-    
     staging_dir = tmp_path / "staging"
     staging_dir.mkdir()
-    monkeypatch.setattr(config_module.config, 'LOCAL_RECORDINGS_DIR', staging_dir)
+    update_transcriber_config(transcriber, monkeypatch, LOCAL_RECORDINGS_DIR=staging_dir)
     
     recorder_file = tmp_path / "nonexistent.mp3"
     
@@ -382,7 +410,7 @@ def test_stage_audio_file_reuse_existing(transcriber, tmp_path, monkeypatch):
     
     staging_dir = tmp_path / "staging"
     staging_dir.mkdir()
-    monkeypatch.setattr(config_module.config, 'LOCAL_RECORDINGS_DIR', staging_dir)
+    update_transcriber_config(transcriber, monkeypatch, LOCAL_RECORDINGS_DIR=staging_dir)
     
     recorder_file = tmp_path / "recorder" / "test.mp3"
     recorder_file.parent.mkdir()
@@ -408,7 +436,7 @@ def test_process_recorder_staging_integration(transcriber, tmp_path, monkeypatch
     
     staging_dir = tmp_path / "staging"
     staging_dir.mkdir()
-    monkeypatch.setattr(config_module.config, 'LOCAL_RECORDINGS_DIR', staging_dir)
+    update_transcriber_config(transcriber, monkeypatch, LOCAL_RECORDINGS_DIR=staging_dir)
     
     recorder = tmp_path / "LS-P1"
     recorder.mkdir()
@@ -435,7 +463,7 @@ def test_process_recorder_batch_failure_handling(transcriber, tmp_path, monkeypa
     
     staging_dir = tmp_path / "staging"
     staging_dir.mkdir()
-    monkeypatch.setattr(config_module.config, 'LOCAL_RECORDINGS_DIR', staging_dir)
+    update_transcriber_config(transcriber, monkeypatch, LOCAL_RECORDINGS_DIR=staging_dir)
     
     recorder = tmp_path / "LS-P1"
     recorder.mkdir()
@@ -463,7 +491,7 @@ def test_process_recorder_batch_success_updates_sync(transcriber, tmp_path, monk
     
     staging_dir = tmp_path / "staging"
     staging_dir.mkdir()
-    monkeypatch.setattr(config_module.config, 'LOCAL_RECORDINGS_DIR', staging_dir)
+    update_transcriber_config(transcriber, monkeypatch, LOCAL_RECORDINGS_DIR=staging_dir)
     
     recorder = tmp_path / "LS-P1"
     recorder.mkdir()
@@ -494,9 +522,7 @@ def test_process_recorder_skips_files_with_existing_markdown(
     staging_dir.mkdir()
     transcript_dir = tmp_path / "transcripts"
     transcript_dir.mkdir()
-    monkeypatch.setattr(config_module.config, "LOCAL_RECORDINGS_DIR", staging_dir)
-    monkeypatch.setattr(config_module.config, "TRANSCRIBE_DIR", transcript_dir)
-
+    update_transcriber_config(transcriber, monkeypatch, LOCAL_RECORDINGS_DIR=staging_dir, TRANSCRIBE_DIR=transcript_dir)
     recorder = tmp_path / "LS-P1"
     recorder.mkdir()
     processed_file = recorder / "processed.mp3"
@@ -520,7 +546,6 @@ def test_process_recorder_skips_files_with_existing_markdown(
 
     staged_new = staging_dir / "new.mp3"
     staged_new.write_bytes(b"new")
-
     with patch.object(transcriber, "find_recorder", return_value=recorder):
         with patch.object(
             transcriber, "get_last_sync_time", return_value=datetime.now() - timedelta(days=1)
@@ -542,7 +567,7 @@ def test_run_macwhisper_retries_on_metal_error(transcriber, tmp_path, monkeypatc
 
     transcript_dir = tmp_path / "output"
     transcript_dir.mkdir()
-    monkeypatch.setattr(config_module.config, "TRANSCRIBE_DIR", transcript_dir)
+    update_transcriber_config(transcriber, monkeypatch, TRANSCRIBE_DIR=transcript_dir)
 
     audio_file = tmp_path / "sample.mp3"
     audio_file.touch()
@@ -578,17 +603,14 @@ def test_run_whisper_transcription_disables_metal_for_cpu(
     from src import config as config_module
 
     audio_file = tmp_path / "sample.mp3"
-    audio_file.touch()
-
-    # Point config to temporary paths so command construction works
-    monkeypatch.setattr(config_module.config, "WHISPER_CPP_MODELS_DIR", tmp_path)
-    monkeypatch.setattr(config_module.config, "WHISPER_MODEL", "small")
-    monkeypatch.setattr(
-        config_module.config,
-        "WHISPER_CPP_PATH",
-        tmp_path / "whisper-cli",
+    audio_file.touch()    # Point config to temporary paths so command construction works
+    update_transcriber_config(
+        transcriber, monkeypatch,
+        WHISPER_CPP_MODELS_DIR=tmp_path,
+        WHISPER_MODEL="small",
+        WHISPER_CPP_PATH=tmp_path / "whisper-cli",
+        TRANSCRIBE_DIR=tmp_path
     )
-    monkeypatch.setattr(config_module.config, "TRANSCRIBE_DIR", tmp_path)
 
     captured = {}
 
@@ -735,7 +757,7 @@ def test_process_recorder_sends_notification_when_new_files_found(
     
     staging_dir = tmp_path / "staging"
     staging_dir.mkdir()
-    monkeypatch.setattr(config_module.config, 'LOCAL_RECORDINGS_DIR', staging_dir)
+    update_transcriber_config(transcriber, monkeypatch, LOCAL_RECORDINGS_DIR=staging_dir)
     
     with patch.object(transcriber, 'find_recorder', return_value=mock_recorder_path):
         with patch.object(transcriber, 'get_last_sync_time', 
@@ -754,4 +776,3 @@ def test_process_recorder_sends_notification_when_new_files_found(
                     
                     # Check that completion notification was sent
                     assert any('zakończona' in subtitle for subtitle in subtitles)
-

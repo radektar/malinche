@@ -38,7 +38,8 @@ def test_config_audio_extensions():
     """Test that audio extensions are properly set."""
     config = Config()
     
-    assert config.AUDIO_EXTENSIONS == {".mp3", ".wav", ".m4a", ".wma"}
+    # Should include all supported audio formats
+    assert config.AUDIO_EXTENSIONS == {".mp3", ".wav", ".m4a", ".wma", ".flac", ".aac", ".ogg"}
 
 
 def test_config_whisper_cpp_paths():
@@ -65,9 +66,26 @@ def test_config_tagging_defaults(monkeypatch):
 
 def test_config_disables_tagging_when_summarization_off(monkeypatch):
     """Tagging should be disabled automatically if summarization is off."""
+    from src.config.settings import UserSettings
+    
+    # Remove API key from environment
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    
+    # Mock UserSettings.load() to return settings with AI disabled and no API key
+    # Config now uses UserSettings.load() instead of perform_migration_if_needed()
+    mock_settings = UserSettings()
+    mock_settings.enable_ai_summaries = False
+    mock_settings.ai_api_key = None
+    
+    # Patch UserSettings.load() to return our mock settings
+    monkeypatch.setattr(UserSettings, "load", classmethod(lambda cls: mock_settings))
+    
+    from src.config import Config
     cfg = Config()
 
+    # Even if API key exists in environment, summarization should be False
+    # because enable_ai_summaries is False in UserSettings
     assert cfg.ENABLE_SUMMARIZATION is False
     assert cfg.ENABLE_LLM_TAGGING is False
 

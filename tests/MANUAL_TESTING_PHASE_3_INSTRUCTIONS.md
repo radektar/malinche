@@ -138,3 +138,4 @@ Dla każdego testu powiedz:
 3. 🐛 Czy były jakieś problemy?
 
 
+

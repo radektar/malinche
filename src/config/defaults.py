@@ -1,11 +1,17 @@
 """Domyślne wartości konfiguracji użytkownika."""
 
+from dataclasses import dataclass
 from pathlib import Path
 
 # Ścieżki
-DEFAULT_OUTPUT_DIR = str(
-    Path.home() / "Library" / "Mobile Documents"
-    / "iCloud~md~obsidian" / "Documents" / "Obsidian" / "11-Transcripts"
+DEFAULT_OUTPUT_DIR = (
+    Path.home()
+    / "Library"
+    / "Mobile Documents"
+    / "iCloud~md~obsidian"
+    / "Documents"
+    / "Obsidian"
+    / "11-Transcripts"
 )
 CONFIG_DIR = Path.home() / "Library" / "Application Support" / "Transrec"
 CONFIG_FILE = CONFIG_DIR / "config.json"
@@ -13,6 +19,8 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 # Tryby monitorowania
 WATCH_MODES = ["auto", "manual", "specific"]
 DEFAULT_WATCH_MODE = "auto"
+# Alias used across code/tests
+WATCH_MODE = DEFAULT_WATCH_MODE
 
 # Języki
 SUPPORTED_LANGUAGES = {
@@ -32,6 +40,22 @@ SUPPORTED_MODELS = {
 }
 DEFAULT_MODEL = "small"
 
+# Alias for backwards compatibility (tests/code may expect this name)
+DEFAULT_WHISPER_MODEL = DEFAULT_MODEL
+
+# UI / wizard defaults
+DEFAULT_ENABLE_AI_SUMMARIES = False
+DEFAULT_SHOW_NOTIFICATIONS = True
+DEFAULT_START_AT_LOGIN = False
+DEFAULT_SETUP_COMPLETED = False
+
+# Audio detection defaults
+# Keep this set in sync with legacy Config expectations.
+AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".wma", ".flac", ".aac", ".ogg"}
+
+# Limit recursive scan depth under a volume root (performance safeguard).
+MAX_SCAN_DEPTH = 3
+
 # Systemowe volumeny do ignorowania
 SYSTEM_VOLUMES = {
     "Macintosh HD",
@@ -44,3 +68,48 @@ SYSTEM_VOLUMES = {
     "System",
     "com.apple.TimeMachine.localsnapshots",
 }
+
+
+@dataclass(frozen=True)
+class Defaults:
+    """Namespace-style access to default values.
+
+    This exists for backward compatibility with older code/tests that expect
+    an object named `defaults` with attributes (e.g. `defaults.DEFAULT_LANGUAGE`).
+    """
+
+    DEFAULT_OUTPUT_DIR: Path = DEFAULT_OUTPUT_DIR
+    CONFIG_DIR: Path = CONFIG_DIR
+    CONFIG_FILE: Path = CONFIG_FILE
+
+    WATCH_MODES: list[str] = None  # type: ignore[assignment]
+    WATCH_MODE: str = WATCH_MODE
+    DEFAULT_WATCH_MODE: str = DEFAULT_WATCH_MODE
+
+    SUPPORTED_LANGUAGES: dict[str, str] = None  # type: ignore[assignment]
+    DEFAULT_LANGUAGE: str = DEFAULT_LANGUAGE
+
+    SUPPORTED_MODELS: dict[str, str] = None  # type: ignore[assignment]
+    DEFAULT_MODEL: str = DEFAULT_MODEL
+    DEFAULT_WHISPER_MODEL: str = DEFAULT_WHISPER_MODEL
+
+    DEFAULT_ENABLE_AI_SUMMARIES: bool = DEFAULT_ENABLE_AI_SUMMARIES
+    DEFAULT_SHOW_NOTIFICATIONS: bool = DEFAULT_SHOW_NOTIFICATIONS
+    DEFAULT_START_AT_LOGIN: bool = DEFAULT_START_AT_LOGIN
+    DEFAULT_SETUP_COMPLETED: bool = DEFAULT_SETUP_COMPLETED
+
+    AUDIO_EXTENSIONS: set[str] = None  # type: ignore[assignment]
+    MAX_SCAN_DEPTH: int = MAX_SCAN_DEPTH
+    SYSTEM_VOLUMES: set[str] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        # Dataclass is frozen; use object.__setattr__ to set default mutable fields.
+        object.__setattr__(self, "WATCH_MODES", WATCH_MODES)
+        object.__setattr__(self, "SUPPORTED_LANGUAGES", SUPPORTED_LANGUAGES)
+        object.__setattr__(self, "SUPPORTED_MODELS", SUPPORTED_MODELS)
+        object.__setattr__(self, "AUDIO_EXTENSIONS", AUDIO_EXTENSIONS)
+        object.__setattr__(self, "SYSTEM_VOLUMES", SYSTEM_VOLUMES)
+
+
+# Backwards compatible instance used across the codebase/tests.
+defaults = Defaults()

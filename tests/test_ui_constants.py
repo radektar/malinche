@@ -79,3 +79,4 @@ class TestUIConstants:
         """About message contains APP_NAME."""
         assert APP_NAME in TEXTS["about_message"], "About message should contain app name"
 
+

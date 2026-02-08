@@ -96,3 +96,4 @@ class TestUserSettings:
         assert settings.watch_mode == DEFAULT_WATCH_MODE  # fallback to default
 
 
+

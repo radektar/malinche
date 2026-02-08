@@ -97,3 +97,4 @@ class TestSetupWizard:
         assert loaded.setup_completed is True
 
 
+

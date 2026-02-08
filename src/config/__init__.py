@@ -15,23 +15,14 @@ from src.config.defaults import (
     CONFIG_FILE,
 )
 
-# Import config from parent module (src.config.py)
-# Use importlib to avoid circular import issues
-import importlib.util
-from pathlib import Path
-
-_parent_config_path = Path(__file__).parent.parent / "config.py"
-if _parent_config_path.exists():
-    spec = importlib.util.spec_from_file_location("_config_module", _parent_config_path)
-    _config_module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(_config_module)
-    config = _config_module.config
-else:
-    # Fallback - this shouldn't happen in normal operation
-    config = None
+# Import Config and config from config.py module
+# Using normal import instead of dynamic importlib to ensure single module instance
+# This prevents issues with module reloading in tests and ensures deterministic behavior
+from src.config.config import Config, config
 
 __all__ = [
     "UserSettings",
+    "Config",
     "config",
     "DEFAULT_OUTPUT_DIR",
     "DEFAULT_WATCH_MODE",

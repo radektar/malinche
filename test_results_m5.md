@@ -90,3 +90,4 @@ TEST M5 przeszedł pomyślnie. System wykrywania i naprawy uszkodzonych plików 
 - TEST M6: Wolne połączenie (opcjonalny, wymaga narzędzi)
 
 
+

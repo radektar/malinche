@@ -24,9 +24,11 @@ Complete API reference for Transrec modules.
 
 ---
 
-## config.py
+## config.py (src/config/config.py)
 
 Configuration management module.
+
+**Note:** Module has been refactored - file is now located at `src/config/config.py` for better organization. Import remains unchanged: `from src.config import config`.
 
 ### Class: `Config`
 

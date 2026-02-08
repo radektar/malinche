@@ -308,9 +308,9 @@ else:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-## Configuration (`src/config.py`)
+## Configuration (`src/config/config.py`)
 
-Centralizowana konfiguracja z obsługą zmiennych środowiskowych:
+Centralized configuration with environment variable support (only during migration):
 
 ```python
 @dataclass
@@ -335,7 +335,12 @@ class Config:
     AUDIO_EXTENSIONS: set         # Supported formats
 ```
 
-Szczegóły: **[API.md](API.md#configpy)**
+**Note:** Configuration has been refactored for better determinism and testability:
+- Migration is executed only once during application startup (`src/main.py`)
+- `Config` does not perform side effects during initialization
+- `Transcriber` uses dependency injection for config (better testability)
+
+Details: **[API.md](API.md#configpy)**
 
 ## Error Handling
 
