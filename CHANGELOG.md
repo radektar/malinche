@@ -7,8 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [2.0.0-alpha.1] - 2026-02-08
+
 ### Added
-- **Rebranding: Malinche** - zmiana nazwy aplikacji z "Transrec" / "Olympus Transcriber" na "Malinche".
+- **Rebranding: Malinche** - całkowita zmiana nazwy aplikacji z "Transrec" / "Olympus Transcriber" na "Malinche".
   - Nowa ikona i nazwa w pasku menu.
   - Zmiana ścieżki konfiguracji na `~/Library/Application Support/Malinche`.
   - Automatyczna migracja ustawień i modeli z poprzedniej wersji (Transrec).
