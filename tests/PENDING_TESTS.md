@@ -1,8 +1,9 @@
-# Niewykonane testy manualne - v2.0.0
+# Status testów manualnych - v1.15.2
 
 > **Data utworzenia:** 2025-12-26  
-> **Status:** Oczekujące na wykonanie  
-> **Wersja:** v2.0.0
+> **Ostatnia aktualizacja:** 2026-02-08  
+> **Status:** ✅ Faza 1 zakończona, Faza 2 częściowo wykonana  
+> **Wersja:** v1.15.2
 
 ---
 
@@ -18,14 +19,14 @@
 - [x] **TEST M5:** Uszkodzony plik - wykrycie i naprawa ✅ **PASS** (2025-12-26)
 - [ ] **TEST M6:** Wolne połączenie - timeout handling
 
-### ⏳ Faza 1 - Niewykonane (wymagane fizyczne urządzenia)
-- [ ] **SCENARIUSZ 1:** Watch mode "auto" - wykrywanie urządzeń
-- [ ] **SCENARIUSZ 2:** Watch mode "specific" - tylko wybrane volumeny
-- [ ] **SCENARIUSZ 3:** Watch mode "manual" - brak auto-detekcji
-- [ ] **SCENARIUSZ 4:** Wykrywanie różnych formatów audio
-- [ ] **SCENARIUSZ 5:** Ignorowanie system volumes
-- [ ] **SCENARIUSZ 6:** Migracja ze starej konfiguracji
-- [ ] **SCENARIUSZ 7:** Głębokość skanowania (max_depth)
+### ✅ Faza 1 - Wykonane (2026-02-08)
+- ✅ **SCENARIUSZ 1:** Watch mode "auto" - wykrywanie urządzeń
+- ✅ **SCENARIUSZ 2:** Watch mode "specific" - tylko wybrane volumeny
+- ✅ **SCENARIUSZ 3:** Watch mode "manual" - brak auto-detekcji
+- ⏭️ **SCENARIUSZ 4:** Wykrywanie różnych formatów audio (POMINIĘTY - częściowo przetestowany .MP3)
+- ✅ **SCENARIUSZ 5:** Ignorowanie system volumes
+- ✅ **SCENARIUSZ 6:** Migracja ze starej konfiguracji
+- ✅ **SCENARIUSZ 7:** Głębokość skanowania (max_depth)
 
 ---
 
@@ -425,13 +426,16 @@ EOF
 
 ---
 
-## SCENARIUSZ 4: Wykrywanie różnych formatów audio
+## SCENARIUSZ 4: Wykrywanie różnych formatów audio ⏭️ POMINIĘTY
 
 **Faza:** 1  
 **Priorytet:** Wysoki  
-**Trudność:** ⚠️ Wymaga urządzeń
+**Trudność:** ⚠️ Wymaga urządzeń  
+**Status:** ⏭️ POMINIĘTY (2026-02-08) - częściowo przetestowany (.MP3 działa)
 
 **Cel:** Weryfikacja wykrywania wszystkich obsługiwanych formatów.
+
+**Uwaga:** Test pominięty - format .MP3 został przetestowany i działa poprawnie. Pozostałe formaty (.wav, .m4a, .flac, .aac, .ogg) wymagają plików testowych na urządzeniu.
 
 ### Setup
 
@@ -585,14 +589,19 @@ USB_DRIVE/
 - **TEST M5:** Uszkodzony plik (łatwy, **WAŻNY** - rekomendowany)
 - **TEST M6:** Wolne połączenie (średni, wymaga narzędzi)
 
-### Faza 1 - Niewykonane testy (wymagane urządzenia)
-- **SCENARIUSZ 1-3:** Watch modes (podstawowe)
-- **SCENARIUSZ 4:** Formaty audio (podstawowy)
-- **SCENARIUSZ 5:** System volumes (łatwy)
-- **SCENARIUSZ 6:** Migracja (łatwy)
-- **SCENARIUSZ 7:** Max depth (średni)
+### ✅ Faza 1 - Wykonane testy (2026-02-08)
+- ✅ **SCENARIUSZ 1-3:** Watch modes (podstawowe) - wszystkie przeszły
+- ⏭️ **SCENARIUSZ 4:** Formaty audio (podstawowy) - POMINIĘTY (częściowo przetestowany .MP3)
+- ✅ **SCENARIUSZ 5:** System volumes (łatwy) - PASSED
+- ✅ **SCENARIUSZ 6:** Migracja (łatwy) - PASSED
+- ✅ **SCENARIUSZ 7:** Max depth (średni) - PASSED
 
-**Rekomendacja:** Zacząć od TEST M5 (Faza 2) i SCENARIUSZ 5, 6 (Faza 1) - są łatwe i nie wymagają urządzeń.
+### ⏳ Faza 1 - Pozostałe (opcjonalne)
+- ⏭️ **SCENARIUSZ 4:** Pełne testowanie wszystkich formatów (.wav, .m4a, .flac, .aac, .ogg) - wymaga plików testowych
+
+### ⏳ Faza 2 - Pozostałe (opcjonalne)
+- **TEST M4:** Brak miejsca na dysku (trudny, można pominąć)
+- **TEST M6:** Wolne połączenie (średni, wymaga narzędzi)
 
 ---
 

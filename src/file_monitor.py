@@ -200,10 +200,13 @@ class FileMonitor:
         
         try:
             for item in path.rglob("*"):
-                # Check depth limit
+                # Check depth limit (count directories, not file name)
+                # max_depth=3 means up to 3 directory levels deep
                 try:
                     relative = item.relative_to(path)
-                    if len(relative.parts) > max_depth:
+                    # Count directory depth: parts - 1 (exclude filename)
+                    dir_depth = len(relative.parts) - 1
+                    if dir_depth > max_depth:
                         continue
                 except ValueError:
                     continue

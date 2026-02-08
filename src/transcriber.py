@@ -295,13 +295,29 @@ class Transcriber:
         Returns:
             List of audio file paths, sorted by modification time
         """
+        from src.config.defaults import defaults
+        
         new_files = []
+        max_depth = defaults.MAX_SCAN_DEPTH
         
         try:
             # Recursively find all files
             for item in recorder_path.rglob("*"):
                 # Skip directories and non-audio files
                 if not item.is_file():
+                    continue
+                
+                # Check depth limit (count directories, not file name)
+                # max_depth=3 means up to 3 directory levels deep
+                try:
+                    relative = item.relative_to(recorder_path)
+                    # Count directory depth: parts - 1 (exclude filename)
+                    dir_depth = len(relative.parts) - 1
+                    if dir_depth > max_depth:
+                        logger.debug(f"Skipping file beyond max_depth ({max_depth}): {item.relative_to(recorder_path)} (depth: {dir_depth})")
+                        continue
+                except ValueError:
+                    # If relative_to fails, skip this item
                     continue
                 
                 # Skip macOS metadata files
@@ -317,7 +333,7 @@ class Transcriber:
                     mtime = datetime.fromtimestamp(item.stat().st_mtime)
                     if mtime > since:
                         new_files.append(item)
-                        logger.debug(f"Found new file: {item.name} (mtime: {mtime})")
+                        logger.debug(f"Found new file: {item.name} (mtime: {mtime}, depth: {dir_depth})")
                 except OSError as e:
                     logger.warning(f"Could not access file {item}: {e}")
                     continue

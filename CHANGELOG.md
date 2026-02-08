@@ -23,12 +23,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Wszystkie użycia globalnego `config` zastąpione przez `self.config`
   - `app_core.py` przekazuje config do `Transcriber` podczas inicjalizacji
   - Testy używają wstrzykniętego configu zamiast patchować globalny singleton
+- **Naprawa logiki głębokości skanowania (max_depth)**
+  - Poprawiono liczenie głębokości w `find_audio_files()` - teraz liczy katalogi zamiast części ścieżki
+  - Zaktualizowano `_has_audio_files()` w `file_monitor.py` dla spójności
+  - Dodano poprawne logowanie wartości głębokości w debug messages
+
+### Added
+- **Test jednostkowy dla max_depth** - `test_find_audio_files_respects_max_depth()` w `tests/test_transcriber.py`
+  - Weryfikuje wykrywanie plików na różnych głębokościach
+  - Potwierdza że pliki > max_depth (3) są ignorowane
+
+### Testing
+- ✅ **Testy manualne Faza 1 - zakończone** (2026-02-08)
+  - SCENARIUSZ 1: Watch mode "auto" - PASSED
+  - SCENARIUSZ 2: Watch mode "specific" - PASSED
+  - SCENARIUSZ 3: Watch mode "manual" - PASSED
+  - SCENARIUSZ 5: Ignorowanie system volumes - PASSED
+  - SCENARIUSZ 6: Migracja ze starej konfiguracji - PASSED
+  - SCENARIUSZ 7: Głębokość skanowania (max_depth) - PASSED
+  - SCENARIUSZ 4: Wykrywanie różnych formatów audio - POMINIĘTY (częściowo przetestowany .MP3)
+  - Raport: `tests/test_results_phase1_2026-02-08.md`
 
 ### Technical Details
 - **Stabilizacja konfiguracji:** `Config` jest teraz deterministyczny - nie wykonuje migracji podczas inicjalizacji, co eliminuje problemy z globalnym stanem w testach
 - **Lepsza testowalność:** `Transcriber` może używać własnego configu w testach, co eliminuje konieczność skomplikowanego patchowania globalnego stanu
 - **Separation of concerns:** Migracja jest teraz wyraźnie oddzielona od runtime - wykonywana tylko raz podczas startu aplikacji
 - **Backward compatibility:** Wszystkie istniejące testy przechodzą (224/224 pass), kod produkcyjny działa bez zmian
+- **Max depth scanning:** Pliki na głębokości > 3 katalogów są teraz poprawnie ignorowane, co poprawia wydajność skanowania
 
 ---
 
@@ -36,7 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### In Progress
 - **🚀 Dystrybucja Publiczna (v2.0.0 FREE)** - Szczegółowy plan w [`Docs/PUBLIC-DISTRIBUTION-PLAN.md`](Docs/PUBLIC-DISTRIBUTION-PLAN.md)
-  - ✅ **Faza 1:** Uniwersalne źródła nagrań (testy integracyjne zakończone, testy manualne wymagane)
+  - ✅ **Faza 1:** Uniwersalne źródła nagrań (testy integracyjne zakończone ✅, testy manualne zakończone ✅ - 6/7 scenariuszy)
   - ✅ **Faza 2:** System pobierania whisper.cpp/modeli on-demand (COMPLETED)
   - ✅ **Faza 3:** First-run wizard z konfiguracją (COMPLETED ✅ - testy manualne zakończone)
   - ✅ **Faza 4:** Pakowanie z py2app (COMPLETED ✅ - wszystkie testy przechodzą)

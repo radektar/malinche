@@ -164,6 +164,52 @@ def test_find_audio_files_filters_by_time(transcriber, mock_recorder_path):
     assert len(files) == 0
 
 
+def test_find_audio_files_respects_max_depth(transcriber, tmp_path):
+    """Test find_audio_files respects MAX_SCAN_DEPTH limit."""
+    from src.config.defaults import defaults
+    
+    # Create directory structure with files at different depths
+    recorder = tmp_path / "TEST_VOLUME"
+    recorder.mkdir()
+    
+    # Depth 1: recorder/level1/file.mp3
+    (recorder / "level1").mkdir()
+    file_depth1 = recorder / "level1" / "file1.mp3"
+    file_depth1.touch()
+    
+    # Depth 2: recorder/level1/level2/file.mp3
+    (recorder / "level1" / "level2").mkdir()
+    file_depth2 = recorder / "level1" / "level2" / "file2.mp3"
+    file_depth2.touch()
+    
+    # Depth 3: recorder/level1/level2/level3/file.mp3 (should be found)
+    (recorder / "level1" / "level2" / "level3").mkdir()
+    file_depth3 = recorder / "level1" / "level2" / "level3" / "file3.mp3"
+    file_depth3.touch()
+    
+    # Depth 4: recorder/level1/level2/level3/level4/file.mp3 (should be ignored)
+    (recorder / "level1" / "level2" / "level3" / "level4").mkdir()
+    file_depth4 = recorder / "level1" / "level2" / "level3" / "level4" / "file4.mp3"
+    file_depth4.touch()
+    
+    # Set all files to recent modification time
+    since = datetime.now() - timedelta(hours=1)
+    for f in [file_depth1, file_depth2, file_depth3, file_depth4]:
+        import os
+        os.utime(f, (since.timestamp(), since.timestamp()))
+    
+    # Find files
+    files = transcriber.find_audio_files(recorder, since - timedelta(minutes=30))
+    
+    # Should find files at depth 1, 2, 3 (≤ max_depth=3)
+    found_paths = {f.relative_to(recorder) for f in files}
+    
+    assert file_depth1.relative_to(recorder) in found_paths, "Depth 1 file should be found"
+    assert file_depth2.relative_to(recorder) in found_paths, "Depth 2 file should be found"
+    assert file_depth3.relative_to(recorder) in found_paths, "Depth 3 file should be found"
+    assert file_depth4.relative_to(recorder) not in found_paths, "Depth 4 file should be ignored (depth > max_depth)"
+
+
 def test_transcribe_file_no_whisper(transcriber, tmp_path):
     """Test transcribe_file when whisper.cpp is not available."""
     transcriber.whisper_available = False
