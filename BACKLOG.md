@@ -37,7 +37,7 @@
 - [x] **Faza 3:** First-run wizard z konfiguracją ✅ *COMPLETED - testy manualne zakończone*
 - [x] **Faza 4:** Pakowanie z py2app (zamiast PyInstaller) ✅ *COMPLETED - bundle działa, wymaga optymalizacji rozmiaru (43MB > 20MB)*
 - [ ] **Faza 5:** Code signing & notaryzacja ($99 Apple Developer)
-- [ ] **Faza 6:** Profesjonalny DMG & GitHub Release
+- [x] **Faza 6:** Profesjonalny DMG & GitHub Release (UNSIGNED testing version) ✅ *COMPLETED*
 - [x] **Faza 7:** GUI Settings & polish ✅ *COMPLETED - testy automatyczne przechodzą, testy manualne wymagane*
   - [x] Date picker dla "Resetuj pamięć od..." (7 dni / 30 dni / custom) ✅
   - [x] Graficzny wybór folderu w wizardzie (NSOpenPanel) ✅

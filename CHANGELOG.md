@@ -13,6 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Zmiana ścieżki konfiguracji na `~/Library/Application Support/Malinche`.
   - Automatyczna migracja ustawień i modeli z poprzedniej wersji (Transrec).
   - Nowy model brandingowy oparty na postaci historycznej Malinche (tłumaczka i doradczyni).
+- **Faza 6: Profesjonalny DMG (wersja testowa)**
+  - Skrypty `scripts/create_dmg.sh` oraz `scripts/build_release.sh` dla zautomatyzowanego pakowania.
+  - Profesjonalny instalator DMG z linkiem do Applications (bez podpisu Apple Developer).
+  - Instrukcja dla testerów `tests/TESTER_INSTRUCTIONS.md` dotycząca omijania blokady Gatekeeper.
+  - Nowe targety w `Makefile`: `build-app`, `build-dmg`, `release`.
+
+### Fixed
+- **Aktualizacja testów do nowej nazwy Malinche**
+  - Poprawiono `test_bundle_identifier`, `test_show_about_dialog` oraz domyślne ustawienia tagowania w testach konfiguracji.
+
 
 ---
 

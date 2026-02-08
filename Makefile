@@ -1,9 +1,9 @@
 # Olympus Transcriber - Development Makefile
 
-.PHONY: help install test lint format clean run setup-daemon stop-daemon logs
+.PHONY: help install test lint format clean run setup-daemon stop-daemon logs build-app build-dmg release
 
 help:
-	@echo "Olympus Transcriber - Development Commands"
+	@echo "Malinche - Development Commands"
 	@echo ""
 	@echo "Setup:"
 	@echo "  make install        - Install dependencies"
@@ -14,6 +14,11 @@ help:
 	@echo "  make test          - Run tests"
 	@echo "  make lint          - Run linters"
 	@echo "  make format        - Format code"
+	@echo ""
+	@echo "Distribution (macOS):"
+	@echo "  make build-app     - Build .app bundle"
+	@echo "  make build-dmg     - Create DMG installer"
+	@echo "  make release       - Full release pipeline (app + dmg + checksums)"
 	@echo ""
 	@echo "Daemon Control:"
 	@echo "  make stop-daemon   - Stop LaunchAgent"
@@ -96,6 +101,19 @@ dev-setup:
 	python3 -m venv venv
 	@echo "Virtual environment created!"
 	@echo "Now run: source venv/bin/activate && make install"
+
+build-app:
+	@echo "Building macOS application bundle..."
+	bash scripts/build_app.sh
+
+build-dmg:
+	@echo "Creating DMG installer..."
+	bash scripts/create_dmg.sh
+
+release:
+	@echo "Running full release pipeline..."
+	bash scripts/build_release.sh
+
 
 
 
