@@ -58,7 +58,7 @@ class MalincheMenuApp(rumps.App):
 
         super(MalincheMenuApp, self).__init__(
             "🎙️",
-            template=False
+            template=True
         )
 
         self.transcriber: Optional[MalincheTranscriber] = None

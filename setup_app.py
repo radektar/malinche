@@ -39,9 +39,7 @@ OPTIONS = {
     },
     'packages': [
         'rumps',
-        'anthropic',
         'mutagen',
-        'httpx',
         'dotenv',
         'click',
         'src',  # Include entire src package
@@ -82,10 +80,25 @@ OPTIONS = {
         'tests',  # Test modules
         'pytest',  # Test framework
         'unittest',  # Test framework
+        'anthropic',  # PRO-only dependency
+        'httpx',  # Pulled by anthropic
+        'httpcore',
+        'h11',
+        'h2',
+        'hpack',
+        'hyperframe',
+        'anyio',
+        'sniffio',
+        'certifi',
+        'distutils',
+        'lib2to3',
+        'docutils',
+        'setuptools._vendor',
+        'pkg_resources._vendor',
     ],
     'arch': 'arm64',  # Apple Silicon only
-    'optimize': 1,  # Bytecode optimization (reduced from 2 to avoid segfault)
-    'strip': False,  # Don't strip symbols - avoids segfault during import checking
+    'optimize': 2,  # Bytecode optimization for smaller bundle
+    'strip': True,  # Strip symbols to reduce bundle size
 }
 
 setup(

@@ -37,7 +37,7 @@ class TestSetupWizard:
         """Kroki są w poprawnej kolejności."""
         assert SetupWizard.STEPS_ORDER[0] == WizardStep.WELCOME
         assert SetupWizard.STEPS_ORDER[-1] == WizardStep.FINISH
-        assert len(SetupWizard.STEPS_ORDER) == 8
+        assert len(SetupWizard.STEPS_ORDER) == 7
 
     def test_welcome_step_ok(self, monkeypatch):
         """Kliknięcie OK przechodzi dalej."""
