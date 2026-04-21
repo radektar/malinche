@@ -81,15 +81,6 @@ OPTIONS = {
         'pytest',  # Test framework
         'unittest',  # Test framework
         'anthropic',  # PRO-only dependency
-        'httpx',  # Pulled by anthropic
-        'httpcore',
-        'h11',
-        'h2',
-        'hpack',
-        'hyperframe',
-        'anyio',
-        'sniffio',
-        'certifi',
         'distutils',
         'lib2to3',
         'docutils',
