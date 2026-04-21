@@ -31,7 +31,7 @@ load_env_file()
 
 from src.config import config
 from src.logger import logger
-from src.app_core import OlympusTranscriber
+from src.app_core import MalincheTranscriber
 from src.app_status import AppStatus
 from src.state_manager import reset_state
 from src.transcriber import send_notification
@@ -61,7 +61,7 @@ class MalincheMenuApp(rumps.App):
             template=False
         )
 
-        self.transcriber: Optional[OlympusTranscriber] = None
+        self.transcriber: Optional[MalincheTranscriber] = None
         self.daemon_thread: Optional[threading.Thread] = None
         self._running = False
         self._retranscription_in_progress = False
@@ -540,7 +540,7 @@ class MalincheMenuApp(rumps.App):
         try:
             logger.info("Starting transcriber daemon from menu app...")
             # Don't setup signal handlers in background thread
-            self.transcriber = OlympusTranscriber(setup_signals=False)
+            self.transcriber = MalincheTranscriber(setup_signals=False)
             self.transcriber.start()
         except Exception as e:
             logger.error(f"Error in daemon thread: {e}", exc_info=True)
@@ -575,7 +575,7 @@ class MalincheMenuApp(rumps.App):
             self._start_daemon()
 
         # Run menu app (blocks until quit)
-        super(OlympusMenuApp, self).run()
+        super(MalincheMenuApp, self).run()
 
 
 def main():
