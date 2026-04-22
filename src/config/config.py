@@ -97,6 +97,12 @@ title: "{title}"
 date: {date}
 recording_date: {recording_date}
 source: {source_file}
+fingerprint: {fingerprint}
+source_volume: {source_volume}
+version: {version}
+transcribed_on: {hostname}
+model: {model}
+language: {language}{previous_version_line}
 duration: {duration}
 tags: [{tags}]
 ---

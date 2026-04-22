@@ -153,7 +153,7 @@ Transcriber
 
 **Staging Workflow:**
 1. Kopiuj plik z dysku do `~/.transrec/recordings/`
-2. Transkrybuj lokalną kopię (bezpieczne odmontowanie)
+2. Transkrypuj lokalną kopię (bezpieczne odmontowanie)
 3. Generuj markdown output
 4. Aktualizuj state
 
@@ -184,27 +184,30 @@ tags: []
 
 ### 6. State Manager (`src/state_manager.py`)
 
-**Odpowiedzialność:** Persystencja stanu
+**Odpowiedzialność:** Persystencja stanu (przetworzone pliki)
+
+### 6.1 Multi-device Vault Index (`src/vault_index.py`, `src/fingerprint.py`)
+
+- Fingerprint audio (`sha256`) liczony z: pierwszy 1MB + rozmiar + metadata datetime.
+- Centralny indeks w Vault: `<TRANSCRIBE_DIR>/.malinche/index.json`.
+- `VaultIndex` używa `fcntl.flock` + atomic write (`.tmp` -> `os.replace`).
+- Frontmatter markdown zawiera fingerprint/model/language/version/hostname.
+- FREE: dedup po fingerprint (skip).
+- PRO: re-transkrypcja tworzy kolejne wersje (`.v2.md`, `.v3.md`).
+
+### 7. License Manager (`src/config/license.py`)
+
+**Odpowiedzialność:** Zarządzanie licencją i dostępem do funkcji PRO
 
 ```python
-StateManager
-├── get_last_sync_time()      # Read last sync for volume
-├── save_sync_time()          # Save current time
-├── reset_state()             # Reset for volume
-└── get_processed_files()     # List of processed files
+LicenseManager
+├── get_current_tier()        # FREE / PRO / PRO_ORG
+├── get_features()            # Zwraca FeatureFlags
+├── activate_license()        # Aktywacja klucza
+└── get_usage_limits()        # Limity minut (PRO Individual)
 ```
 
-**State file format (`~/.transrec_state.json`):**
-```json
-{
-  "volumes": {
-    "LS-P1": {
-      "last_sync": "2025-01-15T10:30:00",
-      "processed_files": ["file1.mp3", "file2.wav"]
-    }
-  }
-}
-```
+---
 
 ## v2.0.0 Architecture Changes
 
@@ -229,42 +232,36 @@ def _should_process_volume(volume_path: Path) -> bool:
 
 ### Feature Flags (Freemium)
 
-**Struktura:**
+**Struktura (v2.0.0):**
 ```python
-from enum import Enum
-from dataclasses import dataclass
+from src.config.features import FeatureTier, FeatureFlags
 
-class FeatureTier(Enum):
-    FREE = "free"
-    PRO = "pro"
-
-@dataclass
-class FeatureFlags:
-    transcription: FeatureTier = FeatureTier.FREE      # Always available
-    summaries: FeatureTier = FeatureTier.PRO           # License required
-    auto_tags: FeatureTier = FeatureTier.PRO           # License required
-    auto_title: FeatureTier = FeatureTier.PRO          # License required
-    cloud_sync: FeatureTier = FeatureTier.PRO          # License required
+# Tiery: FREE, PRO (Individual), PRO_ORG (Organization)
+# Flagi: ai_summaries, ai_smart_tags, speaker_diarization, domain_lexicon, knowledge_base
 ```
 
 **Użycie:**
 ```python
-from src.license_manager import license_manager
+from src.config.license import license_manager
 
-if license_manager.can_use_feature("summaries"):
-    summary = summarizer.summarize(text)
-else:
-    summary = None  # Graceful degradation
+features = license_manager.get_features()
+if features.ai_summaries:
+    # Użyj funkcji PRO
 ```
 
-### PRO Features Architecture (v2.1.0)
+### PRO Features Architecture (v2.1.0+)
+
+Aplikacja kliencka Malinche integruje się z backendem dla funkcji wymagających dużych modeli AI (Claude) oraz zarządzania licencjami i limitami użycia.
+
+1.  **PRO Individual (Monthly Subscription):** AI Summaries, AI Tags, Diarization (z miesięcznymi limitami minut).
+2.  **PRO Organization (Monthly Subscription):** Współdzielona baza rozmówców, słownik dziedzinowy, baza wiedzy.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                     PRO Features (v2.1.0)                        │
 │                                                                  │
 │  ┌────────────────────────────────────────────────────────────┐ │
-│  │  License Manager (src/license_manager.py)                  │ │
+│  │  License Manager (src/config/license.py)                   │ │
 │  │  - Verify license with backend                             │ │
 │  │  - Cache locally (7 days offline)                          │ │
 │  │  - Feature gate checking                                   │ │
@@ -273,21 +270,14 @@ else:
 │  ┌───────────────────┴────────────────────────────────────────┐ │
 │  │  Summarizer (src/summarizer.py)                            │ │
 │  │  - Generate AI summaries via backend API                   │ │
-│  │  - Feature flag: summaries                                 │ │
+│  │  - Feature flag: ai_summaries                              │ │
 │  └────────────────────────────────────────────────────────────┘ │
 │                                                                  │
 │  ┌────────────────────────────────────────────────────────────┐ │
 │  │  Tagger (src/tagger.py)                                    │ │
 │  │  - Auto-generate tags via backend API                      │ │
-│  │  - Feature flag: auto_tags                                 │ │
+│  │  - Feature flag: ai_smart_tags                             │ │
 │  └────────────────────────────────────────────────────────────┘ │
-│                                                                  │
-│  ┌────────────────────────────────────────────────────────────┐ │
-│  │  Cloud Sync (src/cloud_sync.py)                            │ │
-│  │  - Sync with Obsidian/iCloud                               │ │
-│  │  - Feature flag: cloud_sync                                │ │
-│  └────────────────────────────────────────────────────────────┘ │
-│                                                                  │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -297,14 +287,8 @@ else:
 │  FastAPI Server                                                  │
 │  ├── POST /api/v1/summarize      # AI summaries                 │
 │  ├── POST /api/v1/tags           # Auto-tagging                 │
-│  ├── POST /api/v1/title          # Title generation             │
-│  ├── GET  /api/v1/license/verify # License check                │
+│  ├── POST /api/v1/license/verify # License check                │
 │  └── POST /api/v1/license/activate # Activation                 │
-│                                                                  │
-│  External Services:                                              │
-│  ├── Claude API (Anthropic)      # LLM for summaries            │
-│  └── LemonSqueezy                # Payment & licensing          │
-│                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 

@@ -3,6 +3,7 @@
 import rumps
 import threading
 from enum import Enum, auto
+from pathlib import Path
 from typing import Optional
 
 from src.config import UserSettings, SUPPORTED_LANGUAGES, SUPPORTED_MODELS
@@ -12,6 +13,8 @@ from src.setup.errors import NetworkError, DiskSpaceError, DownloadError
 from src.logger import logger
 from src.ui.dialogs import choose_folder_dialog
 from src.ui.constants import TEXTS
+from src.ui.constants import APP_VERSION
+from src.vault_index import is_icloud_synced
 
 
 class WizardStep(Enum):
@@ -21,8 +24,7 @@ class WizardStep(Enum):
     DOWNLOAD = auto()
     PERMISSIONS = auto()
     SOURCE_CONFIG = auto()
-    OUTPUT_CONFIG = auto()
-    LANGUAGE = auto()
+    BASIC_CONFIG = auto()
     AI_CONFIG = auto()
     FINISH = auto()
 
@@ -35,8 +37,7 @@ class SetupWizard:
         WizardStep.DOWNLOAD,
         WizardStep.PERMISSIONS,
         WizardStep.SOURCE_CONFIG,
-        WizardStep.OUTPUT_CONFIG,
-        WizardStep.LANGUAGE,
+        WizardStep.BASIC_CONFIG,
         WizardStep.AI_CONFIG,
         WizardStep.FINISH,
     ]
@@ -58,7 +59,9 @@ class SetupWizard:
     def needs_setup() -> bool:
         """Sprawdź czy wizard jest potrzebny."""
         settings = UserSettings.load()
-        return not settings.setup_completed
+        # Run setup on first run and after app version upgrades where
+        # configuration may require new fields/flows.
+        return (not settings.setup_completed) or (settings.setup_version != APP_VERSION)
 
     @property
     def current_step(self) -> WizardStep:
@@ -83,6 +86,7 @@ class SetupWizard:
             # Finalizacja
             self._show_finish()
             self.settings.setup_completed = True
+            self.settings.setup_version = APP_VERSION
             self.settings.save()
             logger.info("Setup Wizard zakończony pomyślnie")
             self._wizard_completed = True
@@ -110,8 +114,7 @@ class SetupWizard:
             WizardStep.DOWNLOAD: self._show_download,
             WizardStep.PERMISSIONS: self._show_permissions,
             WizardStep.SOURCE_CONFIG: self._show_source_config,
-            WizardStep.OUTPUT_CONFIG: self._show_output_config,
-            WizardStep.LANGUAGE: self._show_language,
+            WizardStep.BASIC_CONFIG: self._show_basic_config,
             WizardStep.AI_CONFIG: self._show_ai_config,
         }
         handler = step_handlers.get(self.current_step)
@@ -333,6 +336,149 @@ class SetupWizard:
             self.settings.watched_volumes = volumes
 
         return "next"
+
+    def _show_basic_config(self) -> str:
+        """Unified step for output folder, language and model."""
+        try:
+            from AppKit import NSAlert, NSView, NSRect, NSTextField, NSPopUpButton
+
+            from src.ui.folder_picker import (
+                FolderPickerTarget,
+                PICK_FOLDER_RESPONSE,
+                apply_basic_settings,
+                make_folder_picker_button,
+                select_folder_with_warning,
+            )
+
+            language_codes = list(SUPPORTED_LANGUAGES.keys())
+            model_codes = list(SUPPORTED_MODELS.keys())
+            selected_folder = str(self.settings.output_dir)
+            selected_language = (
+                self.settings.language
+                if self.settings.language in language_codes
+                else language_codes[0]
+            )
+            selected_model = (
+                self.settings.whisper_model
+                if self.settings.whisper_model in model_codes
+                else model_codes[0]
+            )
+
+            picker_target = FolderPickerTarget.alloc().init()
+
+            while True:
+                alert = NSAlert.alloc().init()
+                alert.setMessageText_(TEXTS["wizard_basic_title"])
+                alert.setInformativeText_(TEXTS["wizard_basic_message"])
+                alert.addButtonWithTitle_("Dalej")
+                alert.addButtonWithTitle_("Wstecz")
+                alert.addButtonWithTitle_("Anuluj")
+
+                accessory = NSView.alloc().initWithFrame_(NSRect((0, 0), (460, 170)))
+
+                folder_label = NSTextField.alloc().initWithFrame_(NSRect((0, 140), (130, 20)))
+                folder_label.setStringValue_("Folder docelowy:")
+                folder_label.setBezeled_(False)
+                folder_label.setDrawsBackground_(False)
+                folder_label.setEditable_(False)
+                folder_label.setSelectable_(False)
+                accessory.addSubview_(folder_label)
+
+                folder_value = NSTextField.alloc().initWithFrame_(NSRect((130, 140), (330, 20)))
+                display_folder = (
+                    selected_folder
+                    if len(selected_folder) <= 60
+                    else "..." + selected_folder[-57:]
+                )
+                folder_value.setStringValue_(display_folder)
+                folder_value.setBezeled_(False)
+                folder_value.setDrawsBackground_(False)
+                folder_value.setEditable_(False)
+                folder_value.setSelectable_(True)
+                accessory.addSubview_(folder_value)
+
+                pick_button = make_folder_picker_button(
+                    NSRect((130, 108), (200, 28)),
+                    target=picker_target,
+                    title="Wybierz folder...",
+                )
+                if pick_button is not None:
+                    accessory.addSubview_(pick_button)
+
+                language_label = NSTextField.alloc().initWithFrame_(NSRect((0, 68), (130, 20)))
+                language_label.setStringValue_("Język:")
+                language_label.setBezeled_(False)
+                language_label.setDrawsBackground_(False)
+                language_label.setEditable_(False)
+                language_label.setSelectable_(False)
+                accessory.addSubview_(language_label)
+
+                language_popup = NSPopUpButton.alloc().initWithFrame_(NSRect((130, 64), (330, 26)))
+                for code, name in SUPPORTED_LANGUAGES.items():
+                    language_popup.addItemWithTitle_(f"{name} ({code})")
+                language_popup.selectItemAtIndex_(language_codes.index(selected_language))
+                accessory.addSubview_(language_popup)
+
+                model_label = NSTextField.alloc().initWithFrame_(NSRect((0, 28), (130, 20)))
+                model_label.setStringValue_("Model:")
+                model_label.setBezeled_(False)
+                model_label.setDrawsBackground_(False)
+                model_label.setEditable_(False)
+                model_label.setSelectable_(False)
+                accessory.addSubview_(model_label)
+
+                model_popup = NSPopUpButton.alloc().initWithFrame_(NSRect((130, 24), (330, 26)))
+                for code, name in SUPPORTED_MODELS.items():
+                    model_popup.addItemWithTitle_(f"{code.upper()}: {name}")
+                model_popup.selectItemAtIndex_(model_codes.index(selected_model))
+                accessory.addSubview_(model_popup)
+
+                alert.setAccessoryView_(accessory)
+                response = alert.runModal()
+
+                selected_language = language_codes[language_popup.indexOfSelectedItem()]
+                selected_model = model_codes[model_popup.indexOfSelectedItem()]
+
+                if response == PICK_FOLDER_RESPONSE:
+                    picked = select_folder_with_warning(
+                        choose_folder_dialog,
+                        warn_non_icloud=lambda _p: rumps.alert(
+                            title="Folder poza iCloud",
+                            message=(
+                                "Wybrany folder nie jest w iCloud. "
+                                "Multi-device dedup będzie lokalny dla tego Maca."
+                            ),
+                            ok="OK",
+                        ),
+                        is_icloud_check=lambda p: is_icloud_synced(Path(p)),
+                        title=TEXTS["folder_picker_title"],
+                        message=TEXTS["folder_picker_message"],
+                    )
+                    if picked:
+                        selected_folder = picked
+                    continue
+
+                if response == 1001:
+                    return "back"
+                if response == 1002:
+                    return "cancel"
+
+                apply_basic_settings(
+                    self.settings,
+                    selected_folder=selected_folder,
+                    selected_language=selected_language,
+                    selected_model=selected_model,
+                    supported_languages=SUPPORTED_LANGUAGES,
+                    supported_models=SUPPORTED_MODELS,
+                )
+                return "next"
+
+        except ImportError:
+            logger.warning("AppKit not available, fallback to legacy config steps")
+            output_result = self._show_output_config()
+            if output_result != "next":
+                return output_result
+            return self._show_language()
 
     def _show_output_config(self) -> str:
         """Konfiguracja folderu docelowego."""

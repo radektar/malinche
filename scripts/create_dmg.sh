@@ -9,6 +9,8 @@ VERSION=$(python3 -c "import setup_app; print('2.0.0')" 2>/dev/null || echo "2.0
 DMG_FILENAME="${APP_NAME}-${VERSION}-ARM64-UNSIGNED.dmg"
 DIST_DIR="dist"
 APP_PATH="${DIST_DIR}/${APP_NAME}.app"
+DMG_BACKGROUND="assets/dmg_background.png"
+DMG_VOLICON="assets/icon.icns"
 
 echo "📦 Creating DMG for ${APP_NAME} v${VERSION}..."
 
@@ -32,10 +34,12 @@ create-dmg \
   --volname "${APP_NAME} Installer" \
   --window-pos 200 120 \
   --window-size 600 400 \
+  --background "${DMG_BACKGROUND}" \
   --icon-size 100 \
   --icon "${APP_NAME}.app" 175 190 \
   --hide-extension "${APP_NAME}.app" \
   --app-drop-link 425 190 \
+  --volicon "${DMG_VOLICON}" \
   --no-internet-enable \
   "${DIST_DIR}/${DMG_FILENAME}" \
   "${APP_PATH}"

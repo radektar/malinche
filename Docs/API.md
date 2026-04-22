@@ -12,6 +12,8 @@ Complete API reference for Malinche modules.
 ## Table of Contents
 
 - [config.py](#configpy) - Konfiguracja
+- [features.py](#featurespy) - 🆕 Flagi funkcji (FREE/PRO/PRO_ORG)
+- [license.py](#licensepy) - 🆕 Zarządzanie licencją
 - [logger.py](#loggerpy) - Logging
 - [file_monitor.py](#file_monitorpy) - FSEvents monitoring
 - [transcriber.py](#transcriberpy) - Silnik transkrypcji
@@ -21,6 +23,8 @@ Complete API reference for Malinche modules.
 - [app_core.py](#app_corepy) - Core logic
 - [summarizer.py](#summarizerpy) - AI summaries (PRO)
 - [tagger.py](#taggerpy) - Auto-tagging (PRO)
+- [fingerprint.py](#fingerprintpy) - Audio fingerprinting
+- [vault_index.py](#vault_indexpy) - Vault dedup index
 
 ---
 
@@ -81,6 +85,60 @@ from src.config import config
 print(config.TRANSCRIBE_DIR)
 print(config.WHISPER_MODEL)
 ```
+
+---
+
+## features.py (src/config/features.py)
+
+Module defining feature flags and subscription tiers.
+
+### Enum: `FeatureTier`
+
+| Value | Description |
+|-------|-------------|
+| `FREE` | Basic local transcription |
+| `PRO` | Individual subscription (AI features + Diarization) |
+| `PRO_ORG` | Organization subscription (Knowledge Base features) |
+
+### Class: `FeatureFlags`
+
+Immutable dataclass holding all available feature flags.
+
+#### Methods
+
+##### `for_tier(tier: FeatureTier) -> FeatureFlags` (static)
+
+Returns flags enabled for specific tier.
+
+##### `can_use(feature: str) -> bool`
+
+Checks if specific feature is enabled.
+
+---
+
+## license.py (src/config/license.py)
+
+License management and usage limits.
+
+### Global singleton: `license_manager`
+
+#### Methods
+
+##### `get_current_tier() -> FeatureTier`
+
+Returns active license tier (cached).
+
+##### `get_features() -> FeatureFlags`
+
+Returns flags for current tier.
+
+##### `get_usage_limits() -> dict`
+
+Returns monthly minute limits for current tier.
+
+##### `activate_license(key: str) -> (bool, str)`
+
+Attempts to activate license key via API.
 
 ---
 
@@ -168,6 +226,42 @@ def _should_process_volume(self, volume_path: Path) -> bool:
 ## transcriber.py
 
 Core transcription engine.
+
+### Dedup + versioning (v2)
+
+- `compute_fingerprint(audio_file)` determines cross-device identity.
+- `VaultIndex.lookup(fingerprint)` controls skip/retranscribe behavior.
+- FREE tier: known fingerprint => skip.
+- PRO tier: known fingerprint => create new version markdown (`.v2.md`, `.v3.md`).
+
+---
+
+## fingerprint.py
+
+### Function: `compute_fingerprint(audio_file: Path) -> str`
+
+Returns deterministic identifier:
+- first 1MB bytes
+- full file size
+- recording datetime metadata (fallback mtime)
+
+Format: `sha256:<hex>`.
+
+---
+
+## vault_index.py
+
+### Class: `VaultIndex`
+
+Main methods:
+- `load()`
+- `lookup(fingerprint)`
+- `add(fingerprint, entry)`
+- `add_version(fingerprint, version_info)`
+
+Storage:
+- `<TRANSCRIBE_DIR>/.malinche/index.json`
+- `<TRANSCRIBE_DIR>/.malinche/index.lock`
 
 ### Class: `Transcriber`
 
@@ -392,102 +486,25 @@ status = app.get_status()
 
 ---
 
-## summarizer.py
+## summarizer.py (src/summarizer.py)
 
 AI-powered summaries (PRO feature).
 
-### Class: `Summarizer`
+### Function: `get_summarizer() -> Optional[BaseSummarizer]`
 
-#### Methods
-
-##### `summarize(text: str) -> Optional[str]`
-
-Generate AI summary of transcription.
-
-```python
-from src.summarizer import Summarizer
-
-summarizer = Summarizer()
-summary = summarizer.summarize(transcription_text)
-```
-
-**Note:** Requires PRO license. Returns `None` if license not valid.
-
-##### `generate_title(text: str) -> Optional[str]`
-
-Generate title from transcription.
-
-```python
-title = summarizer.generate_title(transcription_text)
-# "Spotkanie zespołu - planowanie Q1"
-```
+Factory function returning summarizer instance. 
+**PRO Check:** Returns `None` if license doesn't support `ai_summaries`.
 
 ---
 
-## tagger.py
+## tagger.py (src/tagger.py)
 
 Auto-tagging system (PRO feature).
 
-### Class: `Tagger`
+### Function: `get_tagger() -> Optional[BaseTagger]`
 
-#### Methods
-
-##### `generate_tags(text: str) -> List[str]`
-
-Generate relevant tags from transcription.
-
-```python
-from src.tagger import Tagger
-
-tagger = Tagger()
-tags = tagger.generate_tags(transcription_text)
-# ["meeting", "planning", "team"]
-```
-
-**Note:** Requires PRO license. Returns empty list if license not valid.
-
-##### `get_available_tags() -> List[str]`
-
-Get list of all previously used tags.
-
----
-
-## license_manager.py (v2.1.0 PRO)
-
-License verification and feature gating.
-
-### Class: `LicenseManager`
-
-#### Methods
-
-##### `verify_license() -> bool`
-
-Verify license with backend (cached for 7 days).
-
-```python
-from src.license_manager import license_manager
-
-if license_manager.verify_license():
-    # PRO features available
-    pass
-```
-
-##### `can_use_feature(feature: str) -> bool`
-
-Check if specific feature is available.
-
-```python
-if license_manager.can_use_feature("summaries"):
-    summary = summarizer.summarize(text)
-```
-
-##### `activate_license(license_key: str) -> bool`
-
-Activate PRO license.
-
-```python
-success = license_manager.activate_license("XXXXX-XXXXX-XXXXX")
-```
+Factory function returning tagger instance.
+**PRO Check:** Returns `None` if license doesn't support `ai_smart_tags`.
 
 ---
 

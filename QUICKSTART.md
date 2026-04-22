@@ -372,3 +372,12 @@ pytest tests/ -v -s
 
 Podłącz swój Olympus LS-P1 i ciesz się automatycznymi transkrypcjami! 🎉
 
+---
+
+## Multi-Mac (iCloud Vault)
+
+- Umieść `TRANSCRIBE_DIR` w iCloud (`~/Library/Mobile Documents/...`).
+- Malinche zapisuje dedup index w `.malinche/index.json` wewnątrz Vault.
+- Gdy drugi Mac zobaczy ten sam plik audio, fingerprint zostanie wykryty i plik zostanie pominięty.
+- W FREE działa dedup/skip. W PRO dostępna jest wersjonowana retranskrypcja (`.v2.md`, `.v3.md`).
+

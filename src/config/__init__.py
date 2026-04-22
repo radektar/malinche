@@ -19,11 +19,16 @@ from src.config.defaults import (
 # Using normal import instead of dynamic importlib to ensure single module instance
 # This prevents issues with module reloading in tests and ensures deterministic behavior
 from src.config.config import Config, config
+from src.config.features import FeatureFlags, FeatureTier
+from src.config.license import license_manager
 
 __all__ = [
     "UserSettings",
     "Config",
     "config",
+    "FeatureFlags",
+    "FeatureTier",
+    "license_manager",
     "DEFAULT_OUTPUT_DIR",
     "DEFAULT_WATCH_MODE",
     "DEFAULT_LANGUAGE",
