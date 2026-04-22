@@ -63,6 +63,10 @@ class VaultIndex:
             versions=list(row.get("versions", [])),
         )
 
+    def entry_count(self) -> int:
+        """Return number of fingerprint entries currently loaded."""
+        return len(self._data.get("entries", {}))
+
     def add(self, fingerprint: str, entry: IndexEntry) -> None:
         """Add or replace entry in index."""
         with self._locked_reload():

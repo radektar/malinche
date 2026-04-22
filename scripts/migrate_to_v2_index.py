@@ -2,31 +2,14 @@
 """Migrate legacy markdown transcripts to VaultIndex format."""
 
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Optional
 
 from src.config import UserSettings
 from src.fingerprint import compute_fingerprint
 from src.hostinfo import get_hostname
 from src.logger import logger
+from src.markdown_frontmatter import read_frontmatter
 from src.vault_index import IndexEntry, VaultIndex
-
-
-def _read_frontmatter(md_path: Path) -> Dict[str, str]:
-    data: Dict[str, str] = {}
-    try:
-        lines = md_path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return data
-    if not lines or lines[0].strip() != "---":
-        return data
-    for line in lines[1:]:
-        if line.strip() == "---":
-            break
-        if ":" not in line:
-            continue
-        key, value = line.split(":", 1)
-        data[key.strip()] = value.strip().strip('"')
-    return data
 
 
 def _find_audio(vault_dir: Path, source_name: str) -> Optional[Path]:
@@ -55,7 +38,7 @@ def migrate() -> int:
     logger.info("Migrating %d markdown file(s) to v2 index...", len(markdown_files))
 
     for md_path in markdown_files:
-        fm = _read_frontmatter(md_path)
+        fm = read_frontmatter(md_path)
         fingerprint = fm.get("fingerprint")
         source_name = fm.get("source", "")
         audio_path = _find_audio(vault_dir, source_name)

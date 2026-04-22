@@ -25,6 +25,7 @@ from src.vault_index import IndexEntry, VaultIndex
 from src.config.license import license_manager
 from src.config.features import FeatureTier
 from src.config.settings import UserSettings
+from src.markdown_frontmatter import read_frontmatter
 
 
 def send_notification(title: str, message: str, subtitle: str = "") -> None:
@@ -196,7 +197,7 @@ class Transcriber:
         """Run one-time migration of legacy markdown metadata to index."""
         try:
             settings = UserSettings.load()
-            if settings.index_migrated:
+            if settings.index_migrated and not self._vault_needs_reindex():
                 return
             self._update_state(AppStatus.MIGRATING)
             script_path = Path(__file__).resolve().parent.parent / "scripts" / "migrate_to_v2_index.py"
@@ -211,6 +212,14 @@ class Transcriber:
             self._update_state(AppStatus.IDLE)
         except Exception as error:  # noqa: BLE001
             logger.warning("Index migration failed (continuing): %s", error)
+
+    def _vault_needs_reindex(self) -> bool:
+        """Detect stale state where index is empty but markdown notes exist."""
+        if self.vault_index.entry_count() > 0:
+            return False
+        if not self.config.TRANSCRIBE_DIR.exists():
+            return False
+        return any(self.config.TRANSCRIBE_DIR.glob("*.md"))
     
     def _update_state(
         self,
@@ -814,19 +823,9 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
 
             for md_path in self.config.TRANSCRIBE_DIR.glob("*.md"):
                 try:
-                    with md_path.open("r", encoding="utf-8") as md_file:
-                        # Read only the first few lines – frontmatter is at top
-                        lines: List[str] = []
-                        for _ in range(20):
-                            line = md_file.readline()
-                            if not line:
-                                break
-                            lines.append(line)
-
-                        frontmatter = "".join(lines)
-                        source_line = f"source: {audio_file.name}"
-                        if source_line in frontmatter:
-                            return md_path
+                    frontmatter = read_frontmatter(md_path)
+                    if frontmatter.get("source", "").strip() == audio_file.name:
+                        return md_path
                 except OSError as read_error:
                     logger.warning(
                         "Could not read markdown file %s: %s",
@@ -842,6 +841,39 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
             )
 
         return None
+
+    def _cache_fingerprint_for_existing_markdown(
+        self, audio_file: Path, markdown_path: Path, fingerprint: str
+    ) -> None:
+        """Store canonical sha256 index entry after legacy source-name fallback."""
+        if self.vault_index.lookup(fingerprint):
+            return
+
+        fm = read_frontmatter(markdown_path)
+        try:
+            version = int(fm.get("version", "1") or "1")
+        except ValueError:
+            version = 1
+
+        self.vault_index.add(
+            fingerprint,
+            IndexEntry(
+                fingerprint=fingerprint,
+                source_filename=audio_file.name,
+                source_volume=fm.get("source_volume", audio_file.parent.name),
+                markdown_path=markdown_path.name,
+                versions=[
+                    {
+                        "version": version,
+                        "transcribed_at": fm.get("recording_date", ""),
+                        "hostname": fm.get("transcribed_on", ""),
+                        "model": fm.get("model", ""),
+                        "language": fm.get("language", ""),
+                        "markdown_path": markdown_path.name,
+                    }
+                ],
+            ),
+        )
     
     def _remove_existing_transcription(self, audio_file: Path) -> Dict[str, List[str]]:
         """Remove existing transcription files for given audio.
@@ -1116,6 +1148,11 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
                             "↪️ Skipping already transcribed file: %s -> %s",
                             recorder_file.name,
                             existing_markdown.name,
+                        )
+                        self._cache_fingerprint_for_existing_markdown(
+                            recorder_file,
+                            existing_markdown,
+                            fingerprint,
                         )
                         processed_success += 1
                         continue
