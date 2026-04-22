@@ -56,10 +56,8 @@ class MalincheMenuApp(rumps.App):
                 "rumps not available. Install with: pip install rumps"
             )
 
-        super(MalincheMenuApp, self).__init__(
-            "🎙️",
-            template=True
-        )
+        super(MalincheMenuApp, self).__init__("🎙️", template=True)
+        self._icon_paths = self._resolve_icon_paths()
 
         self.transcriber: Optional[MalincheTranscriber] = None
         self.daemon_thread: Optional[threading.Thread] = None
@@ -132,6 +130,45 @@ class MalincheMenuApp(rumps.App):
         else:
             # Normal start - check dependencies
             rumps.Timer(self._delayed_check_dependencies, 1).start()
+
+    def _resolve_icon_paths(self) -> dict[AppStatus, Optional[str]]:
+        """Resolve menu bar status icon paths for dev and bundled app."""
+        candidates = []
+        if getattr(sys, "frozen", False):
+            candidates.append(Path(getattr(sys, "_MEIPASS", "")))
+            candidates.append(Path(sys.executable).resolve().parent.parent / "Resources")
+        candidates.append(Path(__file__).resolve().parent.parent / "assets")
+
+        mapping = {
+            AppStatus.IDLE: "idle.png",
+            AppStatus.SCANNING: "scanning.png",
+            AppStatus.TRANSCRIBING: "transcribing.png",
+            AppStatus.MIGRATING: "migrating.png",
+            AppStatus.ERROR: "error.png",
+        }
+        resolved: dict[AppStatus, Optional[str]] = {key: None for key in mapping}
+
+        for base in candidates:
+            icon_dir = base / "menu_bar"
+            for status, filename in mapping.items():
+                if resolved[status]:
+                    continue
+                icon_path = icon_dir / filename
+                if icon_path.exists():
+                    resolved[status] = str(icon_path)
+        return resolved
+
+    def _update_icon(self, status: AppStatus) -> None:
+        """Update menu bar icon based on app status."""
+        icon_path = self._icon_paths.get(status)
+        if icon_path:
+            self.icon = icon_path
+            self.template = True
+            return
+
+        # Keep working fallback when icon files are unavailable.
+        self.title = "🎙️"
+        self.icon = None
 
     def _run_wizard_if_needed(self, timer):
         """Uruchom wizard jeśli to pierwsze uruchomienie."""
@@ -278,25 +315,21 @@ class MalincheMenuApp(rumps.App):
 
         if not self.transcriber:
             self.status_item.title = "Status: Nie uruchomiono"
+            self._update_icon(AppStatus.IDLE)
             return
 
         # Check retranscription first (takes priority)
         if self._retranscription_in_progress:
             filename = self._retranscription_file or "..."
             self.status_item.title = f"Status: Retranskrybowanie {filename}"
+            self._update_icon(AppStatus.TRANSCRIBING)
             return
 
         state = self.transcriber.state
         status_str = state.get_status_string()
         self.status_item.title = f"Status: {status_str}"
 
-        # Update icon based on status
-        if state.status == AppStatus.ERROR:
-            self.icon = None  # Could set error icon here
-        elif state.status == AppStatus.TRANSCRIBING:
-            self.icon = None  # Could set processing icon here
-        else:
-            self.icon = None  # Default icon
+        self._update_icon(state.status)
 
     def _open_logs(self, _):
         """Open log file in default editor."""
@@ -392,6 +425,19 @@ class MalincheMenuApp(rumps.App):
 
     def _refresh_retranscribe_menu(self, _):
         """Refresh the retranscribe submenu with current staged files."""
+        if license_manager.get_current_tier() == FeatureTier.FREE:
+            self.retranscribe_menu.title = "Retranskrypcja (PRO)"
+            try:
+                if self.retranscribe_menu._menu is not None:
+                    self.retranscribe_menu.clear()
+            except (AttributeError, TypeError):
+                pass
+            locked_item = rumps.MenuItem("Upgrade do PRO, aby tworzyć wersje v2/v3")
+            locked_item.set_callback(None)
+            self.retranscribe_menu.add(locked_item)
+            return
+
+        self.retranscribe_menu.title = "Retranskrybuj plik..."
         # Clear existing submenu items (handle case when _menu is not yet initialized)
         try:
             if self.retranscribe_menu._menu is not None:

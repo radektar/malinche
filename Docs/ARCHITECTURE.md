@@ -186,6 +186,15 @@ tags: []
 
 **Odpowiedzialność:** Persystencja stanu (przetworzone pliki)
 
+### 6.1 Multi-device Vault Index (`src/vault_index.py`, `src/fingerprint.py`)
+
+- Fingerprint audio (`sha256`) liczony z: pierwszy 1MB + rozmiar + metadata datetime.
+- Centralny indeks w Vault: `<TRANSCRIBE_DIR>/.malinche/index.json`.
+- `VaultIndex` używa `fcntl.flock` + atomic write (`.tmp` -> `os.replace`).
+- Frontmatter markdown zawiera fingerprint/model/language/version/hostname.
+- FREE: dedup po fingerprint (skip).
+- PRO: re-transkrypcja tworzy kolejne wersje (`.v2.md`, `.v3.md`).
+
 ### 7. License Manager (`src/config/license.py`)
 
 **Odpowiedzialność:** Zarządzanie licencją i dostępem do funkcji PRO

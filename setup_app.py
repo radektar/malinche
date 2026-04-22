@@ -14,6 +14,12 @@ DATA_FILES = []
 icon_path = Path('assets/icon.icns')
 if icon_path.exists():
     DATA_FILES.append(('', [str(icon_path)]))
+menu_icons = sorted(Path("assets/menu_bar").glob("*.png"))
+if menu_icons:
+    DATA_FILES.append(("menu_bar", [str(icon) for icon in menu_icons]))
+dmg_background = Path("assets/dmg_background.png")
+if dmg_background.exists():
+    DATA_FILES.append(("", [str(dmg_background)]))
 
 # py2app options
 OPTIONS = {
@@ -40,6 +46,7 @@ OPTIONS = {
     'packages': [
         'rumps',
         'mutagen',
+        'httpx',
         'dotenv',
         'click',
         'src',  # Include entire src package

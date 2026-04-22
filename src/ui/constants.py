@@ -9,6 +9,12 @@ APP_GITHUB = "https://github.com/radektar/malinche"
 
 # UI texts dictionary (for future localization)
 TEXTS = {
+    "settings_title": "Ustawienia Malinche",
+    "settings_message": "Skonfiguruj folder docelowy, język i model transkrypcji.",
+    "wizard_basic_title": "Podstawowa konfiguracja",
+    "wizard_basic_message": "Skonfiguruj folder docelowy, język i model transkrypcji.",
+    "saved_title": "Ustawienia zapisane",
+    "saved_message": "Zmiany zostały zapisane i będą użyte przy następnej transkrypcji.",
     "about_title": "O aplikacji",
     "about_message": (
         f"{APP_NAME} v{APP_VERSION}\n\n"

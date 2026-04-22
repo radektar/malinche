@@ -23,6 +23,8 @@ Complete API reference for Malinche modules.
 - [app_core.py](#app_corepy) - Core logic
 - [summarizer.py](#summarizerpy) - AI summaries (PRO)
 - [tagger.py](#taggerpy) - Auto-tagging (PRO)
+- [fingerprint.py](#fingerprintpy) - Audio fingerprinting
+- [vault_index.py](#vault_indexpy) - Vault dedup index
 
 ---
 
@@ -224,6 +226,42 @@ def _should_process_volume(self, volume_path: Path) -> bool:
 ## transcriber.py
 
 Core transcription engine.
+
+### Dedup + versioning (v2)
+
+- `compute_fingerprint(audio_file)` determines cross-device identity.
+- `VaultIndex.lookup(fingerprint)` controls skip/retranscribe behavior.
+- FREE tier: known fingerprint => skip.
+- PRO tier: known fingerprint => create new version markdown (`.v2.md`, `.v3.md`).
+
+---
+
+## fingerprint.py
+
+### Function: `compute_fingerprint(audio_file: Path) -> str`
+
+Returns deterministic identifier:
+- first 1MB bytes
+- full file size
+- recording datetime metadata (fallback mtime)
+
+Format: `sha256:<hex>`.
+
+---
+
+## vault_index.py
+
+### Class: `VaultIndex`
+
+Main methods:
+- `load()`
+- `lookup(fingerprint)`
+- `add(fingerprint, entry)`
+- `add_version(fingerprint, version_info)`
+
+Storage:
+- `<TRANSCRIBE_DIR>/.malinche/index.json`
+- `<TRANSCRIBE_DIR>/.malinche/index.lock`
 
 ### Class: `Transcriber`
 

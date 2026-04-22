@@ -33,6 +33,7 @@ class UserSettings:
 
     # Stan wizarda
     setup_completed: bool = defaults.DEFAULT_SETUP_COMPLETED
+    index_migrated: bool = False
 
     def __post_init__(self) -> None:
         """Normalize types after init (e.g., JSON-loaded values)."""
@@ -73,6 +74,7 @@ class UserSettings:
             "show_notifications": self.show_notifications,
             "start_at_login": self.start_at_login,
             "setup_completed": self.setup_completed,
+            "index_migrated": self.index_migrated,
         }
 
     @staticmethod

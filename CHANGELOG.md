@@ -87,9 +87,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - ✅ License Manager z offline cache
     - ✅ PRO gate dla AI podsumowań i tagów
     - ✅ UI aktywacji PRO w menu paska stanu
-  - [ ] **Faza 9:** Pełny redesign UI (nowy instalator, menu, ikony, kolory)
-    - 🔄 Trwa: konsolidacja wizarda (folder + język + model) i jednookienkowe Ustawienia
-    - 🔄 Trwa: optymalizacja bundle FREE przez redukcję zależności PRO-only
+  - ✅ **Faza 9:** Pełny redesign UI (menu bar icons, nowa ikona appki, DMG background, branding dialogów)
+  - ✅ **Multi-device dedup v2:** fingerprint audio + `.malinche/index.json` + migracja legacy `.md`
+    - FREE: skip transkrypcji gdy fingerprint istnieje
+    - PRO: wersjonowanie re-transkrypcji (`.v2.md`, `.v3.md`) z `previous_version`
 
 ### Planned Features
 - **🔒 PRO Features (v2.1.0)** - AI summaries, auto-tagging, cloud sync

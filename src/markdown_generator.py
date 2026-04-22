@@ -140,7 +140,9 @@ class MarkdownGenerator:
         summary: Dict[str, str],
         metadata: Dict[str, str],
         output_dir: Path,
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
+        extra_frontmatter: Optional[Dict[str, str]] = None,
+        output_filename: Optional[str] = None,
     ) -> Path:
         """Create markdown document from transcript and metadata.
         
@@ -157,9 +159,9 @@ class MarkdownGenerator:
             IOError: If file cannot be written
         """
         # Generate safe filename
-        filename = self._generate_filename(
+        filename = output_filename or self._generate_filename(
             summary.get("title", "Nagranie"),
-            metadata["recording_datetime"]
+            metadata["recording_datetime"],
         )
         output_path = output_dir / filename
         
@@ -171,16 +173,30 @@ class MarkdownGenerator:
         tag_list = tags or ["transcription"]
         tags_str = ", ".join(tag_list)
 
+        extra_frontmatter = extra_frontmatter or {}
+        previous_version_line = ""
+        if extra_frontmatter.get("previous_version"):
+            previous_version_line = (
+                f"\nprevious_version: {extra_frontmatter['previous_version']}"
+            )
+
         # Fill template
         content = self.template.format(
             title=summary.get("title", "Nagranie"),
             date=date_str,
             recording_date=recording_date_str,
             source_file=metadata["source_file"],
+            fingerprint=extra_frontmatter.get("fingerprint", ""),
+            source_volume=extra_frontmatter.get("source_volume", ""),
+            version=extra_frontmatter.get("version", 1),
+            hostname=extra_frontmatter.get("transcribed_on", ""),
+            model=extra_frontmatter.get("model", ""),
+            language=extra_frontmatter.get("language", ""),
+            previous_version_line=previous_version_line,
             duration=metadata["duration_formatted"],
-             tags=tags_str,
+            tags=tags_str,
             summary=summary.get("summary", "Brak podsumowania."),
-            transcript=transcript
+            transcript=transcript,
         )
         
         # Write file

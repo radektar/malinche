@@ -1,10 +1,13 @@
 """Settings window for changing application configuration."""
 
 import rumps
+from pathlib import Path
 
 from src.config import UserSettings, SUPPORTED_LANGUAGES, SUPPORTED_MODELS
 from src.ui.dialogs import choose_folder_dialog
+from src.ui.constants import TEXTS
 from src.logger import logger
+from src.vault_index import is_icloud_synced
 
 
 def _truncate_path(path: str, max_length: int = 60) -> str:
@@ -25,8 +28,8 @@ def _show_native_settings_panel(settings: UserSettings) -> bool:
 
     while True:
         alert = NSAlert.alloc().init()
-        alert.setMessageText_("⚙️ Ustawienia Malinche")
-        alert.setInformativeText_("Skonfiguruj folder docelowy, język i model transkrypcji.")
+        alert.setMessageText_(TEXTS["settings_title"])
+        alert.setInformativeText_(TEXTS["settings_message"])
         alert.addButtonWithTitle_("Zapisz")
         alert.addButtonWithTitle_("Anuluj")
         alert.addButtonWithTitle_("Zmień folder...")
@@ -90,6 +93,15 @@ def _show_native_settings_panel(settings: UserSettings) -> bool:
             )
             if picked_folder:
                 selected_folder = picked_folder
+                if not is_icloud_synced(Path(selected_folder)):
+                    rumps.alert(
+                        title="Folder poza iCloud",
+                        message=(
+                            "Wybrany folder nie jest w iCloud. "
+                            "Deduplikacja multi-device będzie działać tylko lokalnie."
+                        ),
+                        ok="OK",
+                    )
             continue
 
         if response == 1001:
@@ -116,7 +128,7 @@ def show_settings_window() -> bool:
     except ImportError:
         logger.warning("AppKit not available, using text fallback")
         window = rumps.Window(
-            title="⚙️ Ustawienia Malinche",
+            title=TEXTS["settings_title"],
             message=(
                 "Nie udało się uruchomić natywnego panelu.\n"
                 "Wpisz folder docelowy ręcznie:"
@@ -140,8 +152,8 @@ def show_settings_window() -> bool:
     settings.save()
     logger.info("Ustawienia zostały zmienione i zapisane")
     rumps.alert(
-        title="✅ Ustawienia zapisane",
-        message="Zmiany zostały zapisane i będą użyte przy następnej transkrypcji.",
+        title=TEXTS["saved_title"],
+        message=TEXTS["saved_message"],
         ok="OK",
     )
     return True

@@ -52,10 +52,18 @@
   - [x] License Manager (placeholder FREE) ✅
   - [x] PRO gate w summarizerze i taggerze ✅
   - [x] UI aktywacji w menu ✅
-- [ ] **Faza 9:** Pełny redesign UI (nowy instalator, menu, ikony, kolory) - *przed dystrybucją*
-  - [~] Konsolidacja wizarda: jeden krok konfiguracji (folder + język + model) - *w trakcie*
-  - [~] Ustawienia: pojedynczy panel zamiast sekwencji alertów - *w trakcie*
-  - [~] Optymalizacja bundle FREE przez usunięcie zależności PRO-only - *w trakcie*
+- [x] **Faza 9:** Pełny redesign UI (nowy instalator, menu, ikony, kolory) ✅
+  - [x] Konsolidacja wizarda: jeden krok konfiguracji (folder + język + model)
+  - [x] Ustawienia: pojedynczy panel zamiast sekwencji alertów
+  - [x] Ikony stanów menu bar + nowa ikona appki + custom background DMG
+  - [x] Spójny branding tekstów dialogów
+
+- [x] **Multi-device deduplikacja i wersjonowanie** ✅
+  - [x] Fingerprint audio (`sha256:first1MB+size+metadata`)
+  - [x] Centralny indeks Vault (`.malinche/index.json`) z lockiem pliku
+  - [x] Migracja legacy markdown do indexu
+  - [x] FREE: dedup/skip dla znanego fingerprint
+  - [x] PRO: re-transkrypcja wersjonowana (`.v2.md`, `.v3.md`)
 
 #### v2.1.0 PRO (~3 tygodnie po FREE)
 - [ ] **Faza 10:** Backend PRO (Cloudflare Workers + LemonSqueezy)

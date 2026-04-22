@@ -3,6 +3,7 @@
 import rumps
 import threading
 from enum import Enum, auto
+from pathlib import Path
 from typing import Optional
 
 from src.config import UserSettings, SUPPORTED_LANGUAGES, SUPPORTED_MODELS
@@ -12,6 +13,7 @@ from src.setup.errors import NetworkError, DiskSpaceError, DownloadError
 from src.logger import logger
 from src.ui.dialogs import choose_folder_dialog
 from src.ui.constants import TEXTS
+from src.vault_index import is_icloud_synced
 
 
 class WizardStep(Enum):
@@ -352,10 +354,8 @@ class SetupWizard:
 
             while True:
                 alert = NSAlert.alloc().init()
-                alert.setMessageText_("⚙️ Podstawowa konfiguracja")
-                alert.setInformativeText_(
-                    "Skonfiguruj folder docelowy, język i model transkrypcji."
-                )
+                alert.setMessageText_(TEXTS["wizard_basic_title"])
+                alert.setInformativeText_(TEXTS["wizard_basic_message"])
                 alert.addButtonWithTitle_("Dalej")
                 alert.addButtonWithTitle_("Wstecz")
                 alert.addButtonWithTitle_("Anuluj")
@@ -421,6 +421,15 @@ class SetupWizard:
                     )
                     if folder_path:
                         selected_folder = folder_path
+                        if not is_icloud_synced(Path(selected_folder)):
+                            rumps.alert(
+                                title="Folder poza iCloud",
+                                message=(
+                                    "Wybrany folder nie jest w iCloud. "
+                                    "Multi-device dedup będzie lokalny dla tego Maca."
+                                ),
+                                ok="OK",
+                            )
                     continue
 
                 if response == 1001:

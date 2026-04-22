@@ -11,6 +11,7 @@ import pytest
 from src.transcriber import Transcriber
 from src.summarizer import BaseSummarizer
 from src.markdown_generator import MarkdownGenerator
+from src.vault_index import IndexEntry
 
 
 def update_transcriber_config(transcriber, monkeypatch, **kwargs):
@@ -249,7 +250,7 @@ def test_transcribe_file_already_transcribed_txt(transcriber, tmp_path, monkeypa
 
 
 def test_transcribe_file_already_transcribed_md(transcriber, tmp_path, monkeypatch):
-    """Test transcribe_file when MD output already exists."""
+    """Test transcribe_file skips when fingerprint already exists (FREE)."""
     # Patch global config for state_manager functions
     from src import config as config_module
     
@@ -279,8 +280,26 @@ def test_transcribe_file_already_transcribed_md(transcriber, tmp_path, monkeypat
     transcriber.config.TRANSCRIBE_DIR = output_dir
     # Also patch global for state_manager functions
     monkeypatch.setattr(config_module.config, 'TRANSCRIBE_DIR', output_dir)
-    
-    result = transcriber.transcribe_file(audio_file)
+
+    fingerprint = "sha256:test-fingerprint"
+    transcriber.vault_index.add(
+        fingerprint,
+        IndexEntry(
+            fingerprint=fingerprint,
+            source_filename=audio_file.name,
+            source_volume=audio_file.parent.name,
+            markdown_path=md_file.name,
+            versions=[{"version": 1, "markdown_path": md_file.name}],
+        ),
+    )
+
+    with patch("src.transcriber.compute_fingerprint", return_value=fingerprint), patch(
+        "src.transcriber.license_manager.get_current_tier"
+    ) as tier_mock:
+        from src.config.features import FeatureTier
+
+        tier_mock.return_value = FeatureTier.FREE
+        result = transcriber.transcribe_file(audio_file)
     
     assert result is True  # MD exists, skip transcription
     transcriber._run_macwhisper.assert_not_called()
@@ -318,9 +337,11 @@ def test_postprocess_transcript_success(transcriber, tmp_path, monkeypatch):
     mock_md_gen.create_markdown_document.return_value = mock_md_path
     transcriber.markdown_generator = mock_md_gen
     
-    result = transcriber._postprocess_transcript(audio_file, transcript_file)
-    
-    assert result is True
+    result = transcriber._postprocess_transcript(
+        audio_file, transcript_file, fingerprint="sha256:test"
+    )
+
+    assert result == mock_md_path
     mock_summarizer.generate.assert_called_once()
     mock_md_gen.create_markdown_document.assert_called_once()
     # TXT file should be deleted
@@ -354,9 +375,11 @@ def test_postprocess_transcript_no_summarizer(transcriber, tmp_path, monkeypatch
     mock_md_gen.create_markdown_document.return_value = mock_md_path
     transcriber.markdown_generator = mock_md_gen
     
-    result = transcriber._postprocess_transcript(audio_file, transcript_file)
-    
-    assert result is True
+    result = transcriber._postprocess_transcript(
+        audio_file, transcript_file, fingerprint="sha256:test"
+    )
+
+    assert result == mock_md_path
     # Should use fallback summary
     call_args = mock_md_gen.create_markdown_document.call_args
     summary = call_args[1]["summary"]
@@ -390,9 +413,11 @@ def test_postprocess_transcript_passes_tags(monkeypatch, tmp_path, transcriber):
     mock_md_gen.create_markdown_document.return_value = output_dir / "sample.md"
     transcriber.markdown_generator = mock_md_gen
 
-    result = transcriber._postprocess_transcript(audio_file, transcript_file)
+    result = transcriber._postprocess_transcript(
+        audio_file, transcript_file, fingerprint="sha256:test"
+    )
 
-    assert result is True
+    assert result == output_dir / "sample.md"
     _, kwargs = mock_md_gen.create_markdown_document.call_args
     assert "tags" in kwargs
     assert kwargs["tags"][0] == "transcription"
