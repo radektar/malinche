@@ -56,8 +56,14 @@ class MalincheMenuApp(rumps.App):
                 "rumps not available. Install with: pip install rumps"
             )
 
-        super(MalincheMenuApp, self).__init__("🎙️", template=True)
+        super(MalincheMenuApp, self).__init__(
+            "Malinche",
+            title=None,
+            icon=None,
+            template=True,
+        )
         self._icon_paths = self._resolve_icon_paths()
+        self._update_icon(AppStatus.IDLE)
 
         self.transcriber: Optional[MalincheTranscriber] = None
         self.daemon_thread: Optional[threading.Thread] = None
@@ -154,21 +160,38 @@ class MalincheMenuApp(rumps.App):
                 if resolved[status]:
                     continue
                 icon_path = icon_dir / filename
-                if icon_path.exists():
-                    resolved[status] = str(icon_path)
+                try:
+                    # A PNG header is at least 8 bytes + IHDR; anything smaller is
+                    # a stale/corrupted placeholder we must ignore.
+                    if icon_path.exists() and icon_path.stat().st_size > 64:
+                        resolved[status] = str(icon_path)
+                except OSError:
+                    continue
         return resolved
 
     def _update_icon(self, status: AppStatus) -> None:
-        """Update menu bar icon based on app status."""
+        """Update menu bar icon based on app status.
+
+        When a template image is available we always clear the title so macOS
+        does not render both the icon and a stray emoji/name fallback next to
+        each other in the status bar.
+        """
         icon_path = self._icon_paths.get(status)
         if icon_path:
-            self.icon = icon_path
+            self.title = None
             self.template = True
+            self.icon = icon_path
             return
 
-        # Keep working fallback when icon files are unavailable.
-        self.title = "🎙️"
+        fallback_titles = {
+            AppStatus.IDLE: "🎙️",
+            AppStatus.SCANNING: "🔎",
+            AppStatus.TRANSCRIBING: "⏳",
+            AppStatus.MIGRATING: "🔄",
+            AppStatus.ERROR: "⚠️",
+        }
         self.icon = None
+        self.title = fallback_titles.get(status, "🎙️")
 
     def _run_wizard_if_needed(self, timer):
         """Uruchom wizard jeśli to pierwsze uruchomienie."""

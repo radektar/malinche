@@ -20,11 +20,21 @@ def _show_native_settings_panel(settings: UserSettings) -> bool:
     """Show one native panel with folder/language/model in one place."""
     from AppKit import NSAlert, NSView, NSRect, NSTextField, NSPopUpButton
 
-    selected_folder = settings.output_dir
+    from src.ui.folder_picker import (
+        FolderPickerTarget,
+        PICK_FOLDER_RESPONSE,
+        apply_basic_settings,
+        make_folder_picker_button,
+        select_folder_with_warning,
+    )
+
+    selected_folder = str(settings.output_dir)
     language_codes = list(SUPPORTED_LANGUAGES.keys())
     model_codes = list(SUPPORTED_MODELS.keys())
     selected_language = settings.language if settings.language in language_codes else language_codes[0]
     selected_model = settings.whisper_model if settings.whisper_model in model_codes else model_codes[0]
+
+    picker_target = FolderPickerTarget.alloc().init()
 
     while True:
         alert = NSAlert.alloc().init()
@@ -32,11 +42,10 @@ def _show_native_settings_panel(settings: UserSettings) -> bool:
         alert.setInformativeText_(TEXTS["settings_message"])
         alert.addButtonWithTitle_("Zapisz")
         alert.addButtonWithTitle_("Anuluj")
-        alert.addButtonWithTitle_("Zmień folder...")
 
-        accessory = NSView.alloc().initWithFrame_(NSRect((0, 0), (420, 138)))
+        accessory = NSView.alloc().initWithFrame_(NSRect((0, 0), (460, 170)))
 
-        folder_label = NSTextField.alloc().initWithFrame_(NSRect((0, 112), (120, 20)))
+        folder_label = NSTextField.alloc().initWithFrame_(NSRect((0, 140), (130, 20)))
         folder_label.setStringValue_("Folder docelowy:")
         folder_label.setBezeled_(False)
         folder_label.setDrawsBackground_(False)
@@ -44,15 +53,23 @@ def _show_native_settings_panel(settings: UserSettings) -> bool:
         folder_label.setSelectable_(False)
         accessory.addSubview_(folder_label)
 
-        folder_value = NSTextField.alloc().initWithFrame_(NSRect((120, 112), (300, 20)))
+        folder_value = NSTextField.alloc().initWithFrame_(NSRect((130, 140), (330, 20)))
         folder_value.setStringValue_(_truncate_path(selected_folder))
         folder_value.setBezeled_(False)
         folder_value.setDrawsBackground_(False)
         folder_value.setEditable_(False)
-        folder_value.setSelectable_(False)
+        folder_value.setSelectable_(True)
         accessory.addSubview_(folder_value)
 
-        language_label = NSTextField.alloc().initWithFrame_(NSRect((0, 72), (120, 20)))
+        pick_button = make_folder_picker_button(
+            NSRect((130, 108), (200, 28)),
+            target=picker_target,
+            title="Zmień folder...",
+        )
+        if pick_button is not None:
+            accessory.addSubview_(pick_button)
+
+        language_label = NSTextField.alloc().initWithFrame_(NSRect((0, 68), (130, 20)))
         language_label.setStringValue_("Język:")
         language_label.setBezeled_(False)
         language_label.setDrawsBackground_(False)
@@ -60,13 +77,13 @@ def _show_native_settings_panel(settings: UserSettings) -> bool:
         language_label.setSelectable_(False)
         accessory.addSubview_(language_label)
 
-        language_popup = NSPopUpButton.alloc().initWithFrame_(NSRect((120, 68), (300, 26)))
+        language_popup = NSPopUpButton.alloc().initWithFrame_(NSRect((130, 64), (330, 26)))
         for code, name in SUPPORTED_LANGUAGES.items():
             language_popup.addItemWithTitle_(f"{name} ({code})")
         language_popup.selectItemAtIndex_(language_codes.index(selected_language))
         accessory.addSubview_(language_popup)
 
-        model_label = NSTextField.alloc().initWithFrame_(NSRect((0, 32), (120, 20)))
+        model_label = NSTextField.alloc().initWithFrame_(NSRect((0, 28), (130, 20)))
         model_label.setStringValue_("Model:")
         model_label.setBezeled_(False)
         model_label.setDrawsBackground_(False)
@@ -74,7 +91,7 @@ def _show_native_settings_panel(settings: UserSettings) -> bool:
         model_label.setSelectable_(False)
         accessory.addSubview_(model_label)
 
-        model_popup = NSPopUpButton.alloc().initWithFrame_(NSRect((120, 28), (300, 26)))
+        model_popup = NSPopUpButton.alloc().initWithFrame_(NSRect((130, 24), (330, 26)))
         for code, name in SUPPORTED_MODELS.items():
             model_popup.addItemWithTitle_(f"{code.upper()}: {name}")
         model_popup.selectItemAtIndex_(model_codes.index(selected_model))
@@ -86,37 +103,36 @@ def _show_native_settings_panel(settings: UserSettings) -> bool:
         selected_language = language_codes[language_popup.indexOfSelectedItem()]
         selected_model = model_codes[model_popup.indexOfSelectedItem()]
 
-        if response == 1002:
-            picked_folder = choose_folder_dialog(
+        if response == PICK_FOLDER_RESPONSE:
+            picked = select_folder_with_warning(
+                choose_folder_dialog,
+                warn_non_icloud=lambda _p: rumps.alert(
+                    title="Folder poza iCloud",
+                    message=(
+                        "Wybrany folder nie jest w iCloud. "
+                        "Deduplikacja multi-device będzie działać tylko lokalnie."
+                    ),
+                    ok="OK",
+                ),
+                is_icloud_check=lambda p: is_icloud_synced(Path(p)),
                 title="Wybierz folder docelowy",
                 message="Wybierz folder, w którym będą zapisywane transkrypcje.",
             )
-            if picked_folder:
-                selected_folder = picked_folder
-                if not is_icloud_synced(Path(selected_folder)):
-                    rumps.alert(
-                        title="Folder poza iCloud",
-                        message=(
-                            "Wybrany folder nie jest w iCloud. "
-                            "Deduplikacja multi-device będzie działać tylko lokalnie."
-                        ),
-                        ok="OK",
-                    )
+            if picked:
+                selected_folder = picked
             continue
 
         if response == 1001:
             return False
 
-        changed = (
-            selected_folder != settings.output_dir
-            or selected_language != settings.language
-            or selected_model != settings.whisper_model
+        return apply_basic_settings(
+            settings,
+            selected_folder=selected_folder,
+            selected_language=selected_language,
+            selected_model=selected_model,
+            supported_languages=SUPPORTED_LANGUAGES,
+            supported_models=SUPPORTED_MODELS,
         )
-        if changed:
-            settings.output_dir = selected_folder
-            settings.language = selected_language
-            settings.whisper_model = selected_model
-        return changed
 
 
 def show_settings_window() -> bool:
