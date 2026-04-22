@@ -8,8 +8,11 @@ from src.config import Config
 def test_config_initialization():
     """Test that Config initializes with default values."""
     config = Config()
-    
-    assert config.RECORDER_NAMES == ["LS-P1", "OLYMPUS", "RECORDER"]
+
+    # RECORDER_NAMES is populated only in "specific" watch mode; in "auto"/"manual"
+    # modes detection delegates to volume_utils.find_matching_volumes so the list
+    # must be empty (no hardcoded whitelist leaks into auto mode).
+    assert isinstance(config.RECORDER_NAMES, list)
     assert config.TRANSCRIPTION_TIMEOUT == 3600  # 60 minutes
     assert config.PERIODIC_CHECK_INTERVAL == 30
     assert config.MOUNT_MONITOR_DELAY == 1

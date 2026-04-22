@@ -26,6 +26,7 @@ from src.config.license import license_manager
 from src.config.features import FeatureTier
 from src.config.settings import UserSettings
 from src.markdown_frontmatter import read_frontmatter
+from src.volume_utils import find_matching_volumes
 
 
 def send_notification(title: str, message: str, subtitle: str = "") -> None:
@@ -289,26 +290,52 @@ class Transcriber:
         return False
     
     def find_recorder(self) -> Optional[Path]:
-        """Search for connected Olympus recorder.
-        
+        """Search for a connected recorder volume.
+
+        Delegates to :func:`find_recorders` for discovery and returns the
+        first match. Kept for backward compatibility with callers and tests
+        that expect a single ``Optional[Path]``.
+
         Returns:
-            Path to recorder volume or None if not found
+            Path to the first matching recorder volume or None if none found.
         """
-        volumes_path = Path("/Volumes")
-        
-        if not volumes_path.exists():
-            logger.debug("/Volumes directory not found")
-            return None
-        
-        # Check each possible recorder name
-        for name in self.config.RECORDER_NAMES:
-            recorder = volumes_path / name
-            if recorder.exists() and recorder.is_dir():
-                logger.info(f"✓ Recorder found: {recorder}")
-                return recorder
-        
-        logger.debug("No recorder found in /Volumes")
+        recorders = self.find_recorders()
+        if recorders:
+            return recorders[0]
         return None
+
+    def find_recorders(self) -> List[Path]:
+        """Return every mounted volume that qualifies as a recorder.
+
+        Honours ``UserSettings.watch_mode`` so this stays consistent with
+        ``FileMonitor``:
+
+        * ``auto`` - any non-system volume containing audio files.
+        * ``specific`` - only volumes named in ``watched_volumes``.
+        * ``manual`` - never auto-detect.
+
+        For backward compatibility, if ``config.RECORDER_NAMES`` has been
+        set to a non-empty list (e.g. via explicit injection in tests), the
+        result is filtered to that whitelist.
+
+        Returns:
+            Sorted list of matching volume paths (possibly empty).
+        """
+        settings = UserSettings.load()
+        matching = find_matching_volumes(settings)
+
+        whitelist = getattr(self.config, "RECORDER_NAMES", None) or []
+        if whitelist and settings.watch_mode != "auto":
+            # Only enforce the legacy whitelist outside of auto mode; in auto
+            # mode the user explicitly asked for any volume with audio files.
+            matching = [v for v in matching if v.name in whitelist]
+
+        if matching:
+            for recorder in matching:
+                logger.info(f"✓ Recorder found: {recorder}")
+        else:
+            logger.debug("No recorder found in /Volumes")
+        return matching
     
     def get_last_sync_time(self) -> datetime:
         """Get timestamp of last synchronization.
@@ -1086,46 +1113,54 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
             logger.info("=" * 60)
             logger.info("🔍 Checking for recorder...")
             self._update_state(AppStatus.SCANNING)
-            
-            # Find recorder
-            recorder = self.find_recorder()
-            if not recorder:
+
+            # Find all matching recorders (auto/specific/manual aware)
+            recorders = self.find_recorders()
+            if not recorders:
                 logger.info("❌ Recorder not found")
                 self.recorder_monitoring = False
                 self.recorder_was_notified = False
                 self._update_state(AppStatus.IDLE)
                 return
-            
-            logger.info(f"✓ Recorder detected: {recorder}")
-            
+
+            logger.info(
+                f"✓ Recorder(s) detected: {[r.name for r in recorders]}"
+            )
+
             self.recorder_monitoring = True
-            
-            # Get last sync time
+
+            # Get last sync time once for this batch
             last_sync = self.get_last_sync_time()
             logger.info(f"📅 Looking for files modified after: {last_sync}")
-            
-            # Find new audio files
-            new_files = self.find_audio_files(recorder, last_sync)
-            logger.info(f"📁 Found {len(new_files)} new audio file(s)")
-            
+
+            # Aggregate new files across every detected recorder volume
+            new_files: List[Path] = []
+            for recorder in recorders:
+                found = self.find_audio_files(recorder, last_sync)
+                logger.info(
+                    f"📁 Found {len(found)} new audio file(s) on {recorder.name}"
+                )
+                new_files.extend(found)
+
             # Send notification only if new files are found
             # This prevents spam when recorder is connected but has no new recordings
             if new_files:
                 if not self.recorder_was_notified:
+                    recorder_names = ", ".join(r.name for r in recorders)
                     send_notification(
                         title="Malinche",
                         subtitle="Recorder wykryty",
-                        message=f"Podłączono: {recorder.name}"
+                        message=f"Podłączono: {recorder_names}"
                     )
                     self.recorder_was_notified = True
-                
+
                 # Notify about new files found
                 send_notification(
                     title="Malinche",
                     subtitle=f"Znaleziono {len(new_files)} nowych nagrań",
                     message="Rozpoczynam transkrypcję..."
                 )
-            
+
             processed_success = 0
             processed_failed = 0
 
@@ -1210,9 +1245,9 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
                 )
             logger.info("=" * 60)
             
-            # Keep recorder_monitoring True if recorder still connected
+            # Keep recorder_monitoring True if any recorder still connected
             # This prevents notification spam on periodic checks
-            if not self.find_recorder():
+            if not self.find_recorders():
                 self.recorder_monitoring = False
                 self.recorder_was_notified = False
             

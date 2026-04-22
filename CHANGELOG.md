@@ -5,6 +5,30 @@ All notable changes to Malinche will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0-alpha.2] - 2026-04-22
+
+### Fixed
+- **Wykrywanie recordera w trybie `auto` respektuje `watch_mode`** — naprawiono regresję, w której Malinche pokazywała `Oczekiwanie na recorder...` mimo że macOS wykrył i zamontował dyktafon.
+  - `Transcriber.find_recorder()` poprzednio iterował wyłącznie po hardkodowanej liście `RECORDER_NAMES` (`LS-P1`, `OLYMPUS`, `RECORDER`), podczas gdy `FileMonitor` w trybie `auto` akceptował dowolny niesystemowy wolumen z plikami audio. Przy dyktafonie o innej nazwie (`IC RECORDER`, `SD_CARD`, `ZOOM`, itp.) `process_recorder()` ustawiał status `IDLE` i UI dalej wyświetlał komunikat oczekiwania.
+  - Wykrywanie scentralizowano w nowym module `src/volume_utils.py`, z którego korzystają zarówno `FileMonitor` jak i `Transcriber`. Obie klasy honorują teraz ten sam `watch_mode` (`auto` / `specific` / `manual`).
+  - `Transcriber.find_recorders()` (nowa metoda) zwraca **wszystkie** pasujące wolumeny, a `process_recorder()` iteruje po nich i agreguje nowe pliki. `find_recorder()` zachowano jako cienki wrapper dla kompatybilności wstecznej.
+  - Usunięto mylący fallback `RECORDER_NAMES = ["LS-P1", "OLYMPUS", "RECORDER"]` w trybie `auto` — lista jest teraz wypełniana tylko w trybie `specific` (na podstawie `watched_volumes`).
+
+### Added
+- **Nowy moduł `src/volume_utils.py`** — wspólne helpery `has_audio_files()`, `should_process_volume()`, `find_matching_volumes()` z testowalnym parametrem `volumes_root`.
+- **Testy regresji** w `tests/test_volume_utils.py` i `tests/test_transcriber.py`:
+  - Auto mode wykrywa wolumeny o dowolnych nazwach zawierające audio.
+  - Auto mode pomija wolumeny systemowe oraz puste.
+  - Specific mode respektuje `watched_volumes`.
+  - Manual mode nigdy nie wykrywa automatycznie.
+  - Wyniki `find_matching_volumes()` są posortowane alfabetycznie (deterministyczność).
+
+### Changed
+- `FileMonitor._should_process_volume()` oraz `FileMonitor._has_audio_files()` zredukowane do cienkich wrapperów nad `volume_utils` — eliminuje duplikację logiki skanowania.
+- `process_recorder()` obsługuje wiele jednocześnie podłączonych wolumenów: notyfikacja "Podłączono" wymienia wszystkie wykryte urządzenia.
+
+---
+
 ## [2.0.0-alpha.1] - 2026-02-08
 
 ### Added

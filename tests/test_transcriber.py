@@ -12,6 +12,7 @@ from src.transcriber import Transcriber
 from src.summarizer import BaseSummarizer
 from src.markdown_generator import MarkdownGenerator
 from src.vault_index import IndexEntry
+from src.config.settings import UserSettings
 
 
 def update_transcriber_config(transcriber, monkeypatch, **kwargs):
@@ -77,8 +78,7 @@ def test_transcriber_initialization(transcriber):
 
 def test_find_recorder_not_found(transcriber):
     """Test find_recorder when no recorder is connected."""
-    with patch('src.transcriber.Path') as mock_path:
-        mock_path.return_value.exists.return_value = False
+    with patch("src.transcriber.find_matching_volumes", return_value=[]):
         result = transcriber.find_recorder()
         assert result is None
 
@@ -92,6 +92,150 @@ def test_find_recorder_found(transcriber):
     # Result can be None (no recorder) or Path (recorder found)
     # Both are valid - we're just checking the method works
     assert result is None or isinstance(result, Path)
+
+
+def _make_volume_with_audio(root: Path, name: str, filename: str = "rec.mp3") -> Path:
+    """Create a fake volume directory containing one audio file."""
+    volume = root / name
+    volume.mkdir()
+    (volume / filename).touch()
+    return volume
+
+
+def _make_empty_volume(root: Path, name: str) -> Path:
+    """Create a fake volume directory with no audio files."""
+    volume = root / name
+    volume.mkdir()
+    (volume / "readme.txt").touch()
+    return volume
+
+
+def test_find_recorders_auto_mode_detects_any_volume_with_audio(
+    transcriber, tmp_path, monkeypatch
+):
+    """Regression: auto mode must detect a recorder with an arbitrary name.
+
+    Reproduces the bug where a recorder mounted under e.g. "IC RECORDER"
+    was ignored because ``find_recorder`` only looked at a hardcoded list
+    of names (LS-P1 / OLYMPUS / RECORDER).
+    """
+    volumes_root = tmp_path / "Volumes"
+    volumes_root.mkdir()
+    _make_volume_with_audio(volumes_root, "IC RECORDER")
+    _make_volume_with_audio(volumes_root, "SD_CARD", filename="memo.wav")
+    _make_empty_volume(volumes_root, "NoAudioStick")
+
+    settings = UserSettings(watch_mode="auto", watched_volumes=[])
+    monkeypatch.setattr(
+        "src.transcriber.UserSettings.load", classmethod(lambda cls: settings)
+    )
+    monkeypatch.setattr(
+        "src.transcriber.find_matching_volumes",
+        lambda s: __import__("src.volume_utils", fromlist=["find_matching_volumes"])
+        .find_matching_volumes(s, volumes_root=volumes_root),
+    )
+    transcriber.config.RECORDER_NAMES = []
+
+    recorders = transcriber.find_recorders()
+    names = sorted(r.name for r in recorders)
+
+    assert names == ["IC RECORDER", "SD_CARD"]
+
+
+def test_find_recorders_auto_mode_skips_system_volumes(
+    transcriber, tmp_path, monkeypatch
+):
+    """System volumes must never be treated as recorders even with audio."""
+    volumes_root = tmp_path / "Volumes"
+    volumes_root.mkdir()
+    _make_volume_with_audio(volumes_root, "Macintosh HD")
+    _make_volume_with_audio(volumes_root, "MY_DICTAPHONE")
+
+    settings = UserSettings(watch_mode="auto", watched_volumes=[])
+    monkeypatch.setattr(
+        "src.transcriber.UserSettings.load", classmethod(lambda cls: settings)
+    )
+    monkeypatch.setattr(
+        "src.transcriber.find_matching_volumes",
+        lambda s: __import__("src.volume_utils", fromlist=["find_matching_volumes"])
+        .find_matching_volumes(s, volumes_root=volumes_root),
+    )
+    transcriber.config.RECORDER_NAMES = []
+
+    recorders = transcriber.find_recorders()
+
+    assert [r.name for r in recorders] == ["MY_DICTAPHONE"]
+
+
+def test_find_recorders_auto_mode_ignores_empty_volume(
+    transcriber, tmp_path, monkeypatch
+):
+    """Volumes without audio files must not be picked up in auto mode."""
+    volumes_root = tmp_path / "Volumes"
+    volumes_root.mkdir()
+    _make_empty_volume(volumes_root, "EMPTY_STICK")
+
+    settings = UserSettings(watch_mode="auto", watched_volumes=[])
+    monkeypatch.setattr(
+        "src.transcriber.UserSettings.load", classmethod(lambda cls: settings)
+    )
+    monkeypatch.setattr(
+        "src.transcriber.find_matching_volumes",
+        lambda s: __import__("src.volume_utils", fromlist=["find_matching_volumes"])
+        .find_matching_volumes(s, volumes_root=volumes_root),
+    )
+    transcriber.config.RECORDER_NAMES = []
+
+    assert transcriber.find_recorders() == []
+
+
+def test_find_recorders_specific_mode_uses_watched_volumes(
+    transcriber, tmp_path, monkeypatch
+):
+    """Specific mode must only return volumes named in watched_volumes."""
+    volumes_root = tmp_path / "Volumes"
+    volumes_root.mkdir()
+    _make_volume_with_audio(volumes_root, "LS-P1")
+    _make_volume_with_audio(volumes_root, "RANDOM_STICK")
+
+    settings = UserSettings(
+        watch_mode="specific", watched_volumes=["LS-P1"]
+    )
+    monkeypatch.setattr(
+        "src.transcriber.UserSettings.load", classmethod(lambda cls: settings)
+    )
+    monkeypatch.setattr(
+        "src.transcriber.find_matching_volumes",
+        lambda s: __import__("src.volume_utils", fromlist=["find_matching_volumes"])
+        .find_matching_volumes(s, volumes_root=volumes_root),
+    )
+    transcriber.config.RECORDER_NAMES = list(settings.watched_volumes)
+
+    recorders = transcriber.find_recorders()
+
+    assert [r.name for r in recorders] == ["LS-P1"]
+
+
+def test_find_recorders_manual_mode_returns_empty(
+    transcriber, tmp_path, monkeypatch
+):
+    """Manual mode must never auto-detect, even when audio is present."""
+    volumes_root = tmp_path / "Volumes"
+    volumes_root.mkdir()
+    _make_volume_with_audio(volumes_root, "LS-P1")
+
+    settings = UserSettings(watch_mode="manual", watched_volumes=[])
+    monkeypatch.setattr(
+        "src.transcriber.UserSettings.load", classmethod(lambda cls: settings)
+    )
+    monkeypatch.setattr(
+        "src.transcriber.find_matching_volumes",
+        lambda s: __import__("src.volume_utils", fromlist=["find_matching_volumes"])
+        .find_matching_volumes(s, volumes_root=volumes_root),
+    )
+    transcriber.config.RECORDER_NAMES = []
+
+    assert transcriber.find_recorders() == []
 
 
 def test_get_last_sync_time_no_file(transcriber, tmp_path, monkeypatch):
@@ -425,15 +569,15 @@ def test_postprocess_transcript_passes_tags(monkeypatch, tmp_path, transcriber):
 
 def test_process_recorder_no_recorder(transcriber):
     """Test process_recorder when no recorder is found."""
-    with patch.object(transcriber, 'find_recorder', return_value=None):
+    with patch.object(transcriber, 'find_recorders', return_value=[]):
         transcriber.process_recorder()
-        
+
         assert not transcriber.recorder_monitoring
 
 
 def test_process_recorder_with_files(transcriber, mock_recorder_path):
     """Test process_recorder with new files."""
-    with patch.object(transcriber, 'find_recorder', return_value=mock_recorder_path):
+    with patch.object(transcriber, 'find_recorders', return_value=[mock_recorder_path]):
         with patch.object(transcriber, 'get_last_sync_time', 
                          return_value=datetime.now() - timedelta(days=1)):
             with patch.object(transcriber, 'transcribe_file', return_value=True):
@@ -514,7 +658,7 @@ def test_process_recorder_staging_integration(transcriber, tmp_path, monkeypatch
     audio_file = recorder / "test.mp3"
     audio_file.write_bytes(b"fake audio")
     
-    with patch.object(transcriber, 'find_recorder', return_value=recorder):
+    with patch.object(transcriber, 'find_recorders', return_value=([] if recorder is None else [recorder])):
         with patch.object(transcriber, 'get_last_sync_time', 
                          return_value=datetime.now() - timedelta(days=1)):
             with patch.object(transcriber, 'transcribe_file', return_value=True) as mock_transcribe:
@@ -543,7 +687,7 @@ def test_process_recorder_batch_failure_handling(transcriber, tmp_path, monkeypa
     audio_file2 = recorder / "test2.mp3"
     audio_file2.write_bytes(b"fake audio")
     
-    with patch.object(transcriber, 'find_recorder', return_value=recorder):
+    with patch.object(transcriber, 'find_recorders', return_value=([] if recorder is None else [recorder])):
         with patch.object(transcriber, 'get_last_sync_time', 
                          return_value=datetime.now() - timedelta(days=1)):
             # First succeeds, second fails
@@ -571,7 +715,7 @@ def test_process_recorder_batch_success_updates_sync(transcriber, tmp_path, monk
     audio_file2 = recorder / "test2.mp3"
     audio_file2.write_bytes(b"fake audio")
     
-    with patch.object(transcriber, 'find_recorder', return_value=recorder):
+    with patch.object(transcriber, 'find_recorders', return_value=([] if recorder is None else [recorder])):
         with patch.object(transcriber, 'get_last_sync_time', 
                          return_value=datetime.now() - timedelta(days=1)):
             # Both succeed
@@ -617,7 +761,7 @@ def test_process_recorder_skips_files_with_existing_markdown(
 
     staged_new = staging_dir / "new.mp3"
     staged_new.write_bytes(b"new")
-    with patch.object(transcriber, "find_recorder", return_value=recorder):
+    with patch.object(transcriber, "find_recorders", return_value=([] if recorder is None else [recorder])):
         with patch.object(
             transcriber, "get_last_sync_time", return_value=datetime.now() - timedelta(days=1)
         ):
@@ -726,7 +870,7 @@ def test_process_recorder_skips_when_lock_held(transcriber, monkeypatch):
 
     monkeypatch.setattr(transcriber_module, "ProcessLock", DummyLock)
 
-    with patch.object(transcriber, "find_recorder") as mock_find:
+    with patch.object(transcriber, "find_recorders") as mock_find:
         transcriber.process_recorder()
         mock_find.assert_not_called()
 
@@ -749,7 +893,7 @@ def test_process_recorder_releases_lock(transcriber, monkeypatch):
 
     monkeypatch.setattr(transcriber_module, "ProcessLock", DummyLock)
 
-    with patch.object(transcriber, "find_recorder", return_value=None):
+    with patch.object(transcriber, "find_recorders", return_value=[]):
         transcriber.process_recorder()
 
     assert released["value"] is True
@@ -809,7 +953,7 @@ def test_process_lock_keeps_recent_lock(tmp_path, monkeypatch):
 @patch('src.transcriber.send_notification')
 def test_process_recorder_no_notification_when_no_new_files(mock_notification, transcriber, mock_recorder_path):
     """Test that no notification is sent when recorder has no new files."""
-    with patch.object(transcriber, 'find_recorder', return_value=mock_recorder_path):
+    with patch.object(transcriber, 'find_recorders', return_value=([] if mock_recorder_path is None else [mock_recorder_path])):
         with patch.object(transcriber, 'get_last_sync_time', 
                          return_value=datetime.now() + timedelta(days=1)):  # Future date = no new files
             with patch.object(transcriber, 'save_sync_time'):
@@ -830,7 +974,7 @@ def test_process_recorder_sends_notification_when_new_files_found(
     staging_dir.mkdir()
     update_transcriber_config(transcriber, monkeypatch, LOCAL_RECORDINGS_DIR=staging_dir)
     
-    with patch.object(transcriber, 'find_recorder', return_value=mock_recorder_path):
+    with patch.object(transcriber, 'find_recorders', return_value=([] if mock_recorder_path is None else [mock_recorder_path])):
         with patch.object(transcriber, 'get_last_sync_time', 
                          return_value=datetime.now() - timedelta(days=1)):  # Past date = new files
             with patch.object(transcriber, 'transcribe_file', return_value=True):

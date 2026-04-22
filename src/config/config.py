@@ -128,14 +128,23 @@ tags: [{tags}]
         # This makes Config deterministic and testable
         self._user_settings = UserSettings.load()
         
-        # Map UserSettings to old Config attributes
+        # Map UserSettings to old Config attributes.
+        #
+        # ``RECORDER_NAMES`` is a legacy field that previously forced detection
+        # to a hardcoded list even in "auto" mode - which caused recorders with
+        # non-matching volume names to be ignored. Discovery now lives in
+        # ``Transcriber.find_recorders`` / ``volume_utils`` and honours the
+        # user's ``watch_mode``. This field is kept populated only when the
+        # user explicitly selected "specific" mode, so callers that still rely
+        # on it have a meaningful whitelist; otherwise it stays empty.
         if self.RECORDER_NAMES is None:
-            # Use watched_volumes if in specific mode, otherwise use defaults
-            if self._user_settings.watch_mode == "specific" and self._user_settings.watched_volumes:
-                self.RECORDER_NAMES = self._user_settings.watched_volumes
+            if (
+                self._user_settings.watch_mode == "specific"
+                and self._user_settings.watched_volumes
+            ):
+                self.RECORDER_NAMES = list(self._user_settings.watched_volumes)
             else:
-                # Legacy default for backward compatibility
-                self.RECORDER_NAMES = ["LS-P1", "OLYMPUS", "RECORDER"]
+                self.RECORDER_NAMES = []
         
         if self.TRANSCRIBE_DIR is None:
             # UserSettings stores output_dir as str (JSON), but legacy Config expects Path
