@@ -102,6 +102,15 @@ fi
 # Make executable
 chmod +x dist/Malinche.app/Contents/MacOS/Malinche
 
+# Sign bundle (Developer ID if available, otherwise ad-hoc for local installs)
+if [ -n "${APPLE_DEVELOPER_ID:-}" ]; then
+    echo "🔏 Signing app with Developer ID: ${APPLE_DEVELOPER_ID}"
+    codesign --force --deep --sign "${APPLE_DEVELOPER_ID}" dist/Malinche.app
+else
+    echo "🔏 Signing app with ad-hoc certificate (local install mode)"
+    codesign --force --deep --sign - dist/Malinche.app
+fi
+
 echo ""
 echo "✅ Build verification complete!"
 echo ""

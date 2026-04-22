@@ -7,6 +7,7 @@ import pytest
 
 from src.config import UserSettings
 from src.setup.wizard import SetupWizard, WizardStep
+from src.ui.constants import APP_VERSION
 
 
 class TestSetupWizard:
@@ -22,22 +23,34 @@ class TestSetupWizard:
         assert SetupWizard.needs_setup() is True
 
     def test_needs_setup_after_completion(self, tmp_path, monkeypatch):
-        """Zwraca False gdy setup_completed=True."""
+        """Zwraca False gdy setup_completed=True i wersja setupu jest aktualna."""
         config_file = tmp_path / "config.json"
         monkeypatch.setattr(
             UserSettings, "config_path", staticmethod(lambda: config_file)
         )
 
-        settings = UserSettings(setup_completed=True)
+        settings = UserSettings(setup_completed=True, setup_version=APP_VERSION)
         settings.save()
 
         assert SetupWizard.needs_setup() is False
+
+    def test_needs_setup_when_setup_version_missing(self, tmp_path, monkeypatch):
+        """Zwraca True dla starego configu bez setup_version po update aplikacji."""
+        config_file = tmp_path / "config.json"
+        monkeypatch.setattr(
+            UserSettings, "config_path", staticmethod(lambda: config_file)
+        )
+
+        settings = UserSettings(setup_completed=True, setup_version="")
+        settings.save()
+
+        assert SetupWizard.needs_setup() is True
 
     def test_wizard_step_order(self):
         """Kroki są w poprawnej kolejności."""
         assert SetupWizard.STEPS_ORDER[0] == WizardStep.WELCOME
         assert SetupWizard.STEPS_ORDER[-1] == WizardStep.FINISH
-        assert len(SetupWizard.STEPS_ORDER) == 8
+        assert len(SetupWizard.STEPS_ORDER) == 7
 
     def test_welcome_step_ok(self, monkeypatch):
         """Kliknięcie OK przechodzi dalej."""

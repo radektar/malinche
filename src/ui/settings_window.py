@@ -1,274 +1,176 @@
 """Settings window for changing application configuration."""
 
-from typing import Optional
 import rumps
+from pathlib import Path
 
 from src.config import UserSettings, SUPPORTED_LANGUAGES, SUPPORTED_MODELS
 from src.ui.dialogs import choose_folder_dialog
+from src.ui.constants import TEXTS
 from src.logger import logger
+from src.vault_index import is_icloud_synced
+
+
+def _truncate_path(path: str, max_length: int = 60) -> str:
+    if len(path) <= max_length:
+        return path
+    return "..." + path[-(max_length - 3):]
+
+
+def _show_native_settings_panel(settings: UserSettings) -> bool:
+    """Show one native panel with folder/language/model in one place."""
+    from AppKit import NSAlert, NSView, NSRect, NSTextField, NSPopUpButton
+
+    from src.ui.folder_picker import (
+        FolderPickerTarget,
+        PICK_FOLDER_RESPONSE,
+        apply_basic_settings,
+        make_folder_picker_button,
+        select_folder_with_warning,
+    )
+
+    selected_folder = str(settings.output_dir)
+    language_codes = list(SUPPORTED_LANGUAGES.keys())
+    model_codes = list(SUPPORTED_MODELS.keys())
+    selected_language = settings.language if settings.language in language_codes else language_codes[0]
+    selected_model = settings.whisper_model if settings.whisper_model in model_codes else model_codes[0]
+
+    picker_target = FolderPickerTarget.alloc().init()
+
+    while True:
+        alert = NSAlert.alloc().init()
+        alert.setMessageText_(TEXTS["settings_title"])
+        alert.setInformativeText_(TEXTS["settings_message"])
+        alert.addButtonWithTitle_("Zapisz")
+        alert.addButtonWithTitle_("Anuluj")
+
+        accessory = NSView.alloc().initWithFrame_(NSRect((0, 0), (460, 170)))
+
+        folder_label = NSTextField.alloc().initWithFrame_(NSRect((0, 140), (130, 20)))
+        folder_label.setStringValue_("Folder docelowy:")
+        folder_label.setBezeled_(False)
+        folder_label.setDrawsBackground_(False)
+        folder_label.setEditable_(False)
+        folder_label.setSelectable_(False)
+        accessory.addSubview_(folder_label)
+
+        folder_value = NSTextField.alloc().initWithFrame_(NSRect((130, 140), (330, 20)))
+        folder_value.setStringValue_(_truncate_path(selected_folder))
+        folder_value.setBezeled_(False)
+        folder_value.setDrawsBackground_(False)
+        folder_value.setEditable_(False)
+        folder_value.setSelectable_(True)
+        accessory.addSubview_(folder_value)
+
+        pick_button = make_folder_picker_button(
+            NSRect((130, 108), (200, 28)),
+            target=picker_target,
+            title="Zmień folder...",
+        )
+        if pick_button is not None:
+            accessory.addSubview_(pick_button)
+
+        language_label = NSTextField.alloc().initWithFrame_(NSRect((0, 68), (130, 20)))
+        language_label.setStringValue_("Język:")
+        language_label.setBezeled_(False)
+        language_label.setDrawsBackground_(False)
+        language_label.setEditable_(False)
+        language_label.setSelectable_(False)
+        accessory.addSubview_(language_label)
+
+        language_popup = NSPopUpButton.alloc().initWithFrame_(NSRect((130, 64), (330, 26)))
+        for code, name in SUPPORTED_LANGUAGES.items():
+            language_popup.addItemWithTitle_(f"{name} ({code})")
+        language_popup.selectItemAtIndex_(language_codes.index(selected_language))
+        accessory.addSubview_(language_popup)
+
+        model_label = NSTextField.alloc().initWithFrame_(NSRect((0, 28), (130, 20)))
+        model_label.setStringValue_("Model:")
+        model_label.setBezeled_(False)
+        model_label.setDrawsBackground_(False)
+        model_label.setEditable_(False)
+        model_label.setSelectable_(False)
+        accessory.addSubview_(model_label)
+
+        model_popup = NSPopUpButton.alloc().initWithFrame_(NSRect((130, 24), (330, 26)))
+        for code, name in SUPPORTED_MODELS.items():
+            model_popup.addItemWithTitle_(f"{code.upper()}: {name}")
+        model_popup.selectItemAtIndex_(model_codes.index(selected_model))
+        accessory.addSubview_(model_popup)
+
+        alert.setAccessoryView_(accessory)
+        response = alert.runModal()
+
+        selected_language = language_codes[language_popup.indexOfSelectedItem()]
+        selected_model = model_codes[model_popup.indexOfSelectedItem()]
+
+        if response == PICK_FOLDER_RESPONSE:
+            picked = select_folder_with_warning(
+                choose_folder_dialog,
+                warn_non_icloud=lambda _p: rumps.alert(
+                    title="Folder poza iCloud",
+                    message=(
+                        "Wybrany folder nie jest w iCloud. "
+                        "Deduplikacja multi-device będzie działać tylko lokalnie."
+                    ),
+                    ok="OK",
+                ),
+                is_icloud_check=lambda p: is_icloud_synced(Path(p)),
+                title="Wybierz folder docelowy",
+                message="Wybierz folder, w którym będą zapisywane transkrypcje.",
+            )
+            if picked:
+                selected_folder = picked
+            continue
+
+        if response == 1001:
+            return False
+
+        return apply_basic_settings(
+            settings,
+            selected_folder=selected_folder,
+            selected_language=selected_language,
+            selected_model=selected_model,
+            supported_languages=SUPPORTED_LANGUAGES,
+            supported_models=SUPPORTED_MODELS,
+        )
 
 
 def show_settings_window() -> bool:
-    """Show settings window and allow user to change configuration.
-    
-    Returns:
-        True if settings were changed and saved, False otherwise
-    """
+    """Show settings window and allow user to change configuration."""
     settings = UserSettings.load()
-    changed = False
-    
-    # Show main settings menu in a loop until user is done
-    while True:
-        # Truncate long paths for display
-        output_dir_display = settings.output_dir
-        if len(output_dir_display) > 50:
-            output_dir_display = "..." + output_dir_display[-47:]
-        
-        response = rumps.alert(
-            title="⚙️ Ustawienia Malinche",
+
+    try:
+        changed = _show_native_settings_panel(settings)
+    except ImportError:
+        logger.warning("AppKit not available, using text fallback")
+        window = rumps.Window(
+            title=TEXTS["settings_title"],
             message=(
-                "Wybierz co chcesz zmienić:\n\n"
-                f"📂 Folder docelowy:\n   {output_dir_display}\n"
-                f"🗣️ Język: {SUPPORTED_LANGUAGES.get(settings.language, settings.language)}\n"
-                f"🎯 Model: {SUPPORTED_MODELS.get(settings.whisper_model, settings.whisper_model)}\n"
+                "Nie udało się uruchomić natywnego panelu.\n"
+                "Wpisz folder docelowy ręcznie:"
             ),
-            ok="Zmień folder",
-            cancel="Zmień język",
-            other="Zmień model",
+            default_text=settings.output_dir,
+            ok="Zapisz",
+            cancel="Anuluj",
+            dimensions=(350, 24),
         )
-        
-        item_changed = False
-        if response == 1:  # Zmień folder
-            item_changed = _change_output_folder(settings)
-        elif response == 0:  # Zmień język (cancel button)
-            item_changed = _change_language(settings)
-        elif response == -1:  # Zmień model (other button)
-            item_changed = _change_model(settings)
-        
-        if item_changed:
-            changed = True
-        
-        # Ask if user wants to change more settings
-        continue_response = rumps.alert(
-            title="⚙️ Ustawienia",
-            message=(
-                "Zmiana zapisana.\n\n"
-                "Czy chcesz zmienić coś jeszcze?"
-            ),
-            ok="Tak, zmień więcej",
-            cancel="Zapisz i zamknij",
-        )
-        
-        if continue_response == 0:  # Zapisz i zamknij
-            break
-    
-    # If settings changed, save them
-    if changed:
-        settings.save()
-        logger.info("Ustawienia zostały zmienione i zapisane")
-        rumps.alert(
-            title="✅ Ustawienia zapisane",
-            message="Zmiany zostały zapisane i będą użyte przy następnej transkrypcji.",
-            ok="OK"
-        )
-        return True
-    else:
-        # User didn't make any changes, just closed
+        result = window.run()
+        if result.clicked == 0:
+            return False
+        new_folder = result.text.strip()
+        changed = bool(new_folder and new_folder != settings.output_dir)
+        if changed:
+            settings.output_dir = new_folder
+
+    if not changed:
         return False
 
-
-def _change_output_folder(settings: UserSettings) -> bool:
-    """Change output folder setting.
-    
-    Args:
-        settings: UserSettings instance to modify
-        
-    Returns:
-        True if folder was changed, False otherwise
-    """
-    # Show current folder and ask if user wants to change it
-    response = rumps.alert(
-        title="📂 Folder docelowy",
-        message=(
-            f"Aktualny folder:\n{settings.output_dir}\n\n"
-            "Czy chcesz zmienić folder docelowy?"
-        ),
-        ok="Zmień folder",
-        cancel="Anuluj",
+    settings.save()
+    logger.info("Ustawienia zostały zmienione i zapisane")
+    rumps.alert(
+        title=TEXTS["saved_title"],
+        message=TEXTS["saved_message"],
+        ok="OK",
     )
-    
-    if response != 1:  # Cancel
-        return False
-    
-    # Open folder picker
-    folder_path = choose_folder_dialog()
-    if folder_path:
-        settings.output_dir = folder_path
-        logger.info(f"Zmieniono folder docelowy na: {folder_path}")
-        return True
-    
-    return False
-
-
-def _change_language(settings: UserSettings) -> bool:
-    """Change transcription language setting.
-    
-    Args:
-        settings: UserSettings instance to modify
-        
-    Returns:
-        True if language was changed, False otherwise
-    """
-    try:
-        from AppKit import NSAlert, NSPopUpButton, NSRect
-        
-        alert = NSAlert.alloc().init()
-        alert.setMessageText_("🗣️ Język transkrypcji")
-        alert.setInformativeText_(
-            "Wybierz domyślny język dla wszystkich nagrań.\n\n"
-            "To ustawienie będzie użyte przy następnej transkrypcji."
-        )
-        
-        # Create dropdown
-        popup = NSPopUpButton.alloc().initWithFrame_(NSRect((0, 0), (250, 24)))
-        for code, name in SUPPORTED_LANGUAGES.items():
-            popup.addItemWithTitle_(f"{name} ({code})")
-        
-        # Set current value
-        lang_codes = list(SUPPORTED_LANGUAGES.keys())
-        if settings.language in lang_codes:
-            current_idx = lang_codes.index(settings.language)
-            popup.selectItemAtIndex_(current_idx)
-        
-        # Add to alert
-        alert.setAccessoryView_(popup)
-        alert.addButtonWithTitle_("Zapisz")
-        alert.addButtonWithTitle_("Anuluj")
-        
-        response = alert.runModal()
-        # NSAlert button responses: 1000=Zapisz, 1001=Anuluj
-        if response == 1000:  # Zapisz
-            selected_idx = popup.indexOfSelectedItem()
-            selected_code = lang_codes[selected_idx]
-            if selected_code != settings.language:
-                settings.language = selected_code
-                logger.info(f"Zmieniono język na: {selected_code}")
-                return True
-        
-        return False
-        
-    except ImportError:
-        # Fallback to text input if AppKit not available
-        logger.warning("AppKit not available, using text input fallback")
-        lang_options = "\n".join(
-            [f"• {code}: {name}" for code, name in SUPPORTED_LANGUAGES.items()]
-        )
-        
-        window = rumps.Window(
-            title="🗣️ Język transkrypcji",
-            message=(
-                f"Wpisz kod języka:\n\n"
-                f"Dostępne opcje:\n{lang_options}\n\n"
-                f"Aktualny: {settings.language}"
-            ),
-            default_text=settings.language,
-            ok="Zapisz",
-            cancel="Anuluj",
-            dimensions=(200, 24),
-        )
-        result = window.run()
-        
-        if result.clicked == 0:  # Cancel
-            return False
-        
-        lang = result.text.strip().lower()
-        if lang in SUPPORTED_LANGUAGES:
-            if lang != settings.language:
-                settings.language = lang
-                logger.info(f"Zmieniono język na: {lang}")
-                return True
-        
-        return False
-
-
-def _change_model(settings: UserSettings) -> bool:
-    """Change Whisper model setting.
-    
-    Args:
-        settings: UserSettings instance to modify
-        
-    Returns:
-        True if model was changed, False otherwise
-    """
-    try:
-        from AppKit import NSAlert, NSPopUpButton, NSRect
-        
-        alert = NSAlert.alloc().init()
-        alert.setMessageText_("🎯 Model transkrypcji")
-        alert.setInformativeText_(
-            "Wybierz model Whisper do transkrypcji.\n\n"
-            "Większe modele = lepsza jakość, ale wolniejsze.\n"
-            "Zalecany: Small (dobra jakość i szybkość)."
-        )
-        
-        # Create dropdown
-        popup = NSPopUpButton.alloc().initWithFrame_(NSRect((0, 0), (300, 24)))
-        for code, name in SUPPORTED_MODELS.items():
-            popup.addItemWithTitle_(f"{code.upper()}: {name}")
-        
-        # Set current value
-        model_codes = list(SUPPORTED_MODELS.keys())
-        if settings.whisper_model in model_codes:
-            current_idx = model_codes.index(settings.whisper_model)
-            popup.selectItemAtIndex_(current_idx)
-        
-        # Add to alert
-        alert.setAccessoryView_(popup)
-        alert.addButtonWithTitle_("Zapisz")
-        alert.addButtonWithTitle_("Anuluj")
-        
-        response = alert.runModal()
-        # NSAlert button responses: 1000=Zapisz, 1001=Anuluj
-        if response == 1000:  # Zapisz
-            selected_idx = popup.indexOfSelectedItem()
-            selected_code = model_codes[selected_idx]
-            if selected_code != settings.whisper_model:
-                settings.whisper_model = selected_code
-                logger.info(f"Zmieniono model na: {selected_code}")
-                return True
-        
-        return False
-        
-    except ImportError:
-        # Fallback to text input if AppKit not available
-        logger.warning("AppKit not available, using text input fallback")
-        model_options = "\n".join(
-            [f"• {code}: {name}" for code, name in SUPPORTED_MODELS.items()]
-        )
-        
-        window = rumps.Window(
-            title="🎯 Model transkrypcji",
-            message=(
-                f"Wpisz kod modelu:\n\n"
-                f"Dostępne opcje:\n{model_options}\n\n"
-                f"Aktualny: {settings.whisper_model}"
-            ),
-            default_text=settings.whisper_model,
-            ok="Zapisz",
-            cancel="Anuluj",
-            dimensions=(200, 24),
-        )
-        result = window.run()
-        
-        if result.clicked == 0:  # Cancel
-            return False
-        
-        model = result.text.strip().lower()
-        if model in SUPPORTED_MODELS:
-            if model != settings.whisper_model:
-                settings.whisper_model = model
-                logger.info(f"Zmieniono model na: {model}")
-                return True
-        
-        return False
+    return True
 

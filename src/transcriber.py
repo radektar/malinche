@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -18,6 +19,13 @@ from src.app_status import AppStatus
 from src.state_manager import get_last_sync_time, save_sync_time
 from src.tag_index import TagIndex
 from src.tagger import BaseTagger, get_tagger
+from src.fingerprint import compute_fingerprint
+from src.hostinfo import get_hostname
+from src.vault_index import IndexEntry, VaultIndex
+from src.config.license import license_manager
+from src.config.features import FeatureTier
+from src.config.settings import UserSettings
+from src.markdown_frontmatter import read_frontmatter
 
 
 def send_notification(title: str, message: str, subtitle: str = "") -> None:
@@ -167,6 +175,9 @@ class Transcriber:
         self.markdown_generator = MarkdownGenerator()
         self.tag_index = TagIndex()
         self.tagger: Optional[BaseTagger] = get_tagger()
+        self.vault_index = VaultIndex(self.config.TRANSCRIBE_DIR)
+        self.vault_index.load()
+        self._run_index_migration_if_needed()
         
         # Ensure output directory exists
         self.config.ensure_directories()
@@ -181,6 +192,34 @@ class Transcriber:
             updater: Function that takes (status, current_file, error_message)
         """
         self.state_updater = updater
+
+    def _run_index_migration_if_needed(self) -> None:
+        """Run one-time migration of legacy markdown metadata to index."""
+        try:
+            settings = UserSettings.load()
+            if settings.index_migrated and not self._vault_needs_reindex():
+                return
+            self._update_state(AppStatus.MIGRATING)
+            script_path = Path(__file__).resolve().parent.parent / "scripts" / "migrate_to_v2_index.py"
+            subprocess.run(
+                [sys.executable, str(script_path)],
+                timeout=120.0,
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+            self.vault_index.load()
+            self._update_state(AppStatus.IDLE)
+        except Exception as error:  # noqa: BLE001
+            logger.warning("Index migration failed (continuing): %s", error)
+
+    def _vault_needs_reindex(self) -> bool:
+        """Detect stale state where index is empty but markdown notes exist."""
+        if self.vault_index.entry_count() > 0:
+            return False
+        if not self.config.TRANSCRIBE_DIR.exists():
+            return False
+        return any(self.config.TRANSCRIBE_DIR.glob("*.md"))
     
     def _update_state(
         self,
@@ -644,8 +683,14 @@ class Transcriber:
                 self._update_state(AppStatus.IDLE)
     
     def _postprocess_transcript(
-        self, audio_file: Path, transcript_path: Path
-    ) -> bool:
+        self,
+        audio_file: Path,
+        transcript_path: Path,
+        fingerprint: str,
+        version: int = 1,
+        previous_version: Optional[str] = None,
+        output_filename: Optional[str] = None,
+    ) -> Optional[Path]:
         """Post-process transcript: generate summary and create markdown.
         
         Args:
@@ -663,7 +708,7 @@ class Transcriber:
             
             if not transcript_text.strip():
                 logger.warning("Empty transcript, skipping post-processing")
-                return False
+                return None
             
             # Generate summary (if summarizer available)
             summary = None
@@ -724,7 +769,17 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
                 summary=summary,
                 metadata=metadata,
                 output_dir=self.config.TRANSCRIBE_DIR,
-                tags=tags
+                tags=tags,
+                extra_frontmatter={
+                    "fingerprint": fingerprint,
+                    "source_volume": audio_file.parent.name,
+                    "version": version,
+                    "transcribed_on": get_hostname(),
+                    "model": self.config.WHISPER_MODEL,
+                    "language": self.config.WHISPER_LANGUAGE,
+                    "previous_version": previous_version or "",
+                },
+                output_filename=output_filename,
             )
             
             logger.info(f"✓ Markdown document created: {md_path.name}")
@@ -737,14 +792,14 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
                 except OSError as e:
                     logger.warning(f"Could not delete temporary TXT file: {e}")
             
-            return True
+            return md_path
             
         except Exception as e:
             logger.error(
                 f"Post-processing failed for {audio_file.name}: {e}",
                 exc_info=True
             )
-            return False
+            return None
 
     def _find_existing_markdown_for_audio(
         self, audio_file: Path
@@ -768,19 +823,9 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
 
             for md_path in self.config.TRANSCRIBE_DIR.glob("*.md"):
                 try:
-                    with md_path.open("r", encoding="utf-8") as md_file:
-                        # Read only the first few lines – frontmatter is at top
-                        lines: List[str] = []
-                        for _ in range(20):
-                            line = md_file.readline()
-                            if not line:
-                                break
-                            lines.append(line)
-
-                        frontmatter = "".join(lines)
-                        source_line = f"source: {audio_file.name}"
-                        if source_line in frontmatter:
-                            return md_path
+                    frontmatter = read_frontmatter(md_path)
+                    if frontmatter.get("source", "").strip() == audio_file.name:
+                        return md_path
                 except OSError as read_error:
                     logger.warning(
                         "Could not read markdown file %s: %s",
@@ -796,6 +841,39 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
             )
 
         return None
+
+    def _cache_fingerprint_for_existing_markdown(
+        self, audio_file: Path, markdown_path: Path, fingerprint: str
+    ) -> None:
+        """Store canonical sha256 index entry after legacy source-name fallback."""
+        if self.vault_index.lookup(fingerprint):
+            return
+
+        fm = read_frontmatter(markdown_path)
+        try:
+            version = int(fm.get("version", "1") or "1")
+        except ValueError:
+            version = 1
+
+        self.vault_index.add(
+            fingerprint,
+            IndexEntry(
+                fingerprint=fingerprint,
+                source_filename=audio_file.name,
+                source_volume=fm.get("source_volume", audio_file.parent.name),
+                markdown_path=markdown_path.name,
+                versions=[
+                    {
+                        "version": version,
+                        "transcribed_at": fm.get("recording_date", ""),
+                        "hostname": fm.get("transcribed_on", ""),
+                        "model": fm.get("model", ""),
+                        "language": fm.get("language", ""),
+                        "markdown_path": markdown_path.name,
+                    }
+                ],
+            ),
+        )
     
     def _remove_existing_transcription(self, audio_file: Path) -> Dict[str, List[str]]:
         """Remove existing transcription files for given audio.
@@ -847,9 +925,6 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
         Returns:
             True if re-transcription succeeded, False otherwise
         """
-        # #region agent log
-        import json; import datetime; log_path = "/Users/radoslawtaraszka/CODE/Olympus_transcription/.cursor/debug.log"; open(log_path, 'a').write(json.dumps({"location": "transcriber.py:799", "message": "force_retranscribe called", "data": {"audio_file": str(audio_file), "exists": audio_file.exists()}, "timestamp": datetime.datetime.now().timestamp() * 1000, "sessionId": "debug-session", "runId": "run1", "hypothesisId": "C"}) + '\n')
-        # #endregion
         if not audio_file.exists():
             logger.error(f"Audio file not found: {audio_file}")
             return False
@@ -859,9 +934,6 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
         # Acquire process lock to prevent conflicts
         lock = ProcessLock(self.config.PROCESS_LOCK_FILE)
         if not lock.acquire():
-            # #region agent log
-            import json; import datetime; log_path = "/Users/radoslawtaraszka/CODE/Olympus_transcription/.cursor/debug.log"; open(log_path, 'a').write(json.dumps({"location": "transcriber.py:822", "message": "Could not acquire lock", "data": {}, "timestamp": datetime.datetime.now().timestamp() * 1000, "sessionId": "debug-session", "runId": "run1", "hypothesisId": "C"}) + '\n')
-            # #endregion
             logger.warning(
                 "Cannot acquire lock - another transcription in progress"
             )
@@ -875,20 +947,9 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
                 f"{len(removed['removed_txt'])} TXT files"
             )
             
-            # Update state to show we're working
-            # #region agent log
-            import json; import datetime; log_path = "/Users/radoslawtaraszka/CODE/Olympus_transcription/.cursor/debug.log"; open(log_path, 'a').write(json.dumps({"location": "transcriber.py:835", "message": "Updating state to TRANSCRIBING", "data": {"audio_file_name": audio_file.name, "state_updater_exists": self.state_updater is not None}, "timestamp": datetime.datetime.now().timestamp() * 1000, "sessionId": "debug-session", "runId": "run1", "hypothesisId": "D"}) + '\n')
-            # #endregion
             self._update_state(AppStatus.TRANSCRIBING, audio_file.name)
             
-            # Run transcription
-            # #region agent log
-            import json; import datetime; log_path = "/Users/radoslawtaraszka/CODE/Olympus_transcription/.cursor/debug.log"; open(log_path, 'a').write(json.dumps({"location": "transcriber.py:838", "message": "Calling transcribe_file", "data": {"audio_file": str(audio_file)}, "timestamp": datetime.datetime.now().timestamp() * 1000, "sessionId": "debug-session", "runId": "run1", "hypothesisId": "C,E"}) + '\n')
-            # #endregion
             success = self.transcribe_file(audio_file)
-            # #region agent log
-            import json; import datetime; log_path = "/Users/radoslawtaraszka/CODE/Olympus_transcription/.cursor/debug.log"; open(log_path, 'a').write(json.dumps({"location": "transcriber.py:851", "message": "transcribe_file returned", "data": {"success": success}, "timestamp": datetime.datetime.now().timestamp() * 1000, "sessionId": "debug-session", "runId": "run1", "hypothesisId": "C,E"}) + '\n')
-            # #endregion
             
             if success:
                 logger.info(f"✅ Re-transcription complete: {audio_file.name}")
@@ -901,9 +962,6 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
             lock.release()
             # Reset state if no more files in progress
             if not self.transcription_in_progress:
-                # #region agent log
-                import json; import datetime; log_path = "/Users/radoslawtaraszka/CODE/Olympus_transcription/.cursor/debug.log"; open(log_path, 'a').write(json.dumps({"location": "transcriber.py:863", "message": "Resetting state to IDLE", "data": {}, "timestamp": datetime.datetime.now().timestamp() * 1000, "sessionId": "debug-session", "runId": "run1", "hypothesisId": "D,E"}) + '\n')
-                # #endregion
                 self._update_state(AppStatus.IDLE)
     
     def transcribe_file(self, audio_file: Path) -> bool:
@@ -920,13 +978,11 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
         """
         # If markdown already exists for this audio (based on `source` field),
         # treat it as successfully transcribed and skip any further work.
-        existing_md = self._find_existing_markdown_for_audio(audio_file)
-        if existing_md:
-            logger.info(
-                "✓ Already transcribed (markdown exists for source): %s -> %s",
-                audio_file.name,
-                existing_md.name,
-            )
+        fingerprint = compute_fingerprint(audio_file)
+        existing_entry = self.vault_index.lookup(fingerprint)
+        can_version = license_manager.get_current_tier() != FeatureTier.FREE
+        if existing_entry and not can_version:
+            logger.info("✓ Already transcribed (fingerprint exists): %s", audio_file.name)
             return True
 
         # If TXT transcript already exists, skip whisper and only post-process
@@ -941,7 +997,13 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
                 "creating markdown if needed: %s",
                 audio_file.name,
             )
-            success = self._postprocess_transcript(audio_file, transcript_path)
+            md_path = self._postprocess_transcript(
+                audio_file,
+                transcript_path,
+                fingerprint=fingerprint,
+                version=1,
+            )
+            success = md_path is not None
             if success:
                 logger.info("✓ Complete: %s", audio_file.name)
             else:
@@ -958,13 +1020,51 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
             return False
         
         # Post-process: generate summary and create markdown
-        success = self._postprocess_transcript(audio_file, transcript_path)
+        version = 1
+        previous_version = None
+        output_filename = None
+        if existing_entry and can_version:
+            version = len(existing_entry.versions) + 1
+            previous_version = existing_entry.markdown_path
+            output_filename = f"{audio_file.stem}.v{version}.md"
+        md_path = self._postprocess_transcript(
+            audio_file,
+            transcript_path,
+            fingerprint=fingerprint,
+            version=version,
+            previous_version=previous_version,
+            output_filename=output_filename,
+        )
+        success = md_path is not None
         
         if success:
             logger.info(f"✓ Complete: {audio_file.name}")
         else:
             logger.warning(f"⚠️  Transcription complete but post-processing failed: {audio_file.name}")
         
+        if success and md_path is not None:
+            version_info = {
+                "version": version,
+                "transcribed_at": self.vault_index.current_iso_timestamp(),
+                "hostname": get_hostname(),
+                "model": self.config.WHISPER_MODEL,
+                "language": self.config.WHISPER_LANGUAGE,
+                "markdown_path": md_path.name,
+            }
+            if existing_entry:
+                self.vault_index.add_version(fingerprint, version_info)
+            else:
+                self.vault_index.add(
+                    fingerprint,
+                    IndexEntry(
+                        fingerprint=fingerprint,
+                        source_filename=audio_file.name,
+                        source_volume=audio_file.parent.name,
+                        markdown_path=md_path.name,
+                        versions=[version_info],
+                    ),
+                )
+
         return success
     
     def process_recorder(self) -> None:
@@ -1035,11 +1135,24 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
                     logger.info(f"Processing: {recorder_file.name}")
                     
                     existing_markdown = self._find_existing_markdown_for_audio(recorder_file)
+                    fingerprint = compute_fingerprint(recorder_file)
+                    if self.vault_index.lookup(fingerprint):
+                        logger.info(
+                            "↪️ Skipping already transcribed file (fingerprint): %s",
+                            recorder_file.name,
+                        )
+                        processed_success += 1
+                        continue
                     if existing_markdown:
                         logger.info(
                             "↪️ Skipping already transcribed file: %s -> %s",
                             recorder_file.name,
                             existing_markdown.name,
+                        )
+                        self._cache_fingerprint_for_existing_markdown(
+                            recorder_file,
+                            existing_markdown,
+                            fingerprint,
                         )
                         processed_success += 1
                         continue

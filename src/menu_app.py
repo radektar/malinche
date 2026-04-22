@@ -31,7 +31,7 @@ load_env_file()
 
 from src.config import config
 from src.logger import logger
-from src.app_core import OlympusTranscriber
+from src.app_core import MalincheTranscriber
 from src.app_status import AppStatus
 from src.state_manager import reset_state
 from src.transcriber import send_notification
@@ -41,6 +41,9 @@ from src.setup import SetupWizard
 from src.ui.dialogs import choose_date_dialog, show_about_dialog
 from src.ui.constants import TEXTS
 from src.ui.settings_window import show_settings_window
+from src.ui.pro_activation import show_pro_activation, show_pro_status
+from src.config.license import license_manager
+from src.config.features import FeatureTier
 
 
 class MalincheMenuApp(rumps.App):
@@ -54,11 +57,15 @@ class MalincheMenuApp(rumps.App):
             )
 
         super(MalincheMenuApp, self).__init__(
-            "🎙️",
-            template=False
+            "Malinche",
+            title=None,
+            icon=None,
+            template=True,
         )
+        self._icon_paths = self._resolve_icon_paths()
+        self._update_icon(AppStatus.IDLE)
 
-        self.transcriber: Optional[OlympusTranscriber] = None
+        self.transcriber: Optional[MalincheTranscriber] = None
         self.daemon_thread: Optional[threading.Thread] = None
         self._running = False
         self._retranscription_in_progress = False
@@ -93,6 +100,13 @@ class MalincheMenuApp(rumps.App):
         )
         self.menu.add(self.settings_item)
 
+        # PRO Activation / Status
+        self.pro_item = rumps.MenuItem(
+            "Aktywuj PRO...",
+            callback=self._show_pro
+        )
+        self.menu.add(self.pro_item)
+
         self.about_item = rumps.MenuItem(
             "O aplikacji...",
             callback=self._show_about
@@ -122,6 +136,62 @@ class MalincheMenuApp(rumps.App):
         else:
             # Normal start - check dependencies
             rumps.Timer(self._delayed_check_dependencies, 1).start()
+
+    def _resolve_icon_paths(self) -> dict[AppStatus, Optional[str]]:
+        """Resolve menu bar status icon paths for dev and bundled app."""
+        candidates = []
+        if getattr(sys, "frozen", False):
+            candidates.append(Path(getattr(sys, "_MEIPASS", "")))
+            candidates.append(Path(sys.executable).resolve().parent.parent / "Resources")
+        candidates.append(Path(__file__).resolve().parent.parent / "assets")
+
+        mapping = {
+            AppStatus.IDLE: "idle.png",
+            AppStatus.SCANNING: "scanning.png",
+            AppStatus.TRANSCRIBING: "transcribing.png",
+            AppStatus.MIGRATING: "migrating.png",
+            AppStatus.ERROR: "error.png",
+        }
+        resolved: dict[AppStatus, Optional[str]] = {key: None for key in mapping}
+
+        for base in candidates:
+            icon_dir = base / "menu_bar"
+            for status, filename in mapping.items():
+                if resolved[status]:
+                    continue
+                icon_path = icon_dir / filename
+                try:
+                    # A PNG header is at least 8 bytes + IHDR; anything smaller is
+                    # a stale/corrupted placeholder we must ignore.
+                    if icon_path.exists() and icon_path.stat().st_size > 64:
+                        resolved[status] = str(icon_path)
+                except OSError:
+                    continue
+        return resolved
+
+    def _update_icon(self, status: AppStatus) -> None:
+        """Update menu bar icon based on app status.
+
+        When a template image is available we always clear the title so macOS
+        does not render both the icon and a stray emoji/name fallback next to
+        each other in the status bar.
+        """
+        icon_path = self._icon_paths.get(status)
+        if icon_path:
+            self.title = None
+            self.template = True
+            self.icon = icon_path
+            return
+
+        fallback_titles = {
+            AppStatus.IDLE: "🎙️",
+            AppStatus.SCANNING: "🔎",
+            AppStatus.TRANSCRIBING: "⏳",
+            AppStatus.MIGRATING: "🔄",
+            AppStatus.ERROR: "⚠️",
+        }
+        self.icon = None
+        self.title = fallback_titles.get(status, "🎙️")
 
     def _run_wizard_if_needed(self, timer):
         """Uruchom wizard jeśli to pierwsze uruchomienie."""
@@ -259,27 +329,30 @@ class MalincheMenuApp(rumps.App):
 
     def _update_status(self, _):
         """Update status menu item based on current state."""
+        # Update PRO item label based on current tier
+        tier = license_manager.get_current_tier()
+        if tier == FeatureTier.FREE:
+            self.pro_item.title = "Aktywuj PRO..."
+        else:
+            self.pro_item.title = "💎 Malinche PRO"
+
         if not self.transcriber:
             self.status_item.title = "Status: Nie uruchomiono"
+            self._update_icon(AppStatus.IDLE)
             return
 
         # Check retranscription first (takes priority)
         if self._retranscription_in_progress:
             filename = self._retranscription_file or "..."
             self.status_item.title = f"Status: Retranskrybowanie {filename}"
+            self._update_icon(AppStatus.TRANSCRIBING)
             return
 
         state = self.transcriber.state
         status_str = state.get_status_string()
         self.status_item.title = f"Status: {status_str}"
 
-        # Update icon based on status
-        if state.status == AppStatus.ERROR:
-            self.icon = None  # Could set error icon here
-        elif state.status == AppStatus.TRANSCRIBING:
-            self.icon = None  # Could set processing icon here
-        else:
-            self.icon = None  # Default icon
+        self._update_icon(state.status)
 
     def _open_logs(self, _):
         """Open log file in default editor."""
@@ -340,6 +413,10 @@ class MalincheMenuApp(rumps.App):
         """Show settings window."""
         show_settings_window()
 
+    def _show_pro(self, _):
+        """Show PRO activation or status dialog."""
+        show_pro_status()
+
     def _show_about(self, _):
         """Show About dialog with app information."""
         show_about_dialog()
@@ -371,6 +448,19 @@ class MalincheMenuApp(rumps.App):
 
     def _refresh_retranscribe_menu(self, _):
         """Refresh the retranscribe submenu with current staged files."""
+        if license_manager.get_current_tier() == FeatureTier.FREE:
+            self.retranscribe_menu.title = "Retranskrypcja (PRO)"
+            try:
+                if self.retranscribe_menu._menu is not None:
+                    self.retranscribe_menu.clear()
+            except (AttributeError, TypeError):
+                pass
+            locked_item = rumps.MenuItem("Upgrade do PRO, aby tworzyć wersje v2/v3")
+            locked_item.set_callback(None)
+            self.retranscribe_menu.add(locked_item)
+            return
+
+        self.retranscribe_menu.title = "Retranskrybuj plik..."
         # Clear existing submenu items (handle case when _menu is not yet initialized)
         try:
             if self.retranscribe_menu._menu is not None:
@@ -519,7 +609,7 @@ class MalincheMenuApp(rumps.App):
         try:
             logger.info("Starting transcriber daemon from menu app...")
             # Don't setup signal handlers in background thread
-            self.transcriber = OlympusTranscriber(setup_signals=False)
+            self.transcriber = MalincheTranscriber(setup_signals=False)
             self.transcriber.start()
         except Exception as e:
             logger.error(f"Error in daemon thread: {e}", exc_info=True)
@@ -554,7 +644,7 @@ class MalincheMenuApp(rumps.App):
             self._start_daemon()
 
         # Run menu app (blocks until quit)
-        super(OlympusMenuApp, self).run()
+        super(MalincheMenuApp, self).run()
 
 
 def main():

@@ -5,10 +5,6 @@ All notable changes to Malinche will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
----
-
 ## [2.0.0-alpha.1] - 2026-02-08
 
 ### Added
@@ -86,8 +82,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - [ ] **Faza 6:** Profesjonalny DMG & GitHub Release
   - ✅ **Faza 7:** GUI Settings & polish (COMPLETED ✅ - wszystkie testy przechodzą, 9/9 manualnych)
     - ✅ Okno ustawień aplikacji (zmiana folderu, języka, modelu po instalacji)
-  - [ ] **Faza 8:** Infrastruktura Freemium (feature flags, placeholder PRO)
-  - [ ] **Faza 9:** Pełny redesign UI (nowy instalator, menu, ikony, kolory)
+  - ✅ **Faza 8:** Infrastruktura Freemium (COMPLETED ✅)
+    - ✅ System feature flags (FREE/PRO/PRO_ORG)
+    - ✅ License Manager z offline cache
+    - ✅ PRO gate dla AI podsumowań i tagów
+    - ✅ UI aktywacji PRO w menu paska stanu
+  - ✅ **Faza 9:** Pełny redesign UI (menu bar icons, nowa ikona appki, DMG background, branding dialogów)
+  - ✅ **Multi-device dedup v2:** fingerprint audio + `.malinche/index.json` + migracja legacy `.md`
+    - FREE: skip transkrypcji gdy fingerprint istnieje
+    - PRO: wersjonowanie re-transkrypcji (`.v2.md`, `.v3.md`) z `previous_version`
 
 ### Planned Features
 - **🔒 PRO Features (v2.1.0)** - AI summaries, auto-tagging, cloud sync

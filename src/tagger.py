@@ -196,8 +196,17 @@ class ClaudeTagger(BaseTagger):
         return unique
 
 
+from src.config.license import license_manager
+
+
 def get_tagger() -> Optional[BaseTagger]:
     """Factory returning tagger instance based on configuration."""
+    # PRO Check: License must support AI tags
+    features = license_manager.get_features()
+    if not features.ai_smart_tags:
+        logger.info("AI tags require PRO license - skipping")
+        return None
+
     if not config.ENABLE_LLM_TAGGING:
         logger.debug("LLM tagging disabled in config.")
         return None
