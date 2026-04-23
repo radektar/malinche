@@ -7,27 +7,16 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional, List
 
-# Load environment variables from project .env so Claude credentials
-# are available even when launching the menu app directly.
-try:
-    from dotenv import load_dotenv
+from src.bootstrap import ensure_ready
 
-    _ENV_PATH = Path(__file__).parent.parent / ".env"
-    if _ENV_PATH.exists():
-        load_dotenv(_ENV_PATH)
-except ImportError:
-    pass
+# Bootstrap must run before any config-dependent imports.
+ensure_ready()
 
 try:
     import rumps
     RUMPS_AVAILABLE = True
 except ImportError:
     RUMPS_AVAILABLE = False
-
-from src.env_loader import load_env_file
-
-# Ensure .env variables (e.g., ANTHROPIC_API_KEY) are available before config load
-load_env_file()
 
 from src.config import config
 from src.logger import logger

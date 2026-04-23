@@ -191,6 +191,22 @@ class TestDependencyDownloader:
 
         assert downloader.check_all() is False
 
+    def test_download_all_downloads_selected_model(self, downloader, monkeypatch):
+        """download_all powinien pobierać model wybrany w ustawieniach."""
+        monkeypatch.setattr(downloader, "check_network", lambda: True)
+        monkeypatch.setattr(downloader, "check_disk_space", lambda *args, **kwargs: True)
+        monkeypatch.setattr(downloader, "is_whisper_installed", lambda: True)
+        monkeypatch.setattr(downloader, "verify_whisper_runtime", lambda: None)
+        monkeypatch.setattr(downloader, "is_ffmpeg_installed", lambda: True)
+        monkeypatch.setattr(downloader, "_selected_model", lambda: "medium")
+        monkeypatch.setattr(downloader, "is_model_installed", lambda model: False)
+
+        download_model_mock = Mock(return_value=True)
+        monkeypatch.setattr(downloader, "download_model", download_model_mock)
+
+        assert downloader.download_all() is True
+        download_model_mock.assert_called_once_with("medium")
+
     def test_check_all_false(self, downloader):
         """Test check_all - brakuje zależności."""
         result = downloader.check_all()

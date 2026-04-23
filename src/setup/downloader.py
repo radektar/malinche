@@ -583,11 +583,11 @@ class DependencyDownloader:
         self._download_file(url, dest, "ffmpeg", expected_size, expected_checksum)
         return True
 
-    def download_model(self, model: str = "small") -> bool:
+    def download_model(self, model: str) -> bool:
         """Pobierz model whisper.
 
         Args:
-            model: Nazwa modelu (default: "small")
+            model: Nazwa modelu
 
         Returns:
             True jeśli pobieranie się powiodło
@@ -647,8 +647,9 @@ class DependencyDownloader:
             if not self.is_ffmpeg_installed():
                 self.download_ffmpeg()
 
-            if not self.is_model_installed():
-                self.download_model()
+            selected_model = self._selected_model()
+            if not self.is_model_installed(selected_model):
+                self.download_model(selected_model)
 
             logger.info("✓ Wszystkie zależności zainstalowane")
             return True

@@ -154,22 +154,22 @@ tags: [{tags}]
             else:
                 self.TRANSCRIBE_DIR = Path(str(out_dir)).expanduser()
         
+        support_dir = Path.home() / "Library" / "Application Support" / "Malinche"
+
         if self.LOG_DIR is None:
-            self.LOG_DIR = Path.home() / "Library" / "Logs"
+            self.LOG_DIR = support_dir / "logs"
         
         if self.STATE_FILE is None:
-            # Keep legacy state file path for backward compatibility
-            self.STATE_FILE = Path.home() / ".olympus_transcriber_state.json"
+            self.STATE_FILE = support_dir / "state.json"
         
         if self.LOG_FILE is None:
-            self.LOG_FILE = self.LOG_DIR / "olympus_transcriber.log"
+            self.LOG_FILE = self.LOG_DIR / "malinche.log"
         
         if self.LOCAL_RECORDINGS_DIR is None:
-            # Default to ~/.olympus_transcriber/recordings for staging
-            self.LOCAL_RECORDINGS_DIR = Path.home() / ".olympus_transcriber" / "recordings"
+            self.LOCAL_RECORDINGS_DIR = support_dir / "recordings"
         
         if self.PROCESS_LOCK_FILE is None:
-            self.PROCESS_LOCK_FILE = Path.home() / ".olympus_transcriber" / "transcriber.lock"
+            self.PROCESS_LOCK_FILE = support_dir / "runtime" / "transcriber.lock"
         
         if self.AUDIO_EXTENSIONS is None:
             self.AUDIO_EXTENSIONS = defaults.AUDIO_EXTENSIONS
@@ -205,49 +205,17 @@ tags: [{tags}]
                     self.WHISPER_CPP_PATH = new_whisper_path
         
         if self.WHISPER_CPP_MODELS_DIR is None:
-            # Primary location: ~/Library/Application Support/Malinche/models/
-            malinche_support_dir = (
-                Path.home() / "Library" / "Application Support" / "Malinche"
-            )
-            legacy_support_dir = (
-                Path.home() / "Library" / "Application Support" / "Transrec"
-            )
-            malinche_models_dir = malinche_support_dir / "models"
-            legacy_models_dir = legacy_support_dir / "models"
-
-            if malinche_models_dir.exists():
-                self.WHISPER_CPP_MODELS_DIR = malinche_models_dir
-            elif legacy_models_dir.exists():
-                # Read-only fallback for pre-migration installs.
-                self.WHISPER_CPP_MODELS_DIR = legacy_models_dir
-            else:
-                # Legacy fallback for local developer setups.
-                self.WHISPER_CPP_MODELS_DIR = Path.home() / "whisper.cpp" / "models"
+            self.WHISPER_CPP_MODELS_DIR = support_dir / "models"
         
         if self.FFMPEG_PATH is None:
-            # Primary location: ~/Library/Application Support/Malinche/bin/ffmpeg
-            malinche_support_dir = (
-                Path.home() / "Library" / "Application Support" / "Malinche"
-            )
-            legacy_support_dir = (
-                Path.home() / "Library" / "Application Support" / "Transrec"
-            )
-            malinche_ffmpeg_path = malinche_support_dir / "bin" / "ffmpeg"
-            legacy_ffmpeg_path = legacy_support_dir / "bin" / "ffmpeg"
-
-            if malinche_ffmpeg_path.exists():
-                self.FFMPEG_PATH = malinche_ffmpeg_path
-            elif legacy_ffmpeg_path.exists():
-                # Read-only fallback for pre-migration installs.
-                self.FFMPEG_PATH = legacy_ffmpeg_path
+            malinche_ffmpeg_path = support_dir / "bin" / "ffmpeg"
+            # Fallback do systemowego ffmpeg (dev environment).
+            system_ffmpeg = shutil.which("ffmpeg")
+            if system_ffmpeg:
+                self.FFMPEG_PATH = Path(system_ffmpeg)
             else:
-                # Fallback do systemowego ffmpeg (shutil.which)
-                system_ffmpeg = shutil.which("ffmpeg")
-                if system_ffmpeg:
-                    self.FFMPEG_PATH = Path(system_ffmpeg)
-                else:
-                    # Default - new location (downloaded by DependencyDownloader)
-                    self.FFMPEG_PATH = malinche_ffmpeg_path
+                # Default - new location (downloaded by DependencyDownloader)
+                self.FFMPEG_PATH = malinche_ffmpeg_path
         
         # Load LLM API key from UserSettings only
         # Environment variables should be migrated to UserSettings via perform_migration_if_needed()
@@ -289,6 +257,8 @@ tags: [{tags}]
         self.TRANSCRIBE_DIR.mkdir(parents=True, exist_ok=True)
         self.LOG_DIR.mkdir(parents=True, exist_ok=True)
         self.LOCAL_RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+        self.STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        self.PROCESS_LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 
 # Global configuration instance

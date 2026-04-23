@@ -5,6 +5,20 @@ All notable changes to Malinche will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0-alpha.6] - 2026-04-23
+
+### Fixed
+- **Wdrożono pojedynczy bootstrap `ensure_ready()` jako źródło prawdy dla migracji legacy** i podpięto go do obu entry-pointów (`src/main.py`, `src/menu_app.py`), dzięki czemu migracja uruchamia się deterministycznie również w aplikacji menu bar.
+- **Usunięto runtime fallbacki do `Transrec` i `.olympus_transcriber*` poza bootstrapem**: `Config` używa teraz wyłącznie ścieżek `Malinche` dla `state.json`, locka, recordings i loga.
+- **Naprawiono root cause pobierania złego modelu**: `DependencyDownloader.download_all()` pobiera teraz model wybrany przez użytkownika (`self._selected_model()`), a `download_model()` wymaga jawnego argumentu modelu.
+
+### Added
+- **Nowe testy strażnicze architektury migracji**:
+  - `tests/test_bootstrap.py` (migracja e2e + idempotencja),
+  - `tests/test_entry_points_bootstrap.py` (kolejność bootstrap przed config/logger),
+  - `tests/test_no_legacy_names.py` (blokada legacy nazw poza `src/bootstrap.py`).
+- **Rozszerzone testy downloadera i uproszczone testy migracji/config** pod nowy model z jednym boundary legacy.
+
 ## [2.0.0-alpha.5] - 2026-04-23
 
 ### Fixed
