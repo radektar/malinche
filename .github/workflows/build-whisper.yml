@@ -84,13 +84,13 @@ jobs:
           cp whisper.cpp/build-shared/ggml/src/ggml-blas/libggml-blas.0.dylib bundled/
           cp whisper.cpp/build-shared/ggml/src/ggml-metal/libggml-metal.0.dylib bundled/
 
-          mapfile -t rpaths < <(otool -l bundled/whisper-cli | awk '/LC_RPATH/{getline; getline; print $2}')
-          for old_path in "${rpaths[@]}"; do
+          rpaths="$(otool -l bundled/whisper-cli | awk '/LC_RPATH/{getline; getline; print $2}')"
+          while IFS= read -r old_path; do
             if [[ "$old_path" == *"/Users/runner/work/transrec/transrec/whisper.cpp/"* ]]; then
               install_name_tool -delete_rpath "$old_path" bundled/whisper-cli
             fi
-          done
-          if ! printf '%s\n' "${rpaths[@]}" | rg -q "^@loader_path$"; then
+          done <<< "$rpaths"
+          if ! printf '%s\n' "$rpaths" | grep -q "^@loader_path$"; then
             install_name_tool -add_rpath @loader_path bundled/whisper-cli
           fi
           codesign -s - --force bundled/whisper-cli bundled/*.dylib
