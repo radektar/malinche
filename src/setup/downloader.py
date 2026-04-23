@@ -14,7 +14,7 @@ import httpx
 
 from src.config.settings import UserSettings
 from src.logger import logger
-from src.setup.checksums import CHECKSUMS, SIZES, URLS, VERSIONS
+from src.setup.checksums import CHECKSUMS, MODEL_ALIASES, SIZES, URLS, VERSIONS
 from src.setup.errors import (
     ChecksumError,
     DependencyRuntimeError,
@@ -99,11 +99,11 @@ class DependencyDownloader:
         return True
 
     def verify_checksum(self, file_path: Path, expected_checksum: str) -> bool:
-        """Zweryfikuj SHA256 checksum pliku.
+        """Zweryfikuj checksum pliku (sha256 lub sha1).
 
         Args:
             file_path: Ścieżka do pliku
-            expected_checksum: Oczekiwany checksum SHA256
+            expected_checksum: Oczekiwany checksum (sha256/sha1)
 
         Returns:
             True jeśli checksum się zgadza, False w przeciwnym razie
@@ -114,17 +114,27 @@ class DependencyDownloader:
             )
             return True
 
-        sha256 = hashlib.sha256()
+        algo = "sha256"
+        expected_hash = expected_checksum.lower()
+        if ":" in expected_hash:
+            algo, expected_hash = expected_hash.split(":", 1)
+
+        try:
+            digest = hashlib.new(algo)
+        except ValueError:
+            logger.error(f"Nieobsługiwany algorytm checksum: {algo}")
+            return False
+
         try:
             with open(file_path, "rb") as f:
                 for chunk in iter(lambda: f.read(8192), b""):
-                    sha256.update(chunk)
+                    digest.update(chunk)
         except IOError as e:
             logger.error(f"Błąd podczas czytania pliku {file_path}: {e}")
             return False
 
-        actual_checksum = sha256.hexdigest()
-        return actual_checksum == expected_checksum.lower().replace("sha256:", "")
+        actual_checksum = digest.hexdigest()
+        return actual_checksum == expected_hash
 
     def is_whisper_installed(self) -> bool:
         """Sprawdź czy whisper.cpp jest zainstalowany.
@@ -179,6 +189,11 @@ class DependencyDownloader:
             return "small"
         return model or "small"
 
+    def _canonical_model(self, model: Optional[str] = None) -> str:
+        """Map user-facing model key to canonical whisper.cpp artifact key."""
+        selected = model or self._selected_model()
+        return MODEL_ALIASES.get(selected, selected)
+
     def is_model_installed(self, model: Optional[str] = None) -> bool:
         """Sprawdź czy model jest pobrany.
 
@@ -188,7 +203,7 @@ class DependencyDownloader:
         Returns:
             True jeśli model istnieje
         """
-        selected_model = model or self._selected_model()
+        selected_model = self._canonical_model(model)
         model_path = self.models_dir / f"ggml-{selected_model}.bin"
         return model_path.exists()
 
@@ -204,7 +219,7 @@ class DependencyDownloader:
         else:
             whisper_present = self.is_whisper_installed()
 
-        selected_model = self._selected_model()
+        selected_model = self._canonical_model(self._selected_model())
         if not (
             whisper_present
             and self.is_ffmpeg_installed()
@@ -596,28 +611,31 @@ class DependencyDownloader:
             ValueError: Jeśli nieznany model
             DownloadError: Jeśli pobieranie się nie powiodło
         """
+        canonical_model = self._canonical_model(model)
         url = URLS.get(f"model_{model}")
         if not url:
             raise ValueError(f"Nieznany model: {model}")
 
-        dest = self.models_dir / f"ggml-{model}.bin"
-        expected_size = SIZES.get(f"ggml-{model}.bin")
-        expected_checksum = CHECKSUMS.get(f"ggml-{model}.bin")
+        dest = self.models_dir / f"ggml-{canonical_model}.bin"
+        expected_size = SIZES.get(f"ggml-{canonical_model}.bin")
+        expected_checksum = CHECKSUMS.get(f"ggml-{canonical_model}.bin")
 
         # Sprawdź czy plik istnieje i ma poprawny checksum
         if self.is_model_installed(model):
             if expected_checksum and self.verify_checksum(dest, expected_checksum):
-                logger.info(f"Model {model} już zainstalowany i zweryfikowany")
+                logger.info(
+                    f"Model {model} ({canonical_model}) już zainstalowany i zweryfikowany"
+                )
                 return True
             else:
                 # Plik istnieje ale checksum się nie zgadza - usuń i pobierz ponownie
                 logger.warning(
-                    f"Model {model} istnieje ale checksum się nie zgadza - pobieranie ponownie"
+                    f"Model {model} ({canonical_model}) istnieje ale checksum się nie zgadza - pobieranie ponownie"
                 )
                 dest.unlink()
 
         self._download_file(
-            url, dest, f"model-{model}", expected_size, expected_checksum
+            url, dest, f"model-{canonical_model}", expected_size, expected_checksum
         )
         return True
 
@@ -634,8 +652,20 @@ class DependencyDownloader:
             # Sprawdź połączenie sieciowe
             self.check_network()
 
-            # Sprawdź miejsce na dysku (suma wszystkich plików)
-            total_size = sum(SIZES.values())
+            # Sprawdź miejsce na dysku tylko dla brakujących zależności.
+            total_size = 0
+            if not self.is_whisper_installed():
+                total_size += SIZES.get("whisper-cli", 0)
+            if not self.is_ffmpeg_installed():
+                total_size += SIZES.get("ffmpeg-arm64", 0)
+
+            selected_model = self._selected_model()
+            canonical_model = self._canonical_model(selected_model)
+            if not self.is_model_installed(selected_model):
+                total_size += SIZES.get(
+                    f"ggml-{canonical_model}.bin",
+                    MIN_DISK_SPACE_BYTES,
+                )
             self.check_disk_space(total_size)
 
             # Pobierz brakujące zależności
@@ -647,7 +677,6 @@ class DependencyDownloader:
             if not self.is_ffmpeg_installed():
                 self.download_ffmpeg()
 
-            selected_model = self._selected_model()
             if not self.is_model_installed(selected_model):
                 self.download_model(selected_model)
 

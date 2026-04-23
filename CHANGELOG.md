@@ -5,6 +5,17 @@ All notable changes to Malinche will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0-alpha.7] - 2026-04-23
+
+### Fixed
+- **Dodano pełne wsparcie pobierania modeli Whisper używanych w aplikacji** (`tiny`, `base`, `small`, `medium`, `large`) przez rozszerzenie metadanych URL/checksum/size oraz mapowanie `large` na kanoniczny artefakt `large-v3`.
+- **Usunięto root cause błędu `Nieznany model: medium`**: downloader buduje teraz ścieżki modelu po nazwie kanonicznej i poprawnie obsługuje konfiguracje zmigrowane z `whisper_model: "medium"`.
+- **Naprawiono fałszywe błędy miejsca na dysku podczas setupu**: `download_all()` liczy wymagany rozmiar tylko dla brakujących komponentów zamiast sumy wszystkich możliwych modeli.
+
+### Added
+- **Obsługa prefiksowanych checksumów `sha1:` i `sha256:`** w weryfikacji pobranych artefaktów modeli.
+- **Nowe testy guardrail dla modeli** (`tests/test_checksums.py`) oraz rozszerzone testy downloadera dla `medium`, aliasu `large -> large-v3`, checksumu SHA-1 i kalkulacji miejsca (`tests/test_downloader.py`).
+
 ## [2.0.0-alpha.6] - 2026-04-23
 
 ### Fixed

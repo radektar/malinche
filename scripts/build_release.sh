@@ -27,7 +27,7 @@ case "${PLATFORM}" in
         
         # 3. Generate checksums
         echo "--- Step 3: Generating checksums ---"
-        VERSION=$(python3 -c "import setup_app; print(setup_app.APP_VERSION)" 2>/dev/null || echo "2.0.0-alpha.6")
+        VERSION=$(python3 -c "import setup_app; print(setup_app.APP_VERSION)" 2>/dev/null || echo "2.0.0-alpha.7")
         DMG_FILE="dist/${APP_NAME}-${VERSION}-ARM64-UNSIGNED.dmg"
         
         if [ -f "${DMG_FILE}" ]; then

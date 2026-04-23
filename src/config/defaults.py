@@ -36,7 +36,7 @@ SUPPORTED_MODELS = {
     "base": "Base (szybki, średnia jakość)",
     "small": "Small (zalecany)",
     "medium": "Medium (wolny, wysoka jakość)",
-    "large": "Large (bardzo wolny, najwyższa jakość)",
+    "large": "Large (large-v3, najwyższa jakość)",
 }
 DEFAULT_MODEL = "small"
 

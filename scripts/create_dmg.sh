@@ -5,7 +5,7 @@
 set -e
 
 APP_NAME="Malinche"
-VERSION=$(python3 -c "import setup_app; print(setup_app.APP_VERSION)" 2>/dev/null || echo "2.0.0-alpha.6")
+VERSION=$(python3 -c "import setup_app; print(setup_app.APP_VERSION)" 2>/dev/null || echo "2.0.0-alpha.7")
 DMG_FILENAME="${APP_NAME}-${VERSION}-ARM64-UNSIGNED.dmg"
 DIST_DIR="dist"
 APP_PATH="${DIST_DIR}/${APP_NAME}.app"
