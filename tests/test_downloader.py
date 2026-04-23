@@ -1,8 +1,10 @@
 """Unit tests for dependency downloader."""
 
 import hashlib
+import io
 import shutil
 import socket
+import tarfile
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 from urllib.error import HTTPError, URLError
@@ -12,6 +14,7 @@ import pytest
 from src.setup.downloader import DependencyDownloader, MAX_RETRIES
 from src.setup.errors import (
     ChecksumError,
+    DependencyRuntimeError,
     DiskSpaceError,
     DownloadError,
     NetworkError,
@@ -168,6 +171,8 @@ class TestDependencyDownloader:
         
         # Mock checksum verification to return True (test files don't have real checksums)
         monkeypatch.setattr(downloader, "verify_checksum", lambda path, checksum: True)
+        monkeypatch.setattr(downloader, "verify_whisper_runtime", lambda: None)
+        monkeypatch.setattr(downloader, "_whisper_distribution", lambda: "static")
 
         result = downloader.check_all()
         assert result is True
@@ -176,6 +181,94 @@ class TestDependencyDownloader:
         """Test check_all - brakuje zależności."""
         result = downloader.check_all()
         assert result is False
+
+    def test_check_all_false_when_runtime_check_fails(self, downloader, monkeypatch):
+        """check_all zwraca False gdy whisper-cli nie uruchamia się."""
+        (downloader.bin_dir / "whisper-cli").write_bytes(b"fake")
+        (downloader.bin_dir / "ffmpeg").write_bytes(b"fake")
+        (downloader.models_dir / "ggml-small.bin").write_bytes(b"fake")
+
+        monkeypatch.setattr(downloader, "verify_checksum", lambda path, checksum: True)
+
+        def _raise_runtime() -> None:
+            raise DependencyRuntimeError("dyld: Library not loaded")
+
+        monkeypatch.setattr(downloader, "verify_whisper_runtime", _raise_runtime)
+
+        assert downloader.check_all() is False
+
+    def test_verify_whisper_runtime_passes_when_help_exits_zero(
+        self, downloader, monkeypatch
+    ):
+        """verify_whisper_runtime przechodzi gdy --help kończy się kodem 0."""
+        whisper_path = downloader.bin_dir / "whisper-cli"
+        whisper_path.write_bytes(b"fake")
+        whisper_path.chmod(0o755)
+
+        completed = Mock(returncode=0, stderr=b"", stdout=b"usage")
+        monkeypatch.setattr(
+            "src.setup.downloader.subprocess.run", lambda *args, **kwargs: completed
+        )
+
+        downloader.verify_whisper_runtime()
+
+    def test_verify_whisper_runtime_raises_on_dyld_error(
+        self, downloader, monkeypatch
+    ):
+        """verify_whisper_runtime zgłasza błąd gdy dyld nie ładuje biblioteki."""
+        whisper_path = downloader.bin_dir / "whisper-cli"
+        whisper_path.write_bytes(b"fake")
+        whisper_path.chmod(0o755)
+
+        completed = Mock(
+            returncode=1,
+            stderr=b"dyld: Library not loaded: @rpath/libwhisper.1.dylib",
+            stdout=b"",
+        )
+        monkeypatch.setattr(
+            "src.setup.downloader.subprocess.run", lambda *args, **kwargs: completed
+        )
+
+        with pytest.raises(DependencyRuntimeError, match="Library not loaded"):
+            downloader.verify_whisper_runtime()
+
+    def test_download_whisper_bundled_extracts_dylibs(self, downloader, monkeypatch):
+        """download_whisper rozpakowuje whisper-cli i dylibs z archiwum."""
+        archive_name = "whisper-bundled-arm64.tar.gz"
+        libs = [
+            "libwhisper.1.dylib",
+            "libggml.0.dylib",
+            "libggml-base.0.dylib",
+            "libggml-cpu.0.dylib",
+            "libggml-blas.0.dylib",
+            "libggml-metal.0.dylib",
+        ]
+
+        def _fake_download(url, dest, name, expected_size=None, expected_checksum=None):
+            del url, name, expected_size, expected_checksum
+            with tarfile.open(dest, "w:gz") as tar:
+                payload = {
+                    "whisper-cli": b"binary",
+                    **{lib_name: b"lib" for lib_name in libs},
+                }
+                for member_name, content in payload.items():
+                    info = tarfile.TarInfo(member_name)
+                    info.size = len(content)
+                    tar.addfile(info, io.BytesIO(content))
+
+        monkeypatch.setattr(downloader, "_whisper_distribution", lambda: "bundled")
+        monkeypatch.setattr(downloader, "_download_file", _fake_download)
+        monkeypatch.setattr(downloader, "verify_whisper_runtime", lambda: None)
+        monkeypatch.setattr("src.setup.downloader.URLS", {"whisper": "http://test"})
+        monkeypatch.setattr("src.setup.downloader.SIZES", {archive_name: 0})
+        monkeypatch.setattr("src.setup.downloader.CHECKSUMS", {archive_name: ""})
+        monkeypatch.setattr("platform.machine", lambda: "arm64")
+
+        assert downloader.download_whisper() is True
+        assert (downloader.bin_dir / "whisper-cli").exists()
+        for lib_name in libs:
+            assert (downloader.bin_dir / lib_name).exists()
+        assert not (downloader.downloads_dir / archive_name).exists()
 
     @pytest.mark.skip(reason="Wymaga przepisania na httpx - używamy testów integracyjnych")
     @patch("src.setup.downloader.urlopen")

@@ -4,6 +4,8 @@ import hashlib
 import platform
 import shutil
 import socket
+import subprocess
+import tarfile
 import time
 from pathlib import Path
 from typing import Callable, Optional
@@ -11,9 +13,10 @@ from typing import Callable, Optional
 import httpx
 
 from src.logger import logger
-from src.setup.checksums import CHECKSUMS, SIZES, URLS
+from src.setup.checksums import CHECKSUMS, SIZES, URLS, VERSIONS
 from src.setup.errors import (
     ChecksumError,
+    DependencyRuntimeError,
     DiskSpaceError,
     DownloadError,
     NetworkError,
@@ -131,6 +134,32 @@ class DependencyDownloader:
         whisper_path = self.bin_dir / "whisper-cli"
         return whisper_path.exists() and whisper_path.stat().st_size > 0
 
+    def _expected_whisper_dylibs(self) -> list[str]:
+        """Return dylibs required by bundled whisper distribution."""
+        return [
+            "libwhisper.1.dylib",
+            "libggml.0.dylib",
+            "libggml-base.0.dylib",
+            "libggml-cpu.0.dylib",
+            "libggml-blas.0.dylib",
+            "libggml-metal.0.dylib",
+        ]
+
+    def _whisper_distribution(self) -> str:
+        """Return selected whisper distribution mode.
+
+        Supported values:
+            - "static": single standalone binary
+            - "bundled": tar.gz with whisper-cli + dylibs
+        """
+        return VERSIONS.get("whisper_distribution", "static")
+
+    def _is_bundled_install_complete(self) -> bool:
+        """Check if bundled installation has all companion dylibs."""
+        if not self.is_whisper_installed():
+            return False
+        return all((self.bin_dir / name).exists() for name in self._expected_whisper_dylibs())
+
     def is_ffmpeg_installed(self) -> bool:
         """Sprawdź czy ffmpeg jest zainstalowany.
 
@@ -159,11 +188,12 @@ class DependencyDownloader:
             True jeśli wszystkie zależności są dostępne i mają poprawne checksumy
         """
         # Sprawdź czy pliki istnieją
-        if not (
-            self.is_whisper_installed()
-            and self.is_ffmpeg_installed()
-            and self.is_model_installed()
-        ):
+        if self._whisper_distribution() == "bundled":
+            whisper_present = self._is_bundled_install_complete()
+        else:
+            whisper_present = self.is_whisper_installed()
+
+        if not (whisper_present and self.is_ffmpeg_installed() and self.is_model_installed()):
             return False
         
         # Weryfikuj checksumy
@@ -199,7 +229,70 @@ class DependencyDownloader:
                 )
                 return False
         
+        try:
+            self.verify_whisper_runtime()
+        except DependencyRuntimeError as error:
+            logger.warning("Runtime check whisper-cli failed in check_all(): %s", error)
+            return False
+
         return True
+
+    def verify_whisper_runtime(self) -> None:
+        """Ensure whisper-cli can start and link runtime dependencies."""
+        binary = self.bin_dir / "whisper-cli"
+        if not binary.exists():
+            raise DependencyRuntimeError("whisper-cli nie istnieje")
+
+        try:
+            result = subprocess.run(
+                [str(binary), "--help"],
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise DependencyRuntimeError(
+                f"Nie można uruchomić whisper-cli: {error}"
+            ) from error
+
+        if result.returncode == 0:
+            return
+
+        stderr = result.stderr.decode("utf-8", errors="replace").strip()
+        stdout = result.stdout.decode("utf-8", errors="replace").strip()
+        details = stderr or stdout or f"exit code {result.returncode}"
+        raise DependencyRuntimeError(
+            f"whisper-cli zainstalowany ale nie startuje: {details}"
+        )
+
+    def _cleanup_bundled_whisper(self) -> None:
+        """Remove whisper binary and companion dylibs before reinstall."""
+        for name in ["whisper-cli", *self._expected_whisper_dylibs()]:
+            target = self.bin_dir / name
+            try:
+                if target.exists():
+                    target.unlink()
+            except OSError:
+                logger.debug("Could not remove previous bundled artifact: %s", target)
+
+    def _extract_whisper_bundle(self, archive_path: Path) -> None:
+        """Extract bundled whisper tarball into bin directory safely."""
+        self.bin_dir.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(archive_path, "r:gz") as tar:
+            for member in tar.getmembers():
+                member_path = Path(member.name)
+                if member_path.is_absolute() or ".." in member_path.parts:
+                    raise DownloadError(
+                        f"Niebezpieczna ścieżka w archiwum whisper: {member.name}"
+                    )
+            try:
+                tar.extractall(self.bin_dir, filter="data")
+            except TypeError:
+                tar.extractall(self.bin_dir)
+
+        whisper_path = self.bin_dir / "whisper-cli"
+        if whisper_path.exists():
+            whisper_path.chmod(0o755)
 
     def _download_file(
         self,
@@ -377,10 +470,52 @@ class DependencyDownloader:
         if arch != "arm64":
             raise RuntimeError(f"Nieobsługiwana architektura: {arch}")
 
+        distribution = self._whisper_distribution()
         url = URLS["whisper"]
         dest = self.bin_dir / "whisper-cli"
         expected_size = SIZES.get("whisper-cli")
         expected_checksum = CHECKSUMS.get("whisper-cli")
+
+        if distribution == "bundled":
+            archive_name = "whisper-bundled-arm64.tar.gz"
+            archive_dest = self.downloads_dir / archive_name
+            expected_size = SIZES.get(archive_name)
+            expected_checksum = CHECKSUMS.get(archive_name)
+
+            # Broken migration: existing bare whisper-cli from old deps-v1.0.0.
+            if self.is_whisper_installed() and not self._is_bundled_install_complete():
+                logger.warning(
+                    "Wykryto niekompletną instalację whisper-cli (brak dylib), "
+                    "wymuszam ponowne pobranie"
+                )
+                self._cleanup_bundled_whisper()
+
+            if self._is_bundled_install_complete():
+                if expected_checksum and self.verify_checksum(archive_dest, expected_checksum):
+                    logger.info("Bundled whisper archive już zweryfikowany")
+                try:
+                    self.verify_whisper_runtime()
+                    logger.info("whisper bundled already installed and healthy")
+                    return True
+                except DependencyRuntimeError:
+                    logger.warning("Bundled whisper runtime broken, reinstalling")
+                    self._cleanup_bundled_whisper()
+
+            self._download_file(
+                url,
+                archive_dest,
+                archive_name,
+                expected_size,
+                expected_checksum,
+            )
+            self._cleanup_bundled_whisper()
+            self._extract_whisper_bundle(archive_dest)
+            try:
+                archive_dest.unlink(missing_ok=True)
+            except OSError:
+                logger.debug("Could not remove whisper archive: %s", archive_dest)
+            self.verify_whisper_runtime()
+            return True
 
         # Sprawdź czy plik istnieje i ma poprawny checksum
         if self.is_whisper_installed():
@@ -395,6 +530,7 @@ class DependencyDownloader:
                 dest.unlink()
 
         self._download_file(url, dest, "whisper-cli", expected_size, expected_checksum)
+        self.verify_whisper_runtime()
         return True
 
     def download_ffmpeg(self) -> bool:
@@ -489,6 +625,8 @@ class DependencyDownloader:
             # Pobierz brakujące zależności
             if not self.is_whisper_installed():
                 self.download_whisper()
+            else:
+                self.verify_whisper_runtime()
 
             if not self.is_ffmpeg_installed():
                 self.download_ffmpeg()

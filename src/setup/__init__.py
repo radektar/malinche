@@ -6,6 +6,7 @@ from src.setup.errors import (
     ChecksumError,
     NetworkError,
     DiskSpaceError,
+    DependencyRuntimeError,
 )
 from src.setup.wizard import SetupWizard, WizardStep
 from src.setup.permissions import (
@@ -20,6 +21,7 @@ __all__ = [
     "ChecksumError",
     "NetworkError",
     "DiskSpaceError",
+    "DependencyRuntimeError",
     "SetupWizard",
     "WizardStep",
     "check_full_disk_access",

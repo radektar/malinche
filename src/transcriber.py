@@ -73,6 +73,12 @@ class ProcessLock:
     def acquire(self) -> bool:
         """Attempt to acquire the lock.
 
+        The lock file stores ``<pid>\\n<timestamp>`` so a crashed process can
+        be detected reliably: if the recorded PID is no longer alive we treat
+        the file as stale and remove it. This avoids the "recorder looks
+        connected but nothing happens" symptom that followed Malinche
+        crashes or hard kills.
+
         Returns:
             True if lock acquired, False otherwise.
         """
@@ -82,47 +88,106 @@ class ProcessLock:
                 str(self.lock_path),
                 os.O_CREAT | os.O_EXCL | os.O_WRONLY,
             )
-            os.write(self._fd, f"{time.time():.0f}".encode("utf-8"))
+            payload = f"{os.getpid()}\n{time.time():.0f}".encode("utf-8")
+            os.write(self._fd, payload)
             return True
         except FileExistsError:
-            # Detect and clean up stale lock files left by crashed processes.
-            # Note: This uses default_config since ProcessLock is created before Transcriber instance
-            # In practice, this is fine as TRANSCRIPTION_TIMEOUT is a constant
-            stale_age_seconds = default_config.TRANSCRIPTION_TIMEOUT + 600
-            lock_age: Optional[float] = None
-
-            try:
-                if self.lock_path.exists():
-                    with self.lock_path.open("r", encoding="utf-8") as handle:
-                        content = handle.read().strip()
-                        timestamp = float(content)
-                        lock_age = time.time() - timestamp
-            except (OSError, ValueError):
-                # If we cannot read or parse the timestamp, treat as unknown age.
-                lock_age = None
-
-            if lock_age is not None and lock_age > stale_age_seconds:
-                logger.warning(
-                    "Detected stale process lock at %s (age=%.0fs), attempting "
-                    "cleanup",
-                    self.lock_path,
-                    lock_age,
-                )
-                try:
-                    self.lock_path.unlink()
-                except OSError as error:
-                    logger.warning(
-                        "Could not remove stale process lock file %s: %s",
-                        self.lock_path,
-                        error,
-                    )
-                else:
-                    # Retry acquisition once after successful cleanup.
-                    return self.acquire()
-
+            if self._try_cleanup_stale_lock():
+                return self.acquire()
             return False
         except OSError as error:
             logger.error("Could not create process lock at %s: %s", self.lock_path, error)
+            return False
+
+    def _try_cleanup_stale_lock(self) -> bool:
+        """Inspect an existing lock file and remove it if the owner is gone.
+
+        Cleanup happens in two stages:
+
+        1. **PID liveness.** If the stored PID is not running (``os.kill(pid,
+           0)`` raises ``ProcessLookupError``) the lock was left by a crashed
+           process and is safe to remove immediately.
+        2. **Absolute age.** As a fallback for legacy / malformed lock files
+           that lack a PID, we still honour the ``TRANSCRIPTION_TIMEOUT``
+           window so long-running but healthy transcriptions are never
+           interrupted.
+
+        Returns:
+            True when the lock file was removed and the caller should retry
+            acquisition, False if the lock is still considered valid.
+        """
+        stored_pid: Optional[int] = None
+        lock_age: Optional[float] = None
+
+        try:
+            if not self.lock_path.exists():
+                return True
+            content = self.lock_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return False
+
+        # Parse "<pid>\n<timestamp>" (new format) or "<timestamp>" (legacy).
+        lines = content.splitlines()
+        try:
+            if len(lines) >= 2:
+                stored_pid = int(lines[0])
+                lock_age = time.time() - float(lines[1])
+            elif len(lines) == 1:
+                lock_age = time.time() - float(lines[0])
+        except ValueError:
+            stored_pid = None
+            lock_age = None
+
+        if stored_pid is not None and not self._pid_alive(stored_pid):
+            logger.warning(
+                "Detected stale process lock at %s (pid %d no longer running), "
+                "removing",
+                self.lock_path,
+                stored_pid,
+            )
+            return self._remove_lock_file()
+
+        stale_age_seconds = default_config.TRANSCRIPTION_TIMEOUT + 600
+        if lock_age is not None and lock_age > stale_age_seconds:
+            logger.warning(
+                "Detected stale process lock at %s (age=%.0fs), removing",
+                self.lock_path,
+                lock_age,
+            )
+            return self._remove_lock_file()
+
+        return False
+
+    @staticmethod
+    def _pid_alive(pid: int) -> bool:
+        """Return True if *pid* refers to a running process.
+
+        Sends signal ``0`` which only performs an error check. A
+        ``ProcessLookupError`` means the process is gone; a
+        ``PermissionError`` means it is alive but owned by another user
+        (unlikely here but still counts as alive for safety).
+        """
+        if pid <= 0:
+            return False
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
+    def _remove_lock_file(self) -> bool:
+        """Best-effort removal of the lock file. Returns True on success."""
+        try:
+            self.lock_path.unlink()
+            return True
+        except OSError as error:
+            logger.warning(
+                "Could not remove stale process lock file %s: %s",
+                self.lock_path,
+                error,
+            )
             return False
 
     def release(self) -> None:

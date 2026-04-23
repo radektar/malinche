@@ -2,6 +2,16 @@ name: Build Whisper.cpp and FFmpeg
 
 on:
   workflow_dispatch:
+    inputs:
+      release_variant:
+        description: "Optional: publish deps-v1.1.0 for selected variant"
+        required: false
+        default: "none"
+        type: choice
+        options:
+          - none
+          - static
+          - bundled
   push:
     tags:
       - 'deps-v*'
@@ -19,28 +29,71 @@ jobs:
         with:
           repository: ggerganov/whisper.cpp
           path: whisper.cpp
-      
-      - name: Build whisper.cpp for ARM64 with Core ML
+
+      - name: Build static whisper-cli (variant A)
         run: |
           cd whisper.cpp
-          cmake -B build \
+          cmake -B build-static \
             -DWHISPER_COREML=ON \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DCMAKE_BUILD_TYPE=Release
-          cmake --build build --config Release -j
-      
-      - name: Find whisper-cli binary
-        id: find_binary
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DGGML_METAL_EMBED_LIBRARY=ON
+          cmake --build build-static --config Release -j
+
+      - name: Build shared whisper-cli (variant B)
         run: |
-          if [ -f "whisper.cpp/build/bin/whisper-cli" ]; then
-            echo "binary_path=whisper.cpp/build/bin/whisper-cli" >> $GITHUB_OUTPUT
-          elif [ -f "whisper.cpp/build/bin/main" ]; then
-            echo "binary_path=whisper.cpp/build/bin/main" >> $GITHUB_OUTPUT
+          cd whisper.cpp
+          cmake -B build-shared \
+            -DWHISPER_COREML=ON \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_RPATH="@loader_path" \
+            -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
+          cmake --build build-shared --config Release -j
+
+      - name: Prepare static artifact
+        run: |
+          if [ -f "whisper.cpp/build-static/bin/whisper-cli" ]; then
+            cp whisper.cpp/build-static/bin/whisper-cli whisper-cli-static
+          elif [ -f "whisper.cpp/build-static/bin/main" ]; then
+            cp whisper.cpp/build-static/bin/main whisper-cli-static
           else
-            echo "Error: whisper-cli binary not found"
+            echo "Error: static whisper-cli binary not found"
             exit 1
           fi
-      
+          chmod +x whisper-cli-static
+
+      - name: Prepare bundled artifact
+        run: |
+          mkdir -p bundled
+          if [ -f "whisper.cpp/build-shared/bin/whisper-cli" ]; then
+            cp whisper.cpp/build-shared/bin/whisper-cli bundled/whisper-cli
+          elif [ -f "whisper.cpp/build-shared/bin/main" ]; then
+            cp whisper.cpp/build-shared/bin/main bundled/whisper-cli
+          else
+            echo "Error: shared whisper-cli binary not found"
+            exit 1
+          fi
+          chmod +x bundled/whisper-cli
+
+          cp whisper.cpp/build-shared/src/libwhisper.1.dylib bundled/
+          cp whisper.cpp/build-shared/ggml/src/libggml.0.dylib bundled/
+          cp whisper.cpp/build-shared/ggml/src/libggml-base.0.dylib bundled/
+          cp whisper.cpp/build-shared/ggml/src/libggml-cpu.0.dylib bundled/
+          cp whisper.cpp/build-shared/ggml/src/ggml-blas/libggml-blas.0.dylib bundled/
+          cp whisper.cpp/build-shared/ggml/src/ggml-metal/libggml-metal.0.dylib bundled/
+
+          install_name_tool \
+            -delete_rpath /Users/runner/work/transrec/transrec/whisper.cpp/build/src \
+            -delete_rpath /Users/runner/work/transrec/transrec/whisper.cpp/build/ggml/src \
+            -delete_rpath /Users/runner/work/transrec/transrec/whisper.cpp/build/ggml/src/ggml-blas \
+            -delete_rpath /Users/runner/work/transrec/transrec/whisper.cpp/build/ggml/src/ggml-metal \
+            -add_rpath @loader_path \
+            bundled/whisper-cli
+          codesign -s - --force bundled/whisper-cli bundled/*.dylib
+          tar -czf whisper-bundled-arm64.tar.gz -C bundled .
+
       - name: Download FFmpeg
         run: |
           # Pobierz statyczny ffmpeg z evermeet.cx (trusted source)
@@ -48,39 +101,83 @@ jobs:
           unzip -q ffmpeg.zip
           chmod +x ffmpeg
           mv ffmpeg ffmpeg-arm64
-      
-      - name: Prepare binaries
+
+      - name: Verify static binary
         run: |
-          # Skopiuj whisper-cli do głównego katalogu z prostą nazwą
-          cp ${{ steps.find_binary.outputs.binary_path }} whisper-cli
-          chmod +x whisper-cli
-      
+          otool -L whisper-cli-static | tee static-otool.log
+          otool -l whisper-cli-static | grep -A2 LC_RPATH | tee static-rpath.log || true
+          ! rg "/Users/runner" static-otool.log static-rpath.log
+          DYLD_PRINT_LIBRARIES=1 ./whisper-cli-static --help >/dev/null
+
+      - name: Verify bundled binary
+        run: |
+          otool -L bundled/whisper-cli | tee bundled-otool.log
+          otool -l bundled/whisper-cli | grep -A2 LC_RPATH | tee bundled-rpath.log
+          ! rg "/Users/runner" bundled-otool.log bundled-rpath.log
+          DYLD_PRINT_LIBRARIES=1 ./bundled/whisper-cli --help >/dev/null
+
       - name: Generate checksums
         run: |
-          shasum -a 256 whisper-cli > whisper-cli-arm64.sha256
+          shasum -a 256 whisper-cli-static > whisper-cli-static.sha256
+          shasum -a 256 whisper-bundled-arm64.tar.gz > whisper-bundled-arm64.tar.gz.sha256
           shasum -a 256 ffmpeg-arm64 > ffmpeg-arm64.sha256
-          cat whisper-cli-arm64.sha256
+          cat whisper-cli-static.sha256
+          cat whisper-bundled-arm64.tar.gz.sha256
           cat ffmpeg-arm64.sha256
-      
+
+      - name: Upload compare artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: compare-artifacts
+          path: |
+            whisper-cli-static
+            whisper-cli-static.sha256
+            whisper-bundled-arm64.tar.gz
+            whisper-bundled-arm64.tar.gz.sha256
+            ffmpeg-arm64
+            ffmpeg-arm64.sha256
+            static-otool.log
+            static-rpath.log
+            bundled-otool.log
+            bundled-rpath.log
+
+  release-winner:
+    if: ${{ github.event_name == 'push' || github.event.inputs.release_variant != 'none' }}
+    needs: build-whisper
+    runs-on: macos-14
+    steps:
+      - name: Download compare artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: compare-artifacts
+          path: compare-artifacts
+
+      - name: Prepare release payload
+        run: |
+          mkdir -p release-payload
+          cp compare-artifacts/ffmpeg-arm64 release-payload/
+          cp compare-artifacts/ffmpeg-arm64.sha256 release-payload/
+          if [ "${{ github.event.inputs.release_variant }}" = "bundled" ]; then
+            cp compare-artifacts/whisper-bundled-arm64.tar.gz release-payload/
+            cp compare-artifacts/whisper-bundled-arm64.tar.gz.sha256 release-payload/
+          elif [ "${{ github.event.inputs.release_variant }}" = "static" ] || [ "${{ github.event_name }}" = "push" ]; then
+            cp compare-artifacts/whisper-cli-static release-payload/whisper-cli
+            shasum -a 256 release-payload/whisper-cli > release-payload/whisper-cli-arm64.sha256
+          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            whisper-cli
-            ffmpeg-arm64
-            whisper-cli-arm64.sha256
-            ffmpeg-arm64.sha256
-          tag_name: deps-v1.0.0
-          name: Dependencies v1.0.0
+            release-payload/*
+          tag_name: deps-v1.1.0
+          name: Dependencies v1.1.0
           body: |
             Pre-built binaries for Transrec v2.0.0
-            
-            - whisper-cli-arm64: whisper.cpp binary with Core ML support
+
+            - whisper-cli-static: static whisper.cpp build with Core ML support
+            - whisper-bundled-arm64.tar.gz: shared whisper-cli + dylibs with @loader_path
             - ffmpeg-arm64: Static FFmpeg binary
-            
-            Checksums:
-            - whisper-cli-arm64: $(cat whisper-cli-arm64.sha256 | cut -d' ' -f1)
-            - ffmpeg-arm64: $(cat ffmpeg-arm64.sha256 | cut -d' ' -f1)
           draft: false
           prerelease: false
         env:

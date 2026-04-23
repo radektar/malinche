@@ -14,7 +14,11 @@ from src.logger import logger
 from src.config import config
 from src.config.settings import UserSettings
 from src.config.defaults import defaults
-from src.volume_utils import has_audio_files, should_process_volume
+from src.volume_utils import (
+    find_matching_volumes,
+    has_audio_files,
+    should_process_volume,
+)
 
 
 class FileMonitor:
@@ -144,10 +148,48 @@ class FileMonitor:
             self.observer.start()
             
             logger.info("✓ FSEvents monitor started (watching /Volumes)")
-            
+
+            self._initial_scan()
+
         except Exception as e:
             logger.error(f"Failed to start FSEvents monitor: {e}", exc_info=True)
             self.is_monitoring = False
+
+    def _initial_scan(self) -> None:
+        """Trigger callback once if any matching volume is already mounted.
+
+        FSEvents only fires on mount/change events, so recorders plugged in
+        BEFORE the daemon started would otherwise be ignored until the user
+        unplugs and re-plugs them. This scan closes that gap by checking the
+        current contents of ``/Volumes`` right after the observer is up.
+
+        The callback is invoked at most once per start because
+        ``Transcriber.process_recorder()`` already iterates over every
+        matching volume internally (``find_recorders()``).
+        """
+        try:
+            settings = UserSettings.load()
+            matching = find_matching_volumes(settings, volumes_root=Path("/Volumes"))
+        except Exception as error:  # noqa: BLE001
+            logger.debug(f"Initial volume scan skipped due to error: {error}")
+            return
+
+        if not matching:
+            logger.info("🔎 Initial scan: no matching volumes already mounted")
+            return
+
+        names = ", ".join(volume.name for volume in matching)
+        logger.info(
+            f"🔎 Initial scan: found {len(matching)} matching volume(s): {names}"
+        )
+
+        self._last_trigger_time = time.time()
+        try:
+            self.callback()
+        except Exception as error:  # noqa: BLE001
+            logger.error(
+                f"Error in callback during initial scan: {error}", exc_info=True
+            )
     
     def _should_process_volume(self, volume_path: Path, settings: UserSettings) -> bool:
         """Check if volume should be processed based on watch mode.

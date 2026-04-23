@@ -5,6 +5,39 @@ All notable changes to Malinche will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0-alpha.4] - 2026-04-23
+
+### Fixed
+- **Naprawiono źródłową przyczynę błędu `dyld: Library not loaded` dla `whisper-cli`.** Pipeline [`.github/workflows/build-whisper.yml`](.github/workflows/build-whisper.yml) buduje teraz dwa warianty (`static` i `bundled`), waliduje `otool -L`/`LC_RPATH` pod kątem ścieżek CI (`/Users/runner/...`) i publikuje artefakty porównawcze; release `deps-v1.1.0` jest tworzony przez osobny job `release-winner` z wyborem wariantu.
+- **Downloader wykrywa uszkodzoną instalację runtime, a nie tylko obecność pliku.** `DependencyDownloader` dodaje `verify_whisper_runtime()` (`whisper-cli --help`), sprawdzanie kompletności dylibów dla wariantu bundled, migrację starej niekompletnej instalacji i bezpieczne rozpakowanie archiwum.
+
+### Added
+- **Nowy błąd domenowy `DependencyRuntimeError`** do sygnalizowania sytuacji „binarka pobrana, ale nieuruchamialna”.
+- **Nowe testy regresji downloadera** dla smoke-testu runtime, scenariusza `dyld` i rozpakowania wariantu bundled (`tests/test_downloader.py`).
+
+## [2.0.0-alpha.3] - 2026-04-22
+
+### Fixed
+- **Recorder już zamontowany przed startem Malinche jest teraz natychmiast wykrywany.** `FileMonitor.start()` dodaje jednorazowy `_initial_scan()`, który po założeniu obserwatora FSEvents sprawdza aktualną zawartość `/Volumes` i wywołuje `callback()`, jeśli któryś z wolumenów spełnia `should_process_volume()`. Do tej pory FSEvents reagował wyłącznie na zdarzenia mount/zmiana, więc po restarcie daemona z już podłączonym LS-P1 Malinche siedziała bezczynnie aż do wyjęcia i ponownego włożenia urządzenia.
+- **Zaślepka po pythonowym circular imporcie.** `src/config/license.py` importował `src.logger` na poziomie modułu, co tworzyło cykl `logger → config → license → logger` i wywalało testy uruchamiane w izolacji (np. `pytest tests/test_file_monitor.py`). Import przeniesiono do środka metod (`activate_license`, `deactivate_license`), zachowując identyczne zachowanie publiczne.
+- **`ProcessLock` wykrywa i usuwa lock pozostawiony przez ubity proces.** Plik locka zawiera teraz `<pid>\n<timestamp>` (zamiast samego timestampa). Przy `FileExistsError` sprawdzamy `os.kill(pid, 0)` — jeśli proces nie żyje, lock jest natychmiast kasowany i akwizycja ponawiana. Legacy format (sam timestamp) nadal obsługiwany jako fallback.
+
+### Added
+- **Autouse izolacja HOME w testach.** Nowy `tests/conftest.py` przekierowuje `$HOME` na tymczasowy katalog sesji ZANIM którykolwiek moduł testowy zaimportuje `src.logger`/`src.config`. Efekt: żaden `pytest` nie zmienia już `~/.olympus_transcriber_state.json`, `~/.olympus_transcriber/transcriber.lock` ani `~/Library/Logs/olympus_transcriber.log` zainstalowanej Malinche.
+- **Session-level guard `_assert_real_home_untouched`** robi snapshot mtime chronionych plików na starcie sesji testowej i fail-uje run, jeśli którykolwiek zostanie zmieniony. Regresja, która przywróciłaby pisanie do realnego HOME, zostanie złapana w CI/lokalnie.
+- **Nowe testy regresji:**
+  - `tests/test_file_monitor.py::TestFileMonitorInitialScan` — 5 przypadków: volumen istnieje, brak volumenów, wiele volumenów (callback wołany dokładnie raz), debounce timer, wyjątki w callbacku nie zatrzymują monitora.
+  - `tests/test_transcriber.py::test_process_lock_removes_dead_pid_lock` — martwy PID w locku jest natychmiast usuwany.
+  - `tests/test_transcriber.py::test_process_lock_keeps_lock_for_live_foreign_pid` — żywy PID `1` (`launchd`) blokuje akwizycję.
+
+### Changed
+- `FileMonitor.start()` inicjalizuje `_last_trigger_time` po initial scan, żeby mount-driven FSEvent-y następujące tuż po starcie były debounce'owane (nie duplikowały work).
+- `ProcessLock.acquire()` zapisuje PID bieżącego procesu w locku; istniejący test `test_process_lock_removes_stale_file` zaktualizowany, żeby weryfikować nowy format.
+- `tests/test_file_monitor.py` — trzy testy, które wcześniej patrzyły na prawdziwy `/Volumes`, teraz jawnie patchują `find_matching_volumes` na pustą listę, żeby initial scan nie fałszował ich intencji.
+- `tests/test_transcriber.py::test_run_macwhisper_retries_on_metal_error` — forsuje `transcriber.whisper_available = True` zamiast polegać na prawdziwym binarium w user HOME (teraz wyizolowanym przez conftest).
+
+---
+
 ## [2.0.0-alpha.2] - 2026-04-22
 
 ### Fixed
