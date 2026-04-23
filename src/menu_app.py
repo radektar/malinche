@@ -25,12 +25,14 @@ from src.app_status import AppStatus
 from src.state_manager import reset_state
 from src.transcriber import send_notification
 from src.setup.downloader import DependencyDownloader
+from src.setup.dependency_manager import DependencyManager
 from src.setup.errors import NetworkError, DiskSpaceError, DownloadError
 from src.setup import SetupWizard
 from src.ui.dialogs import choose_date_dialog, show_about_dialog
 from src.ui.constants import TEXTS
 from src.ui.settings_window import show_settings_window
 from src.ui.pro_activation import show_pro_activation, show_pro_status
+from src.ui.download_window import DownloadWindow
 from src.config.license import license_manager
 from src.config.features import FeatureTier
 
@@ -59,6 +61,9 @@ class MalincheMenuApp(rumps.App):
         self._running = False
         self._retranscription_in_progress = False
         self._retranscription_file: Optional[str] = None
+        self._download_active = False
+        self._download_manager = DependencyManager()
+        self._download_window: Optional[DownloadWindow] = None
 
         # Create menu items
         self.status_item = rumps.MenuItem("Status: Inicjalizacja...")
@@ -138,6 +143,7 @@ class MalincheMenuApp(rumps.App):
             AppStatus.IDLE: "idle.png",
             AppStatus.SCANNING: "scanning.png",
             AppStatus.TRANSCRIBING: "transcribing.png",
+            AppStatus.DOWNLOADING: "transcribing.png",
             AppStatus.MIGRATING: "migrating.png",
             AppStatus.ERROR: "error.png",
         }
@@ -176,6 +182,7 @@ class MalincheMenuApp(rumps.App):
             AppStatus.IDLE: "🎙️",
             AppStatus.SCANNING: "🔎",
             AppStatus.TRANSCRIBING: "⏳",
+            AppStatus.DOWNLOADING: "⬇️",
             AppStatus.MIGRATING: "🔄",
             AppStatus.ERROR: "⚠️",
         }
@@ -217,22 +224,22 @@ class MalincheMenuApp(rumps.App):
     def _check_dependencies(self):
         """Sprawdź czy wszystkie zależności są zainstalowane."""
         try:
-            downloader = DependencyDownloader()
-            if downloader.check_all():
+            status = self._download_manager.status()
+            if status.ready:
                 logger.info("✓ Wszystkie zależności zainstalowane")
                 return True
             
             # Brakuje zależności - pokaż komunikat
             logger.warning("Brakuje zależności - wymagane pobranie")
+            model = config.WHISPER_MODEL
+            size_mb = status.total_missing_size / 1_000_000
             response = rumps.alert(
                 title="📥 Pobieranie zależności",
                 message=(
-                    "Malinche wymaga pobrania silnika transkrypcji (~500MB).\n\n"
+                    f"Wybrany model: {model}\n"
+                    f"Brakujące dane: ~{size_mb:.0f}MB.\n\n"
                     "Czy chcesz pobrać teraz?\n\n"
-                    "Wymagane:\n"
-                    "• whisper.cpp (~10MB)\n"
-                    "• ffmpeg (~15MB)\n"
-                    "• Model transkrypcji (~466MB)"
+                    "Pobieranie działa w tle - aplikacja pozostanie responsywna."
                 ),
                 ok="Pobierz teraz",
                 cancel="Pomiń"
@@ -260,17 +267,34 @@ class MalincheMenuApp(rumps.App):
             return False
     
     def _download_dependencies(self):
-        """Pobierz wszystkie brakujące zależności z progress callback."""
+        """Pobierz wszystkie brakujące zależności asynchronicznie."""
+        if self._download_active:
+            return
+        self._download_active = True
+        self._update_icon(AppStatus.DOWNLOADING)
+        self.status_item.title = "Status: Pobieranie zależności..."
+        self._download_window = DownloadWindow(
+            title="Pobieranie zależności",
+            detail="Start pobierania...",
+        )
+        self._download_window.show()
+
         def progress_callback(name: str, progress: float):
             """Update status z postępem pobierania."""
             percent = int(progress * 100)
             self.status_item.title = f"Status: Pobieranie {name}... {percent}%"
+            if self._download_window is not None:
+                self._download_window.update(
+                    detail=f"Pobieranie: {name}",
+                    progress=progress,
+                )
             logger.debug(f"Pobieranie {name}: {percent}%")
-        
-        try:
-            downloader = DependencyDownloader(progress_callback=progress_callback)
-            downloader.download_all()
-            
+
+        def done_callback():
+            self._download_active = False
+            if self._download_window is not None:
+                self._download_window.update(detail="Pobieranie zakończone", progress=1.0)
+                self._download_window.close()
             logger.info("✓ Wszystkie zależności pobrane")
             rumps.alert(
                 title="✅ Gotowe",
@@ -278,43 +302,58 @@ class MalincheMenuApp(rumps.App):
                 ok="OK"
             )
             self.status_item.title = "Status: Gotowe"
-            
-        except NetworkError as e:
-            logger.error(f"Brak połączenia: {e}")
-            rumps.alert(
-                title="⚠️ Brak połączenia",
-                message=(
-                    "Brak połączenia z internetem.\n\n"
-                    "Malinche wymaga jednorazowego pobrania silnika transkrypcji (~500MB).\n"
-                    "Połącz się z internetem i spróbuj ponownie."
-                ),
-                ok="OK"
-            )
-            self.status_item.title = "Status: Brak połączenia"
-        except DiskSpaceError as e:
-            logger.error(f"Brak miejsca: {e}")
-            rumps.alert(
-                title="⚠️ Brak miejsca",
-                message=str(e),
-                ok="OK"
-            )
-            self.status_item.title = "Status: Brak miejsca"
-        except DownloadError as e:
-            logger.error(f"Błąd pobierania: {e}")
-            rumps.alert(
-                title="⚠️ Błąd pobierania",
-                message=f"Nie udało się pobrać zależności:\n\n{str(e)}\n\nSpróbuj ponownie później.",
-                ok="OK"
-            )
-            self.status_item.title = "Status: Błąd pobierania"
-        except Exception as e:
-            logger.error(f"Nieoczekiwany błąd: {e}", exc_info=True)
-            rumps.alert(
-                title="⚠️ Błąd",
-                message=f"Nieoczekiwany błąd:\n\n{str(e)}",
-                ok="OK"
-            )
-            self.status_item.title = "Status: Błąd"
+            self._update_icon(AppStatus.IDLE)
+
+        def error_callback(exc: Exception):
+            self._download_active = False
+            if self._download_window is not None:
+                self._download_window.update(detail=f"Błąd: {exc}")
+            if isinstance(exc, NetworkError):
+                logger.error(f"Brak połączenia: {exc}")
+                rumps.alert(
+                    title="⚠️ Brak połączenia",
+                    message=(
+                        "Brak połączenia z internetem.\n\n"
+                        "Malinche wymaga jednorazowego pobrania silnika transkrypcji (~500MB).\n"
+                        "Połącz się z internetem i spróbuj ponownie."
+                    ),
+                    ok="OK"
+                )
+                self.status_item.title = "Status: Brak połączenia"
+            elif isinstance(exc, DiskSpaceError):
+                logger.error(f"Brak miejsca: {exc}")
+                rumps.alert(
+                    title="⚠️ Brak miejsca",
+                    message=str(exc),
+                    ok="OK"
+                )
+                self.status_item.title = "Status: Brak miejsca"
+            elif isinstance(exc, DownloadError):
+                logger.error(f"Błąd pobierania: {exc}")
+                rumps.alert(
+                    title="⚠️ Błąd pobierania",
+                    message=f"Nie udało się pobrać zależności:\n\n{str(exc)}\n\nSpróbuj ponownie później.",
+                    ok="OK"
+                )
+                self.status_item.title = "Status: Błąd pobierania"
+            else:
+                logger.error(f"Nieoczekiwany błąd: {exc}", exc_info=True)
+                rumps.alert(
+                    title="⚠️ Błąd",
+                    message=f"Nieoczekiwany błąd:\n\n{str(exc)}",
+                    ok="OK"
+                )
+                self.status_item.title = "Status: Błąd"
+            self._update_icon(AppStatus.ERROR)
+
+        started = self._download_manager.download_async(
+            on_progress=progress_callback,
+            on_done=done_callback,
+            on_error=error_callback,
+        )
+        if not started:
+            self._download_active = True
+
 
     def _update_status(self, _):
         """Update status menu item based on current state."""
@@ -335,6 +374,10 @@ class MalincheMenuApp(rumps.App):
             filename = self._retranscription_file or "..."
             self.status_item.title = f"Status: Retranskrybowanie {filename}"
             self._update_icon(AppStatus.TRANSCRIBING)
+            return
+
+        if self._download_active:
+            self._update_icon(AppStatus.DOWNLOADING)
             return
 
         state = self.transcriber.state

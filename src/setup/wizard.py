@@ -8,12 +8,14 @@ from typing import Optional
 
 from src.config import UserSettings, SUPPORTED_LANGUAGES, SUPPORTED_MODELS
 from src.setup.downloader import DependencyDownloader
+from src.setup.dependency_manager import DependencyManager
 from src.setup.permissions import check_full_disk_access, open_fda_preferences
 from src.setup.errors import NetworkError, DiskSpaceError, DownloadError
 from src.logger import logger
 from src.ui.dialogs import choose_folder_dialog
 from src.ui.constants import TEXTS
 from src.ui.constants import APP_VERSION
+from src.ui.download_window import DownloadWindow
 from src.vault_index import is_icloud_synced
 
 
@@ -34,10 +36,10 @@ class SetupWizard:
 
     STEPS_ORDER = [
         WizardStep.WELCOME,
-        WizardStep.DOWNLOAD,
-        WizardStep.PERMISSIONS,
         WizardStep.SOURCE_CONFIG,
         WizardStep.BASIC_CONFIG,
+        WizardStep.DOWNLOAD,
+        WizardStep.PERMISSIONS,
         WizardStep.AI_CONFIG,
         WizardStep.FINISH,
     ]
@@ -49,11 +51,35 @@ class SetupWizard:
         self.downloader = DependencyDownloader(
             progress_callback=self._on_progress
         )
+        self.dependency_manager = DependencyManager(self.downloader)
         self._download_status = ""
         self._download_in_progress = False
         self._download_error: Optional[Exception] = None
         self._download_complete = False
         self._wizard_completed = False
+        self._download_window: Optional[DownloadWindow] = None
+        self._restore_step_from_settings()
+
+    def _restore_step_from_settings(self) -> None:
+        """Restore wizard position from persisted setup_stage when available."""
+        stage_name = (self.settings.setup_stage or "").lower()
+        stage_map = {
+            "welcome": WizardStep.WELCOME,
+            "source_config": WizardStep.SOURCE_CONFIG,
+            "basic_config": WizardStep.BASIC_CONFIG,
+            "download": WizardStep.DOWNLOAD,
+            "permissions": WizardStep.PERMISSIONS,
+            "ai_config": WizardStep.AI_CONFIG,
+            "finish": WizardStep.FINISH,
+        }
+        step = stage_map.get(stage_name)
+        if step in self.STEPS_ORDER:
+            self.current_step_index = self.STEPS_ORDER.index(step)
+
+    def _persist_stage(self) -> None:
+        """Persist current stage to support wizard resume after interruption."""
+        self.settings.setup_stage = self.current_step.name.lower()
+        self.settings.save()
 
     @staticmethod
     def _version_line(version: str) -> str:
@@ -95,11 +121,13 @@ class SetupWizard:
 
     def _process_wizard_step(self):
         """Przetwórz aktualny krok wizarda."""
+        self._persist_stage()
         if self.current_step == WizardStep.FINISH:
             # Finalizacja
             self._show_finish()
             self.settings.setup_completed = True
             self.settings.setup_version = APP_VERSION
+            self.settings.setup_stage = WizardStep.FINISH.name.lower()
             self.settings.save()
             logger.info("Setup Wizard zakończony pomyślnie")
             self._wizard_completed = True
@@ -139,10 +167,16 @@ class SetupWizard:
         """Callback postępu pobierania - wywoływany z wątku pobierania."""
         self._download_status = f"{name}: {int(progress * 100)}%"
         logger.debug(f"Pobieranie: {self._download_status}")
-        
-        # Wyślij notyfikację co 10% postępu
+
+        if self._download_window is not None:
+            self._download_window.update(
+                detail=f"Pobieranie: {name}",
+                progress=progress,
+            )
+
+        # Wyślij notyfikację co 25% postępu
         percent = int(progress * 100)
-        if percent % 10 == 0 or percent == 100:
+        if percent in {25, 50, 75, 100}:
             rumps.notification(
                 title="Malinche - Pobieranie",
                 subtitle=f"{name}",
@@ -165,26 +199,28 @@ class SetupWizard:
         return "next" if response == 1 else "cancel"
 
     def _show_download(self) -> str:
-        """Pobieranie zależności - skip jeśli już pobrane."""
-        if self.downloader.check_all():
+        """Pobieranie zależności dla wybranego modelu."""
+        status = self.dependency_manager.status()
+        if status.ready:
             logger.info("Zależności już zainstalowane - pomijam krok")
             return "next"
 
+        model = self.settings.whisper_model
+        total_mb = status.total_missing_size / 1_000_000
         response = rumps.alert(
             title="📥 Pobieranie silnika transkrypcji",
             message=(
-                "Malinche wymaga pobrania silnika transkrypcji (~500MB).\n\n"
-                "Wymagane komponenty:\n"
-                "• whisper.cpp (~10MB)\n"
-                "• ffmpeg (~15MB)\n"
-                "• Model transkrypcji (~466MB)\n\n"
-                "Wymagane jest połączenie z internetem.\n\n"
-                "Pobieranie może potrwać kilka minut."
+                f"Wybrany model: {model}\n"
+                f"Brakujące dane do pobrania: ~{total_mb:.0f} MB\n\n"
+                "Czy pobrać teraz? Możesz wrócić i zmienić model."
             ),
             ok="Pobierz teraz",
-            cancel="Anuluj",
+            cancel="Zmień model",
+            other="Anuluj",
         )
 
+        if response == 0:
+            return "back"
         if response != 1:
             return "cancel"
 
@@ -194,31 +230,24 @@ class SetupWizard:
         self._download_error = None
         self._download_status = "Rozpoczynanie..."
 
-        # Uruchom pobieranie w osobnym wątku
-        download_thread = threading.Thread(
-            target=self._download_in_background,
-            daemon=True,
-            name="WizardDownload"
+        self._download_window = DownloadWindow(
+            title="Pobieranie zależności",
+            detail=f"Model: {model}",
         )
-        download_thread.start()
+        self._download_window.show()
+        self._download_in_background()
 
-        # Pokaż okno z informacją o pobieraniu (blokuje UI aż do zakończenia)
-        # Używamy pętli z alertami co kilka sekund aby informować o postępie
-        import time
-        while self._download_in_progress:
-            # Pokaż aktualny status
-            response = rumps.alert(
-                title="⏳ Pobieranie w toku...",
+        # Użytkownik może iść dalej, pobieranie kończy się w tle.
+        if self._download_in_progress:
+            rumps.alert(
+                title="⬇️ Pobieranie trwa w tle",
                 message=(
-                    f"Status: {self._download_status}\n\n"
-                    "Proszę czekać, pobieranie może potrwać kilka minut.\n"
-                    "Nie zamykaj tego okna."
+                    "Pobieranie wystartowało. Możesz dokończyć wizard,\n"
+                    "a aplikacja poczeka na zależności przy starcie."
                 ),
-                ok="Sprawdź status",
-                cancel=None,  # Brak przycisku anuluj - nie można przerwać
+                ok="Dalej",
             )
-            # Krótka pauza przed kolejnym sprawdzeniem
-            time.sleep(2)
+            return "next"
 
         # Pobieranie zakończone - sprawdź wynik
         if self._download_error:
@@ -250,6 +279,8 @@ class SetupWizard:
             return "cancel"
 
         if self._download_complete:
+            if self._download_window is not None:
+                self._download_window.close()
             rumps.alert(
                 title="✅ Pobrano",
                 message="Silnik transkrypcji został pobrany pomyślnie.",
@@ -261,17 +292,30 @@ class SetupWizard:
         return "cancel"
 
     def _download_in_background(self):
-        """Wykonaj pobieranie w tle (w osobnym wątku)."""
-        try:
-            logger.info("Rozpoczęto pobieranie zależności w tle")
-            self.downloader.download_all()
+        """Start asynchronous download and update wizard flags from callbacks."""
+        logger.info("Rozpoczęto pobieranie zależności w tle")
+
+        def _done() -> None:
             self._download_complete = True
-            logger.info("✓ Pobieranie zakończone pomyślnie")
-        except Exception as e:
-            logger.error(f"Błąd podczas pobierania: {e}", exc_info=True)
-            self._download_error = e
-        finally:
             self._download_in_progress = False
+            if self._download_window is not None:
+                self._download_window.update(detail="Pobieranie zakończone", progress=1.0)
+            logger.info("✓ Pobieranie zakończone pomyślnie")
+
+        def _error(exc: Exception) -> None:
+            self._download_error = exc
+            self._download_in_progress = False
+            if self._download_window is not None:
+                self._download_window.update(detail=f"Błąd: {exc}")
+            logger.error(f"Błąd podczas pobierania: {exc}", exc_info=True)
+
+        started = self.dependency_manager.download_async(
+            on_progress=self._on_progress,
+            on_done=_done,
+            on_error=_error,
+        )
+        if not started:
+            self._download_in_progress = True
 
     def _show_permissions(self) -> str:
         """Instrukcje Full Disk Access - skip jeśli już nadane."""

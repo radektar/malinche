@@ -207,6 +207,42 @@ class DependencyDownloader:
         model_path = self.models_dir / f"ggml-{selected_model}.bin"
         return model_path.exists()
 
+    def missing_for_selected_model(self) -> list[tuple[str, int]]:
+        """Return missing artifacts required for current selected model.
+
+        Returns:
+            List of tuples (artifact_key, expected_size_bytes).
+        """
+        missing: list[tuple[str, int]] = []
+
+        whisper_ok = (
+            self._is_bundled_install_complete()
+            if self._whisper_distribution() == "bundled"
+            else self.is_whisper_installed()
+        )
+        if not whisper_ok:
+            whisper_key = (
+                "whisper-bundled-arm64.tar.gz"
+                if self._whisper_distribution() == "bundled"
+                else "whisper-cli"
+            )
+            missing.append((whisper_key, int(SIZES.get(whisper_key, 0))))
+
+        if not self.is_ffmpeg_installed():
+            missing.append(("ffmpeg-arm64", int(SIZES.get("ffmpeg-arm64", 0))))
+
+        selected_model = self._selected_model()
+        canonical_model = self._canonical_model(selected_model)
+        model_key = f"ggml-{canonical_model}.bin"
+        if not self.is_model_installed(selected_model):
+            missing.append((model_key, int(SIZES.get(model_key, 0))))
+
+        return missing
+
+    def required_size_for_selected_model(self) -> int:
+        """Total expected download size in bytes for currently missing artifacts."""
+        return sum(size for _, size in self.missing_for_selected_model())
+
     def check_all(self) -> bool:
         """Sprawdź czy wszystkie zależności są zainstalowane i zweryfikowane.
 

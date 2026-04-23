@@ -11,6 +11,7 @@ class AppStatus(Enum):
     IDLE = "idle"
     SCANNING = "scanning"
     TRANSCRIBING = "transcribing"
+    DOWNLOADING = "downloading"
     MIGRATING = "migrating"
     ERROR = "error"
 
@@ -82,6 +83,8 @@ class AppState:
                 if self._current_file:
                     return f"Przetwarzam: {self._current_file}"
                 return "Przetwarzanie..."
+            elif self._status == AppStatus.DOWNLOADING:
+                return "Pobieranie zależności..."
             elif self._status == AppStatus.MIGRATING:
                 return "Migracja indeksu..."
             elif self._status == AppStatus.ERROR:

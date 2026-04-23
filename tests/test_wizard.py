@@ -62,6 +62,9 @@ class TestSetupWizard:
     def test_wizard_step_order(self):
         """Kroki są w poprawnej kolejności."""
         assert SetupWizard.STEPS_ORDER[0] == WizardStep.WELCOME
+        assert SetupWizard.STEPS_ORDER[1] == WizardStep.SOURCE_CONFIG
+        assert SetupWizard.STEPS_ORDER[2] == WizardStep.BASIC_CONFIG
+        assert SetupWizard.STEPS_ORDER[3] == WizardStep.DOWNLOAD
         assert SetupWizard.STEPS_ORDER[-1] == WizardStep.FINISH
         assert len(SetupWizard.STEPS_ORDER) == 7
 
@@ -86,11 +89,42 @@ class TestSetupWizard:
     def test_download_skip_if_installed(self, monkeypatch):
         """Pomija krok gdy zależności zainstalowane."""
         wizard = SetupWizard()
-        monkeypatch.setattr(wizard.downloader, "check_all", lambda: True)
+        monkeypatch.setattr(
+            wizard.dependency_manager,
+            "status",
+            lambda: Mock(ready=True, total_missing_size=0),
+        )
 
         result = wizard._show_download()
 
         assert result == "next"
+
+    def test_download_can_return_back_to_model_choice(self, monkeypatch):
+        """Użytkownik może wrócić do kroku wyboru modelu."""
+        wizard = SetupWizard()
+        monkeypatch.setattr(
+            wizard.dependency_manager,
+            "status",
+            lambda: Mock(ready=False, total_missing_size=500_000_000),
+        )
+        monkeypatch.setattr("rumps.alert", lambda **kwargs: 0)
+
+        assert wizard._show_download() == "back"
+
+    def test_stage_is_persisted_on_step(self, tmp_path, monkeypatch):
+        """Wizard zapisuje setup_stage, aby umożliwić wznowienie."""
+        config_file = tmp_path / "config.json"
+        monkeypatch.setattr(
+            UserSettings, "config_path", staticmethod(lambda: config_file)
+        )
+        monkeypatch.setattr("rumps.alert", lambda **kwargs: 1)
+
+        wizard = SetupWizard()
+        wizard.current_step_index = 2  # BASIC_CONFIG
+        wizard._persist_stage()
+
+        loaded = UserSettings.load()
+        assert loaded.setup_stage == "basic_config"
 
     def test_permissions_skip_if_granted(self, monkeypatch):
         """Pomija krok gdy FDA nadane."""

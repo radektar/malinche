@@ -8,6 +8,7 @@ from src.ui.dialogs import choose_folder_dialog
 from src.ui.constants import TEXTS
 from src.logger import logger
 from src.vault_index import is_icloud_synced
+from src.setup.dependency_manager import DependencyManager
 
 
 def _truncate_path(path: str, max_length: int = 60) -> str:
@@ -138,6 +139,7 @@ def _show_native_settings_panel(settings: UserSettings) -> bool:
 def show_settings_window() -> bool:
     """Show settings window and allow user to change configuration."""
     settings = UserSettings.load()
+    old_model = settings.whisper_model
 
     try:
         changed = _show_native_settings_panel(settings)
@@ -167,6 +169,24 @@ def show_settings_window() -> bool:
 
     settings.save()
     logger.info("Ustawienia zostały zmienione i zapisane")
+
+    # If model changed, asynchronously queue missing model artifacts.
+    if settings.whisper_model != old_model:
+        manager = DependencyManager()
+        missing = manager.needed()
+        if missing:
+            total_mb = sum(size for _, size in missing) / 1_000_000
+            rumps.alert(
+                title="Pobieranie modelu",
+                message=(
+                    f"Nowy model: {settings.whisper_model}\n"
+                    f"Brakujące dane: ~{total_mb:.0f}MB.\n\n"
+                    "Pobieranie rozpocznie się w tle."
+                ),
+                ok="OK",
+            )
+            manager.download_async()
+
     rumps.alert(
         title=TEXTS["saved_title"],
         message=TEXTS["saved_message"],
