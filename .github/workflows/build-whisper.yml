@@ -78,6 +78,9 @@ jobs:
           chmod +x bundled/whisper-cli
 
           cp whisper.cpp/build-shared/src/libwhisper.1.dylib bundled/
+          if [ -f "whisper.cpp/build-shared/src/libwhisper.coreml.dylib" ]; then
+            cp whisper.cpp/build-shared/src/libwhisper.coreml.dylib bundled/
+          fi
           cp whisper.cpp/build-shared/ggml/src/libggml.0.dylib bundled/
           cp whisper.cpp/build-shared/ggml/src/libggml-base.0.dylib bundled/
           cp whisper.cpp/build-shared/ggml/src/libggml-cpu.0.dylib bundled/
@@ -108,14 +111,14 @@ jobs:
         run: |
           otool -L whisper-cli-static | tee static-otool.log
           otool -l whisper-cli-static | grep -A2 LC_RPATH | tee static-rpath.log || true
-          ! rg "/Users/runner" static-otool.log static-rpath.log
+          ! grep -q "/Users/runner" static-otool.log static-rpath.log
           DYLD_PRINT_LIBRARIES=1 ./whisper-cli-static --help >/dev/null
 
       - name: Verify bundled binary
         run: |
           otool -L bundled/whisper-cli | tee bundled-otool.log
           otool -l bundled/whisper-cli | grep -A2 LC_RPATH | tee bundled-rpath.log
-          ! rg "/Users/runner" bundled-otool.log bundled-rpath.log
+          ! grep -q "/Users/runner" bundled-otool.log bundled-rpath.log
           DYLD_PRINT_LIBRARIES=1 ./bundled/whisper-cli --help >/dev/null
 
       - name: Generate checksums

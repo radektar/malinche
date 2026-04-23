@@ -237,6 +237,7 @@ class TestDependencyDownloader:
         archive_name = "whisper-bundled-arm64.tar.gz"
         libs = [
             "libwhisper.1.dylib",
+            "libwhisper.coreml.dylib",
             "libggml.0.dylib",
             "libggml-base.0.dylib",
             "libggml-cpu.0.dylib",

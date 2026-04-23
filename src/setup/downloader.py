@@ -138,6 +138,7 @@ class DependencyDownloader:
         """Return dylibs required by bundled whisper distribution."""
         return [
             "libwhisper.1.dylib",
+            "libwhisper.coreml.dylib",
             "libggml.0.dylib",
             "libggml-base.0.dylib",
             "libggml-cpu.0.dylib",
