@@ -77,7 +77,7 @@ class TestMigration:
         assert migrated.setup_completed is False  # Not completed if no old config
     
     def test_perform_migration_if_needed_new_config_exists(self, tmp_path, monkeypatch):
-        """Test that migration is skipped if new config exists."""
+        """Test that config is loaded and migration state remains intact."""
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
         
         # Create new config file
@@ -90,6 +90,32 @@ class TestMigration:
         result = perform_migration_if_needed()
         assert result.watch_mode == "specific"
         assert result.watched_volumes == ["SD_CARD"]
+
+    def test_perform_migration_moves_legacy_transrec_assets(self, tmp_path, monkeypatch):
+        """Existing Malinche config still triggers one-time Transrec asset migration."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        settings = UserSettings(setup_completed=True, setup_version="2.0.0")
+        settings.save()
+
+        transrec_root = (
+            tmp_path / "Library" / "Application Support" / "Transrec"
+        )
+        legacy_bin = transrec_root / "bin"
+        legacy_models = transrec_root / "models"
+        legacy_bin.mkdir(parents=True, exist_ok=True)
+        legacy_models.mkdir(parents=True, exist_ok=True)
+        (legacy_bin / "ffmpeg").write_bytes(b"legacy-ffmpeg")
+        (legacy_models / "ggml-small.bin").write_bytes(b"legacy-model")
+
+        result = perform_migration_if_needed()
+
+        malinche_root = (
+            tmp_path / "Library" / "Application Support" / "Malinche"
+        )
+        assert (malinche_root / "bin" / "ffmpeg").exists()
+        assert (malinche_root / "models" / "ggml-small.bin").exists()
+        assert result.transrec_migrated is True
     
     def test_perform_migration_if_needed_migrates_when_needed(self, tmp_path, monkeypatch):
         """Test that migration happens when new config doesn't exist."""

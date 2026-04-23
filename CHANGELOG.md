@@ -5,6 +5,24 @@ All notable changes to Malinche will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0-alpha.5] - 2026-04-23
+
+### Fixed
+- **Ujednolicono ścieżki runtime zależności do `~/Library/Application Support/Malinche`** w `Config` (model i ffmpeg), z read-only fallbackiem do legacy `Transrec` tylko dla kompatybilności.
+- **Naprawiono przyczynę błędu ładowania modelu po migracji**: `perform_migration_if_needed()` wykonuje teraz jednorazową migrację zasobów `Transrec/bin` i `Transrec/models` także wtedy, gdy `Malinche/config.json` już istnieje.
+- **`check_all()` w downloaderze weryfikuje model wybrany przez użytkownika**, a nie zawsze `ggml-small.bin`, więc brak np. `ggml-medium.bin` poprawnie wymusza pobranie zależności.
+- **`SetupWizard.needs_setup()` porównuje tylko linię kompatybilności `major.minor`**, co eliminuje niepotrzebne retriggerowanie wizarda przy bumpach alpha/patch.
+- **Wersja UI została zsynchronizowana z buildem** (`src/ui/constants.py` -> `2.0.0-alpha.5`), więc About i logika wersji nie rozjeżdżają się z `setup_app.py`.
+
+### Added
+- **Flaga migracji `transrec_migrated`** w `UserSettings` do idempotentnego przenoszenia legacy assetów.
+- **Nowe testy regresji** dla:
+  - ścieżek `Malinche` i fallbacku `Transrec` (`tests/test_config.py`),
+  - migracji assetów legacy (`tests/test_migration.py`),
+  - walidacji wybranego modelu w downloaderze (`tests/test_downloader.py`),
+  - braku retriggera wizarda przy bumpie alfy (`tests/test_wizard.py`),
+  - spójności wersji setup/UI (`tests/test_versions_sync.py`).
+
 ## [2.0.0-alpha.4] - 2026-04-23
 
 ### Fixed

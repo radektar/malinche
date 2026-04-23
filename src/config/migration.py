@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 from pathlib import Path
 from typing import Optional, Dict, Any
 
@@ -87,13 +88,69 @@ def perform_migration_if_needed() -> UserSettings:
         UserSettings instance (either migrated or loaded from new config)
     """
     new_config_path = UserSettings.config_path()
+    malinche_config_dir = new_config_path.parent
+    transrec_config_dir = Path.home() / "Library" / "Application Support" / "Transrec"
+
+    def _migrate_transrec_assets(settings: UserSettings) -> None:
+        """Move legacy Transrec binaries/models to Malinche directory once."""
+        if settings.transrec_migrated:
+            return
+
+        moved_any = False
+        for subdir in ("bin", "models"):
+            src_dir = transrec_config_dir / subdir
+            dst_dir = malinche_config_dir / subdir
+            if not src_dir.exists() or not src_dir.is_dir():
+                continue
+
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            for src_item in src_dir.iterdir():
+                if src_item.is_dir():
+                    # Keep migration simple and explicit for expected flat directories.
+                    continue
+
+                dst_item = dst_dir / src_item.name
+                try:
+                    if not dst_item.exists():
+                        shutil.move(str(src_item), str(dst_item))
+                        moved_any = True
+                        _get_logger().info(
+                            "Migrated %s from Transrec to Malinche", src_item
+                        )
+                    else:
+                        backup_path = src_item.with_name(f"{src_item.name}.transrec.bak")
+                        if not backup_path.exists():
+                            shutil.move(str(src_item), str(backup_path))
+                            moved_any = True
+                            _get_logger().warning(
+                                "Collision during Transrec migration for %s; moved to %s",
+                                dst_item,
+                                backup_path,
+                            )
+                except Exception as error:
+                    _get_logger().warning(
+                        "Could not migrate legacy asset %s: %s", src_item, error
+                    )
+
+            # Remove empty legacy folders after migration.
+            try:
+                if src_dir.exists() and not any(src_dir.iterdir()):
+                    src_dir.rmdir()
+            except OSError:
+                pass
+
+        settings.transrec_migrated = True
+        settings.save()
+        if moved_any:
+            _get_logger().info("✓ Legacy Transrec assets migration completed")
     
-    # If new config (Malinche) exists, just load it
+    # If new config (Malinche) exists, load and migrate any lingering legacy assets.
     if new_config_path.exists():
+        settings = UserSettings.load()
+        _migrate_transrec_assets(settings)
         return UserSettings.load()
     
     # Check for Transrec config (previous v2.0.0 format)
-    transrec_config_dir = Path.home() / "Library" / "Application Support" / "Transrec"
     transrec_config_path = transrec_config_dir / "config.json"
     
     if transrec_config_path.exists():
@@ -107,8 +164,7 @@ def perform_migration_if_needed() -> UserSettings:
             new_settings = UserSettings(**data)
             new_settings.save()
             
-            # Optionally migrate bin/models if they exist
-            import shutil
+            # Optionally migrate remaining files from legacy folder.
             for sub in ["bin", "models", "state.json"]:
                 old_path = transrec_config_dir / sub
                 new_path = new_config_path.parent / sub
@@ -123,7 +179,8 @@ def perform_migration_if_needed() -> UserSettings:
                         _get_logger().warning(f"Could not migrate {sub}: {e}")
             
             _get_logger().info("✓ Migration from Transrec completed")
-            return new_settings
+            _migrate_transrec_assets(new_settings)
+            return UserSettings.load()
         except Exception as e:
             _get_logger().error(f"Migration from Transrec failed: {e}")
 

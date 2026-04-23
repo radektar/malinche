@@ -12,6 +12,7 @@ from typing import Callable, Optional
 
 import httpx
 
+from src.config.settings import UserSettings
 from src.logger import logger
 from src.setup.checksums import CHECKSUMS, SIZES, URLS, VERSIONS
 from src.setup.errors import (
@@ -170,16 +171,25 @@ class DependencyDownloader:
         ffmpeg_path = self.bin_dir / "ffmpeg"
         return ffmpeg_path.exists() and ffmpeg_path.stat().st_size > 0
 
-    def is_model_installed(self, model: str = "small") -> bool:
+    def _selected_model(self) -> str:
+        """Return model selected in user settings, fallback to small."""
+        try:
+            model = UserSettings.load().whisper_model
+        except Exception:
+            return "small"
+        return model or "small"
+
+    def is_model_installed(self, model: Optional[str] = None) -> bool:
         """Sprawdź czy model jest pobrany.
 
         Args:
-            model: Nazwa modelu (default: "small")
+            model: Nazwa modelu; gdy None, używa ustawienia użytkownika.
 
         Returns:
             True jeśli model istnieje
         """
-        model_path = self.models_dir / f"ggml-{model}.bin"
+        selected_model = model or self._selected_model()
+        model_path = self.models_dir / f"ggml-{selected_model}.bin"
         return model_path.exists()
 
     def check_all(self) -> bool:
@@ -194,17 +204,22 @@ class DependencyDownloader:
         else:
             whisper_present = self.is_whisper_installed()
 
-        if not (whisper_present and self.is_ffmpeg_installed() and self.is_model_installed()):
+        selected_model = self._selected_model()
+        if not (
+            whisper_present
+            and self.is_ffmpeg_installed()
+            and self.is_model_installed(selected_model)
+        ):
             return False
         
         # Weryfikuj checksumy
         whisper_path = self.bin_dir / "whisper-cli"
         ffmpeg_path = self.bin_dir / "ffmpeg"
-        model_path = self.models_dir / "ggml-small.bin"
+        model_path = self.models_dir / f"ggml-{selected_model}.bin"
         
         whisper_checksum = CHECKSUMS.get("whisper-cli")
         ffmpeg_checksum = CHECKSUMS.get("ffmpeg-arm64")
-        model_checksum = CHECKSUMS.get("ggml-small.bin")
+        model_checksum = CHECKSUMS.get(f"ggml-{selected_model}.bin")
         
         # Weryfikuj whisper-cli
         if whisper_checksum:

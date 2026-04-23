@@ -55,6 +55,42 @@ def test_config_whisper_cpp_paths():
     assert isinstance(config.WHISPER_CPP_MODELS_DIR, Path)
 
 
+def test_config_prefers_malinche_paths(tmp_path, monkeypatch):
+    """When Malinche paths exist, Config should pick them first."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    malinche_models = (
+        tmp_path / "Library" / "Application Support" / "Malinche" / "models"
+    )
+    malinche_bin = tmp_path / "Library" / "Application Support" / "Malinche" / "bin"
+    malinche_models.mkdir(parents=True, exist_ok=True)
+    malinche_bin.mkdir(parents=True, exist_ok=True)
+    (malinche_bin / "ffmpeg").write_bytes(b"new ffmpeg")
+
+    config = Config()
+
+    assert config.WHISPER_CPP_MODELS_DIR == malinche_models
+    assert config.FFMPEG_PATH == malinche_bin / "ffmpeg"
+
+
+def test_config_fallbacks_to_legacy_transrec_paths(tmp_path, monkeypatch):
+    """Falls back to legacy Transrec paths only if Malinche paths do not exist."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    transrec_models = (
+        tmp_path / "Library" / "Application Support" / "Transrec" / "models"
+    )
+    transrec_bin = tmp_path / "Library" / "Application Support" / "Transrec" / "bin"
+    transrec_models.mkdir(parents=True, exist_ok=True)
+    transrec_bin.mkdir(parents=True, exist_ok=True)
+    (transrec_bin / "ffmpeg").write_bytes(b"legacy ffmpeg")
+
+    config = Config()
+
+    assert config.WHISPER_CPP_MODELS_DIR == transrec_models
+    assert config.FFMPEG_PATH == transrec_bin / "ffmpeg"
+
+
 def test_config_tagging_defaults(monkeypatch):
     """Tagging configuration should have sane defaults."""
     from src.config.settings import UserSettings

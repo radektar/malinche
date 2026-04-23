@@ -205,37 +205,49 @@ tags: [{tags}]
                     self.WHISPER_CPP_PATH = new_whisper_path
         
         if self.WHISPER_CPP_MODELS_DIR is None:
-            # Nowa lokalizacja: ~/Library/Application Support/Transrec/models/
-            support_dir = (
+            # Primary location: ~/Library/Application Support/Malinche/models/
+            malinche_support_dir = (
+                Path.home() / "Library" / "Application Support" / "Malinche"
+            )
+            legacy_support_dir = (
                 Path.home() / "Library" / "Application Support" / "Transrec"
             )
-            new_models_dir = support_dir / "models"
-            
-            # Sprawdź nową lokalizację
-            if new_models_dir.exists():
-                self.WHISPER_CPP_MODELS_DIR = new_models_dir
+            malinche_models_dir = malinche_support_dir / "models"
+            legacy_models_dir = legacy_support_dir / "models"
+
+            if malinche_models_dir.exists():
+                self.WHISPER_CPP_MODELS_DIR = malinche_models_dir
+            elif legacy_models_dir.exists():
+                # Read-only fallback for pre-migration installs.
+                self.WHISPER_CPP_MODELS_DIR = legacy_models_dir
             else:
-                # Fallback do starej lokalizacji
+                # Legacy fallback for local developer setups.
                 self.WHISPER_CPP_MODELS_DIR = Path.home() / "whisper.cpp" / "models"
         
         if self.FFMPEG_PATH is None:
-            # Nowa lokalizacja: ~/Library/Application Support/Transrec/bin/ffmpeg
-            support_dir = (
+            # Primary location: ~/Library/Application Support/Malinche/bin/ffmpeg
+            malinche_support_dir = (
+                Path.home() / "Library" / "Application Support" / "Malinche"
+            )
+            legacy_support_dir = (
                 Path.home() / "Library" / "Application Support" / "Transrec"
             )
-            new_ffmpeg_path = support_dir / "bin" / "ffmpeg"
-            
-            # Sprawdź nową lokalizację (Faza 2)
-            if new_ffmpeg_path.exists():
-                self.FFMPEG_PATH = new_ffmpeg_path
+            malinche_ffmpeg_path = malinche_support_dir / "bin" / "ffmpeg"
+            legacy_ffmpeg_path = legacy_support_dir / "bin" / "ffmpeg"
+
+            if malinche_ffmpeg_path.exists():
+                self.FFMPEG_PATH = malinche_ffmpeg_path
+            elif legacy_ffmpeg_path.exists():
+                # Read-only fallback for pre-migration installs.
+                self.FFMPEG_PATH = legacy_ffmpeg_path
             else:
                 # Fallback do systemowego ffmpeg (shutil.which)
                 system_ffmpeg = shutil.which("ffmpeg")
                 if system_ffmpeg:
                     self.FFMPEG_PATH = Path(system_ffmpeg)
                 else:
-                    # Default - nowa lokalizacja (będzie pobrana przez downloader)
-                    self.FFMPEG_PATH = new_ffmpeg_path
+                    # Default - new location (downloaded by DependencyDownloader)
+                    self.FFMPEG_PATH = malinche_ffmpeg_path
         
         # Load LLM API key from UserSettings only
         # Environment variables should be migrated to UserSettings via perform_migration_if_needed()

@@ -56,12 +56,25 @@ class SetupWizard:
         self._wizard_completed = False
 
     @staticmethod
+    def _version_line(version: str) -> str:
+        """Return major.minor part used for setup compatibility checks."""
+        parts = (version or "").split(".")
+        if len(parts) < 2:
+            return version or ""
+        return ".".join(parts[:2])
+
+    @staticmethod
     def needs_setup() -> bool:
         """Sprawdź czy wizard jest potrzebny."""
         settings = UserSettings.load()
-        # Run setup on first run and after app version upgrades where
-        # configuration may require new fields/flows.
-        return (not settings.setup_completed) or (settings.setup_version != APP_VERSION)
+        if not settings.setup_completed:
+            return True
+
+        # Re-run wizard only when compatibility line changes (major.minor),
+        # not for alpha/patch bumps inside the same release line.
+        return SetupWizard._version_line(settings.setup_version) != SetupWizard._version_line(
+            APP_VERSION
+        )
 
     @property
     def current_step(self) -> WizardStep:

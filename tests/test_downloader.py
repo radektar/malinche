@@ -173,9 +173,23 @@ class TestDependencyDownloader:
         monkeypatch.setattr(downloader, "verify_checksum", lambda path, checksum: True)
         monkeypatch.setattr(downloader, "verify_whisper_runtime", lambda: None)
         monkeypatch.setattr(downloader, "_whisper_distribution", lambda: "static")
+        monkeypatch.setattr(downloader, "_selected_model", lambda: "small")
 
         result = downloader.check_all()
         assert result is True
+
+    def test_check_all_requires_selected_model(self, downloader, monkeypatch):
+        """check_all musi respektować model wybrany w ustawieniach."""
+        (downloader.bin_dir / "whisper-cli").write_bytes(b"fake")
+        (downloader.bin_dir / "ffmpeg").write_bytes(b"fake")
+        (downloader.models_dir / "ggml-small.bin").write_bytes(b"fake")
+
+        monkeypatch.setattr(downloader, "verify_checksum", lambda path, checksum: True)
+        monkeypatch.setattr(downloader, "verify_whisper_runtime", lambda: None)
+        monkeypatch.setattr(downloader, "_whisper_distribution", lambda: "static")
+        monkeypatch.setattr(downloader, "_selected_model", lambda: "medium")
+
+        assert downloader.check_all() is False
 
     def test_check_all_false(self, downloader):
         """Test check_all - brakuje zależności."""

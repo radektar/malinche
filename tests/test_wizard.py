@@ -46,6 +46,19 @@ class TestSetupWizard:
 
         assert SetupWizard.needs_setup() is True
 
+    def test_needs_setup_false_for_alpha_patch_bump(self, tmp_path, monkeypatch):
+        """Zmiana alpha/patch w tej samej linii major.minor nie wymusza wizarda."""
+        config_file = tmp_path / "config.json"
+        monkeypatch.setattr(
+            UserSettings, "config_path", staticmethod(lambda: config_file)
+        )
+        monkeypatch.setattr("src.setup.wizard.APP_VERSION", "2.0.0-alpha.5")
+
+        settings = UserSettings(setup_completed=True, setup_version="2.0.0-alpha.4")
+        settings.save()
+
+        assert SetupWizard.needs_setup() is False
+
     def test_wizard_step_order(self):
         """Kroki są w poprawnej kolejności."""
         assert SetupWizard.STEPS_ORDER[0] == WizardStep.WELCOME
