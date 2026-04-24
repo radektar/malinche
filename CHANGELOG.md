@@ -5,6 +5,11 @@ All notable changes to Malinche will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0-alpha.13] - 2026-04-24
+
+### Fixed
+- **Crash w `done_callback`/`error_callback` przy pobieraniu zależności** (`NSInternalInconsistencyException - NSWindow should only be instantiated on the main thread!`). Wywołania `rumps.alert` i mutacje `status_item`/ikon z wątku `DependencyDownload` są teraz kolejkowane przez `PyObjCTools.AppHelper.callAfter` na main run loop. Skutek: po pobraniu CoreML encodera aplikacja nie ginie w połowie cyklu, a transkrypcja kontynuuje w kolejnej iteracji `process_recorder`.
+
 ## [2.0.0-alpha.12] - 2026-04-24
 
 ### Fixed

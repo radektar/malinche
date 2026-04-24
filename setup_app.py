@@ -4,7 +4,7 @@ from setuptools import setup
 import py2app
 from pathlib import Path
 
-APP_VERSION = "2.0.0-alpha.12"
+APP_VERSION = "2.0.0-alpha.13"
 
 # Entry point - menu bar application
 APP = ['src/menu_app.py']

@@ -18,6 +18,20 @@ try:
 except ImportError:
     RUMPS_AVAILABLE = False
 
+try:
+    from PyObjCTools import AppHelper
+    _APPHELPER_AVAILABLE = True
+except ImportError:
+    _APPHELPER_AVAILABLE = False
+
+
+def _run_on_main_thread(func):
+    """Schedule *func* on the main thread; fall back to direct call in tests."""
+    if _APPHELPER_AVAILABLE:
+        AppHelper.callAfter(func)
+    else:
+        func()
+
 from src.config import config
 from src.logger import logger
 from src.app_core import MalincheTranscriber
@@ -295,60 +309,64 @@ class MalincheMenuApp(rumps.App):
             logger.debug(f"Pobieranie {name}: {percent}%")
 
         def done_callback():
-            self._download_active = False
-            if self._download_window is not None:
-                self._download_window.update(detail="Pobieranie zakończone", progress=1.0)
-                self._download_window.close()
-            logger.info("✓ Wszystkie zależności pobrane")
-            rumps.alert(
-                title="✅ Gotowe",
-                message="Wszystkie zależności zostały pobrane.\n\nAplikacja jest gotowa do użycia.",
-                ok="OK"
-            )
-            self.status_item.title = "Status: Gotowe"
-            self._update_icon(AppStatus.IDLE)
+            def _on_main() -> None:
+                self._download_active = False
+                if self._download_window is not None:
+                    self._download_window.update(detail="Pobieranie zakończone", progress=1.0)
+                    self._download_window.close()
+                logger.info("✓ Wszystkie zależności pobrane")
+                rumps.alert(
+                    title="✅ Gotowe",
+                    message="Wszystkie zależności zostały pobrane.\n\nAplikacja jest gotowa do użycia.",
+                    ok="OK"
+                )
+                self.status_item.title = "Status: Gotowe"
+                self._update_icon(AppStatus.IDLE)
+            _run_on_main_thread(_on_main)
 
         def error_callback(exc: Exception):
-            self._download_active = False
-            if self._download_window is not None:
-                self._download_window.update(detail=f"Błąd: {exc}")
-            if isinstance(exc, NetworkError):
-                logger.error(f"Brak połączenia: {exc}")
-                rumps.alert(
-                    title="⚠️ Brak połączenia",
-                    message=(
-                        "Brak połączenia z internetem.\n\n"
-                        "Malinche wymaga jednorazowego pobrania silnika transkrypcji (~500MB).\n"
-                        "Połącz się z internetem i spróbuj ponownie."
-                    ),
-                    ok="OK"
-                )
-                self.status_item.title = "Status: Brak połączenia"
-            elif isinstance(exc, DiskSpaceError):
-                logger.error(f"Brak miejsca: {exc}")
-                rumps.alert(
-                    title="⚠️ Brak miejsca",
-                    message=str(exc),
-                    ok="OK"
-                )
-                self.status_item.title = "Status: Brak miejsca"
-            elif isinstance(exc, DownloadError):
-                logger.error(f"Błąd pobierania: {exc}")
-                rumps.alert(
-                    title="⚠️ Błąd pobierania",
-                    message=f"Nie udało się pobrać zależności:\n\n{str(exc)}\n\nSpróbuj ponownie później.",
-                    ok="OK"
-                )
-                self.status_item.title = "Status: Błąd pobierania"
-            else:
-                logger.error(f"Nieoczekiwany błąd: {exc}", exc_info=True)
-                rumps.alert(
-                    title="⚠️ Błąd",
-                    message=f"Nieoczekiwany błąd:\n\n{str(exc)}",
-                    ok="OK"
-                )
-                self.status_item.title = "Status: Błąd"
-            self._update_icon(AppStatus.ERROR)
+            def _on_main() -> None:
+                self._download_active = False
+                if self._download_window is not None:
+                    self._download_window.update(detail=f"Błąd: {exc}")
+                if isinstance(exc, NetworkError):
+                    logger.error(f"Brak połączenia: {exc}")
+                    rumps.alert(
+                        title="⚠️ Brak połączenia",
+                        message=(
+                            "Brak połączenia z internetem.\n\n"
+                            "Malinche wymaga jednorazowego pobrania silnika transkrypcji (~500MB).\n"
+                            "Połącz się z internetem i spróbuj ponownie."
+                        ),
+                        ok="OK"
+                    )
+                    self.status_item.title = "Status: Brak połączenia"
+                elif isinstance(exc, DiskSpaceError):
+                    logger.error(f"Brak miejsca: {exc}")
+                    rumps.alert(
+                        title="⚠️ Brak miejsca",
+                        message=str(exc),
+                        ok="OK"
+                    )
+                    self.status_item.title = "Status: Brak miejsca"
+                elif isinstance(exc, DownloadError):
+                    logger.error(f"Błąd pobierania: {exc}")
+                    rumps.alert(
+                        title="⚠️ Błąd pobierania",
+                        message=f"Nie udało się pobrać zależności:\n\n{str(exc)}\n\nSpróbuj ponownie później.",
+                        ok="OK"
+                    )
+                    self.status_item.title = "Status: Błąd pobierania"
+                else:
+                    logger.error(f"Nieoczekiwany błąd: {exc}", exc_info=True)
+                    rumps.alert(
+                        title="⚠️ Błąd",
+                        message=f"Nieoczekiwany błąd:\n\n{str(exc)}",
+                        ok="OK"
+                    )
+                    self.status_item.title = "Status: Błąd"
+                self._update_icon(AppStatus.ERROR)
+            _run_on_main_thread(_on_main)
 
         started = self._download_manager.download_async(
             on_progress=progress_callback,
