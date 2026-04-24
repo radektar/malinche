@@ -5,6 +5,14 @@ All notable changes to Malinche will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0-alpha.17] - 2026-04-24
+
+### Fixed
+- **Staged pliki porzucone bez recordera**: `process_recorder()` skanuje teraz `LOCAL_RECORDINGS_DIR` jako fallback gdy żaden recorder nie jest podłączony. Pliki wcześniej skopiowane do staging, które nie zostały transkrybowane (np. po restarcie lub błędzie), są przetwarzane automatycznie bez potrzeby ponownego podłączania dyktafonu.
+
+### Added
+- **Automatyczne czyszczenie martwych wpisów w vault_index**: wpisy wskazujące na nieistniejące pliki markdown są teraz wykrywalne — usunięto 27 porzuconych wpisów (260420–260423) z `index.json` po tym jak użytkownik ręcznie usunął pliki markdown.
+
 ## [2.0.0-alpha.16] - 2026-04-24
 
 ### Fixed

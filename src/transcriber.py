@@ -1306,7 +1306,38 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
             # Find all matching recorders (auto/specific/manual aware)
             recorders = self.find_recorders()
             if not recorders:
-                logger.info("❌ Recorder not found")
+                # No physical recorder — still check local staging dir for
+                # previously staged files that were never successfully transcribed.
+                staged_pending = self.find_pending_audio_files(
+                    self.config.LOCAL_RECORDINGS_DIR
+                )
+                if staged_pending:
+                    logger.info(
+                        "📂 No recorder, but %d staged file(s) pending in recordings/",
+                        len(staged_pending),
+                    )
+                    processed_s = 0
+                    processed_f = 0
+                    for staged_file in staged_pending:
+                        logger.info(f"Processing: {staged_file.name}")
+                        if self.transcribe_file(staged_file):
+                            processed_s += 1
+                        else:
+                            processed_f += 1
+                        time.sleep(1)
+                    logger.info(
+                        "✓ Staged batch: %d/%d succeeded",
+                        processed_s,
+                        processed_s + processed_f,
+                    )
+                    if processed_s:
+                        send_notification(
+                            title="Malinche",
+                            subtitle="Transkrypcja zakończona",
+                            message=f"Przetworzono: {processed_s}/{processed_s + processed_f} plików",
+                        )
+                else:
+                    logger.info("❌ Recorder not found")
                 self.recorder_monitoring = False
                 self.recorder_was_notified = False
                 self._update_state(
