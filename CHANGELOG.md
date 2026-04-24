@@ -5,6 +5,12 @@ All notable changes to Malinche will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0-alpha.15] - 2026-04-24
+
+### Fixed
+- **Model `claude-3-haiku-20240307` wycofany przez Anthropic (HTTP 404)**: zmiana domyślnego modelu na `claude-haiku-4-5-20251001` w `src/config/config.py`. Efekt: API calls trafiają do istniejącego modelu zamiast generować 404 na każdym pliku.
+- **Circuit breaker obejmuje teraz 404 "model not found"**: `_is_permanent_api_error()` wykrywa zarówno 400 `credit_balance` jak i 404 `not_found_error` (wycofany model). Pierwszy taki błąd wyłącza AI na czas sesji i pokazuje stosowny alert w menu bar.
+
 ## [2.0.0-alpha.14] - 2026-04-24
 
 ### Fixed

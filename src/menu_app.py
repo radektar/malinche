@@ -659,26 +659,38 @@ class MalincheMenuApp(rumps.App):
                 self.daemon_thread.join(timeout=5.0)
 
     def _notify_billing_error(self, exc: Exception) -> None:
-        """Show a one-time alert when Claude API credit balance is exhausted."""
-        del exc  # exception message already logged at CRITICAL level
+        """Show a one-time alert when Claude API hits a permanent error."""
+        exc_str = str(exc).lower()
+        if "credit balance" in exc_str:
+            title = "⚠️ Claude API: Niedostateczne kredyty"
+            message = (
+                "Twoje konto Anthropic (BYOK) ma wyczerpane kredyty.\n\n"
+                "Doładuj je w: https://console.anthropic.com/account/billing\n\n"
+                "Do końca tej sesji Malinche transkrybuje bez AI "
+                "podsumowań i tagów (Whisper działa normalnie)."
+            )
+        elif "not_found" in exc_str or "model" in exc_str:
+            title = "⚠️ Claude API: Nieznany model"
+            message = (
+                "Model Claude skonfigurowany w ustawieniach nie istnieje "
+                "lub został wycofany.\n\n"
+                "Zmień model w Ustawieniach → AI.\n\n"
+                "Do końca tej sesji Malinche transkrybuje bez AI "
+                "podsumowań i tagów (Whisper działa normalnie)."
+            )
+        else:
+            title = "⚠️ Claude API: Błąd trwały"
+            message = (
+                f"Claude API zwróciło błąd trwały:\n{exc}\n\n"
+                "Do końca tej sesji Malinche transkrybuje bez AI "
+                "podsumowań i tagów (Whisper działa normalnie)."
+            )
 
         def _on_main() -> None:
             try:
-                rumps.alert(
-                    title="⚠️ Claude API: Niedostateczne kredyty",
-                    message=(
-                        "Twoje konto Anthropic (BYOK) ma wyczerpane kredyty.\n\n"
-                        "Doładuj je w: https://console.anthropic.com/account/billing\n\n"
-                        "Do końca tej sesji Malinche transkrybuje bez AI "
-                        "podsumowań i tagów (Whisper działa normalnie, "
-                        "markdown dostaje prostszy tytuł)."
-                    ),
-                    ok="Zrozumiano",
-                )
+                rumps.alert(title=title, message=message, ok="Zrozumiano")
             except Exception as alert_exc:  # noqa: BLE001
-                logger.error(
-                    "Billing alert failed to display: %s", alert_exc
-                )
+                logger.error("AI error alert failed to display: %s", alert_exc)
 
         _run_on_main_thread(_on_main)
 

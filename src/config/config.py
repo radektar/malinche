@@ -78,7 +78,7 @@ class Config:
     # LLM/Summarization configuration
     ENABLE_SUMMARIZATION: bool = True
     LLM_PROVIDER: str = "claude"
-    LLM_MODEL: str = "claude-3-haiku-20240307"
+    LLM_MODEL: str = "claude-haiku-4-5-20251001"
     LLM_API_KEY: Optional[str] = None
     SUMMARY_MAX_WORDS: int = 200
     TITLE_MAX_LENGTH: int = 60
