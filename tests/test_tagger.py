@@ -2,9 +2,12 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from src import tagger as tagger_module
 from src.config import Config
 from src.config.features import FeatureFlags
+from src.summarizer import APIBillingError
 from src.tagger import ClaudeTagger, get_tagger
 
 
@@ -55,6 +58,32 @@ def test_claude_tagger_invalid_json_returns_empty(monkeypatch):
     tags = tagger.generate_tags("Test", "Summary", [])
 
     assert tags == []
+
+
+def test_claude_tagger_raises_api_billing_error(monkeypatch):
+    """Credit balance exhaustion must surface as APIBillingError."""
+
+    class FakeStatusError(Exception):
+        status_code = 400
+        message = "Your credit balance is too low"
+
+        def __str__(self) -> str:
+            return self.message
+
+    class FakeMessages:
+        def create(self, *_, **__):
+            raise FakeStatusError()
+
+    class FakeClient:
+        def __init__(self, *_args, **_kwargs) -> None:
+            self.messages = FakeMessages()
+
+    monkeypatch.setattr(tagger_module, "Anthropic", FakeClient)
+    monkeypatch.setattr(tagger_module.config, "ENABLE_LLM_TAGGING", True)
+
+    tagger = ClaudeTagger(api_key="test", model="claude-test")
+    with pytest.raises(APIBillingError):
+        tagger.generate_tags("Test", "Summary", [])
 
 
 def test_get_tagger_no_license(monkeypatch):

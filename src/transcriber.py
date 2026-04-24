@@ -13,7 +13,7 @@ from typing import Callable, Dict, Iterator, List, Optional
 from src.config import config as default_config
 from src.config.config import Config
 from src.logger import logger
-from src.summarizer import get_summarizer, BaseSummarizer
+from src.summarizer import APIBillingError, get_summarizer, BaseSummarizer
 from src.markdown_generator import MarkdownGenerator
 from src.app_status import AppStatus
 from src.state_manager import get_last_sync_time, save_sync_time
@@ -252,6 +252,8 @@ class Transcriber:
         self.markdown_generator = MarkdownGenerator()
         self.tag_index = TagIndex()
         self.tagger: Optional[BaseTagger] = get_tagger()
+        self._ai_disabled_reason: Optional[str] = None
+        self.ai_billing_callback: Optional[Callable[[Exception], None]] = None
         self.vault_index = VaultIndex(self.config.TRANSCRIBE_DIR)
         self.vault_index.load()
         self._run_index_migration_if_needed()
@@ -272,6 +274,24 @@ class Transcriber:
             updater: Function that takes (status, current_file, error_message)
         """
         self.state_updater = updater
+
+    def set_ai_billing_callback(
+        self, callback: Callable[[Exception], None]
+    ) -> None:
+        """Register a callback invoked once when the AI circuit breaker trips."""
+        self.ai_billing_callback = callback
+
+    def _disable_ai(self, reason: str, exc: Exception) -> None:
+        """Trip the AI circuit breaker for the rest of the session."""
+        if self._ai_disabled_reason is not None:
+            return
+        self._ai_disabled_reason = reason
+        logger.critical("🛑 AI disabled for this session (%s): %s", reason, exc)
+        if self.ai_billing_callback is not None:
+            try:
+                self.ai_billing_callback(exc)
+            except Exception as cb_exc:  # noqa: BLE001
+                logger.error("AI billing callback failed: %s", cb_exc)
 
     def _run_index_migration_if_needed(self) -> None:
         """Run one-time migration of legacy markdown metadata to index."""
@@ -885,13 +905,16 @@ class Transcriber:
                 logger.warning("Empty transcript, skipping post-processing")
                 return None
             
-            # Generate summary (if summarizer available)
+            # Generate summary (if summarizer available and AI not disabled)
             summary = None
-            if self.summarizer:
+            if self.summarizer and self._ai_disabled_reason is None:
                 try:
                     logger.info("📝 Generating summary...")
                     summary = self.summarizer.generate(transcript_text)
                     logger.info(f"✓ Summary generated: {summary.get('title', 'N/A')}")
+                except APIBillingError as exc:
+                    self._disable_ai("billing", exc)
+                    summary = None
                 except Exception as e:
                     logger.error(f"Summary generation failed: {e}", exc_info=True)
                     logger.warning("Continuing without summary")
@@ -918,7 +941,11 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
 
             # Generate tags
             tags = ["transcription"]
-            if self.config.ENABLE_LLM_TAGGING and self.tagger:
+            if (
+                self.config.ENABLE_LLM_TAGGING
+                and self.tagger
+                and self._ai_disabled_reason is None
+            ):
                 try:
                     existing_tags = self.tag_index.existing_tags()
                     generated_tags = self.tagger.generate_tags(
@@ -929,6 +956,8 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
                     for tag in generated_tags:
                         if tag not in tags:
                             tags.append(tag)
+                except APIBillingError as exc:
+                    self._disable_ai("billing", exc)
                 except Exception as error:  # noqa: BLE001
                     logger.error(
                         "Tag generation failed for %s: %s",

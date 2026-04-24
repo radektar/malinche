@@ -10,6 +10,19 @@ from src.logger import logger
 Anthropic = None  # type: ignore[assignment]
 
 
+class APIBillingError(Exception):
+    """Claude API credit_balance exhausted (HTTP 400 invalid_request_error)."""
+
+
+def _is_credit_balance_error(exc: BaseException) -> bool:
+    """Return True when *exc* is an Anthropic 400 credit_balance error."""
+    status = getattr(exc, "status_code", None)
+    message = str(getattr(exc, "message", exc)).lower()
+    if status == 400 and "credit balance" in message:
+        return True
+    return "credit balance is too low" in str(exc).lower()
+
+
 class BaseSummarizer(ABC):
     """Base class for transcript summarizers.
     
@@ -126,6 +139,11 @@ class ClaudeSummarizer(BaseSummarizer):
             }
             
         except Exception as e:
+            if _is_credit_balance_error(e):
+                logger.critical(
+                    "❌ Claude API: credit balance exhausted (summarizer)"
+                )
+                raise APIBillingError(str(e)) from e
             logger.error(f"Claude API error: {e}", exc_info=True)
             logger.warning("Falling back to simple title generation")
             return self._fallback_summary(transcript)

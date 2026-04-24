@@ -2,7 +2,12 @@
 
 import pytest
 from unittest.mock import Mock, patch, MagicMock
-from src.summarizer import BaseSummarizer, ClaudeSummarizer, get_summarizer
+from src.summarizer import (
+    APIBillingError,
+    BaseSummarizer,
+    ClaudeSummarizer,
+    get_summarizer,
+)
 from src.config import config
 from src.config.features import FeatureFlags
 
@@ -145,6 +150,39 @@ class TestClaudeSummarizer:
         assert "⚡" in result["summary"]
         assert "📝" in result["summary"]
     
+    def test_generate_raises_api_billing_error_on_credit_balance(
+        self, summarizer, mock_anthropic
+    ):
+        """Credit balance exhaustion must surface as APIBillingError."""
+        class FakeStatusError(Exception):
+            status_code = 400
+            message = "Your credit balance is too low to access the API"
+
+            def __str__(self) -> str:
+                return self.message
+
+        mock_anthropic.messages.create.side_effect = FakeStatusError()
+
+        with pytest.raises(APIBillingError):
+            summarizer.generate("Test transcript")
+
+    def test_generate_falls_back_on_other_api_errors(
+        self, summarizer, mock_anthropic
+    ):
+        """Non-billing API errors must still return a fallback summary."""
+        class FakeStatusError(Exception):
+            status_code = 500
+            message = "internal server error"
+
+            def __str__(self) -> str:
+                return self.message
+
+        mock_anthropic.messages.create.side_effect = FakeStatusError()
+
+        result = summarizer.generate("Test transcript")
+        assert "title" in result
+        assert "## Podsumowanie" in result["summary"]
+
     def test_title_length_limit(self, summarizer, mock_anthropic):
         """Test that title is truncated to max length."""
         long_title = "A" * 200

@@ -533,6 +533,62 @@ def test_postprocess_transcript_no_summarizer(transcriber, tmp_path, monkeypatch
     assert "Brak podsumowania" in summary.get("summary", "")
 
 
+def test_postprocess_transcript_circuit_breaker_on_billing_error(
+    monkeypatch, tmp_path, transcriber
+):
+    """After APIBillingError the summarizer/tagger must not be called again."""
+    from src.summarizer import APIBillingError
+
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    update_transcriber_config(
+        transcriber, monkeypatch, TRANSCRIBE_DIR=output_dir, ENABLE_LLM_TAGGING=True
+    )
+
+    audio_file = tmp_path / "sample.mp3"
+    audio_file.touch()
+    transcript_file = output_dir / "sample.txt"
+    transcript_file.write_text("Treść transkrypcji")
+
+    mock_summarizer = MagicMock(spec=BaseSummarizer)
+    mock_summarizer.generate.side_effect = APIBillingError("credit balance too low")
+    transcriber.summarizer = mock_summarizer
+
+    mock_tagger = MagicMock()
+    mock_tagger.generate_tags.return_value = []
+    transcriber.tagger = mock_tagger
+
+    callback = MagicMock()
+    transcriber.set_ai_billing_callback(callback)
+
+    mock_md_gen = MagicMock(spec=MarkdownGenerator)
+    mock_md_gen.extract_audio_metadata.return_value = {
+        "source_file": "sample.mp3",
+        "extension": ".mp3",
+        "recording_datetime": datetime.now(),
+        "duration_seconds": 60,
+        "duration_formatted": "00:01:00",
+    }
+    mock_md_gen.create_markdown_document.return_value = output_dir / "sample.md"
+    transcriber.markdown_generator = mock_md_gen
+
+    # First file: trips circuit breaker.
+    second_transcript = output_dir / "sample2.txt"
+    second_transcript.write_text("Druga transkrypcja")
+
+    transcriber._postprocess_transcript(
+        audio_file, transcript_file, fingerprint="sha256:first"
+    )
+    transcriber._postprocess_transcript(
+        audio_file, second_transcript, fingerprint="sha256:second"
+    )
+
+    assert transcriber._ai_disabled_reason == "billing"
+    assert mock_summarizer.generate.call_count == 1
+    mock_tagger.generate_tags.assert_not_called()
+    callback.assert_called_once()
+
+
 def test_postprocess_transcript_passes_tags(monkeypatch, tmp_path, transcriber):
     """Tag list should be passed into markdown generator."""
     from src import config as config_module

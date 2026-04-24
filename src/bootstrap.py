@@ -159,6 +159,17 @@ def ensure_ready() -> UserSettings:
     """Ensure runtime is initialized and legacy paths migrated."""
     load_env_file()
     paths = _legacy_paths(Path.home())
+
+    # Fast path: config exists and migration flag set — skip legacy scan.
+    if paths["new_config_file"].exists():
+        fast_settings = UserSettings.load()
+        if getattr(fast_settings, "transrec_migrated", False):
+            ensure_importable("anthropic")
+            if fast_settings.setup_version != APP_VERSION:
+                fast_settings.setup_version = APP_VERSION
+                fast_settings.save()
+            return fast_settings
+
     moved_count = 0
 
     settings: UserSettings

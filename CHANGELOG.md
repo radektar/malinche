@@ -5,6 +5,12 @@ All notable changes to Malinche will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0-alpha.14] - 2026-04-24
+
+### Fixed
+- **Bootstrap idempotencja**: `ensure_ready()` ma teraz fast-path i pomija pełny skan migracji, gdy `settings.transrec_migrated == True`. Efekt: brak logów `[bootstrap] migrated N items` przy każdym starcie, brak przypadkowych kolizji typu `recordings.transrec.bak.legacy.bak…` gdy dwa procesy wystartują równolegle.
+- **Circuit breaker dla wyczerpanych kredytów Claude API (`credit_balance is too low`)**: nowy `APIBillingError` w `src/summarizer.py`, wykrywany w summarizerze i taggerze. Po pierwszym takim błędzie `Transcriber` ustawia `_ai_disabled_reason = "billing"` i nie wywołuje już AI dla kolejnych plików — Whisper działa normalnie, markdown dostaje fallback summary. Zamiast spamu HTTP 400 w logu, użytkownik widzi jednorazowy alert w menu bar z instrukcją doładowania konta na `console.anthropic.com`.
+
 ## [2.0.0-alpha.13] - 2026-04-24
 
 ### Fixed

@@ -71,3 +71,42 @@ def test_ensure_ready_is_idempotent(tmp_path, monkeypatch):
         ensure_ready()
 
     move_mock.assert_not_called()
+
+
+def test_ensure_ready_skips_migration_when_flag_set(tmp_path, monkeypatch):
+    """Fast path short-circuits before any legacy scan or cleanup."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    malinche_root = tmp_path / "Library" / "Application Support" / "Malinche"
+    malinche_root.mkdir(parents=True, exist_ok=True)
+    (malinche_root / "config.json").write_text(
+        json.dumps({"transrec_migrated": True, "setup_version": APP_VERSION}),
+        encoding="utf-8",
+    )
+
+    with patch("src.bootstrap._move_with_backup") as move_mock, patch(
+        "src.bootstrap._cleanup_legacy_root"
+    ) as cleanup_mock:
+        settings = ensure_ready()
+
+    move_mock.assert_not_called()
+    cleanup_mock.assert_not_called()
+    assert settings.transrec_migrated is True
+
+
+def test_ensure_ready_still_saves_setup_version_on_fast_path(tmp_path, monkeypatch):
+    """Fast path bumps setup_version when it lags APP_VERSION."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    malinche_root = tmp_path / "Library" / "Application Support" / "Malinche"
+    malinche_root.mkdir(parents=True, exist_ok=True)
+    (malinche_root / "config.json").write_text(
+        json.dumps({"transrec_migrated": True, "setup_version": "0.0.0-stale"}),
+        encoding="utf-8",
+    )
+
+    settings = ensure_ready()
+
+    assert settings.setup_version == APP_VERSION
+    on_disk = json.loads((malinche_root / "config.json").read_text(encoding="utf-8"))
+    assert on_disk["setup_version"] == APP_VERSION

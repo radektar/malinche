@@ -8,6 +8,7 @@ from typing import Iterable, List, Optional
 
 from src.config import config
 from src.logger import logger
+from src.summarizer import APIBillingError, _is_credit_balance_error
 from src.tag_index import TagIndex
 
 Anthropic = None  # type: ignore[assignment]
@@ -85,6 +86,11 @@ class ClaudeTagger(BaseTagger):
             response_text = message.content[0].text if message.content else ""
             return self._parse_tags_response(response_text)
         except Exception as exc:  # noqa: BLE001
+            if _is_credit_balance_error(exc):
+                logger.critical(
+                    "❌ Claude API: credit balance exhausted (tagger)"
+                )
+                raise APIBillingError(str(exc)) from exc
             logger.error("ClaudeTagger API error: %s", exc, exc_info=True)
             return []
 

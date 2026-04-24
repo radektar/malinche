@@ -658,12 +658,37 @@ class MalincheMenuApp(rumps.App):
             if self.daemon_thread and self.daemon_thread.is_alive():
                 self.daemon_thread.join(timeout=5.0)
 
+    def _notify_billing_error(self, exc: Exception) -> None:
+        """Show a one-time alert when Claude API credit balance is exhausted."""
+        del exc  # exception message already logged at CRITICAL level
+
+        def _on_main() -> None:
+            try:
+                rumps.alert(
+                    title="⚠️ Claude API: Niedostateczne kredyty",
+                    message=(
+                        "Twoje konto Anthropic (BYOK) ma wyczerpane kredyty.\n\n"
+                        "Doładuj je w: https://console.anthropic.com/account/billing\n\n"
+                        "Do końca tej sesji Malinche transkrybuje bez AI "
+                        "podsumowań i tagów (Whisper działa normalnie, "
+                        "markdown dostaje prostszy tytuł)."
+                    ),
+                    ok="Zrozumiano",
+                )
+            except Exception as alert_exc:  # noqa: BLE001
+                logger.error(
+                    "Billing alert failed to display: %s", alert_exc
+                )
+
+        _run_on_main_thread(_on_main)
+
     def _run_daemon(self):
         """Run transcriber daemon in background thread."""
         try:
             logger.info("Starting transcriber daemon from menu app...")
             # Don't setup signal handlers in background thread
             self.transcriber = MalincheTranscriber(setup_signals=False)
+            self.transcriber.set_ai_billing_callback(self._notify_billing_error)
             self.transcriber.start()
         except Exception as e:
             logger.error(f"Error in daemon thread: {e}", exc_info=True)
