@@ -5,6 +5,11 @@ All notable changes to Malinche will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0-alpha.16] - 2026-04-24
+
+### Fixed
+- **Nieskończona pętla retry dla uszkodzonych plików audio**: gdy whisper-cli nie może odczytać pliku (`failed to read audio data`), fingerprint trafia do `_session_failed_fingerprints` i plik jest pomijany przez `find_pending_audio_files()` do końca sesji. Efekt: uszkodzony `test_depth3.mp3` (i każdy inny plik który whisper nie może przetworzyć) jest próbowany dokładnie raz, nie co 20 sekund.
+
 ## [2.0.0-alpha.15] - 2026-04-24
 
 ### Fixed

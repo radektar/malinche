@@ -254,6 +254,7 @@ class Transcriber:
         self.tagger: Optional[BaseTagger] = get_tagger()
         self._ai_disabled_reason: Optional[str] = None
         self.ai_billing_callback: Optional[Callable[[Exception], None]] = None
+        self._session_failed_fingerprints: set = set()
         self.vault_index = VaultIndex(self.config.TRANSCRIBE_DIR)
         self.vault_index.load()
         self._run_index_migration_if_needed()
@@ -581,6 +582,11 @@ class Transcriber:
                     fingerprint = compute_fingerprint(audio_file)
                 except OSError as error:
                     logger.warning("Cannot fingerprint %s: %s", audio_file, error)
+                    continue
+                if fingerprint in self._session_failed_fingerprints:
+                    logger.debug(
+                        "Skipping previously failed file: %s", audio_file.name
+                    )
                     continue
                 if self.vault_index.lookup(fingerprint) is None:
                     pending_files.append(audio_file)
@@ -1219,8 +1225,14 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
 
         # Run whisper transcription
         transcript_path = self._run_macwhisper(audio_file)
-        
+
         if transcript_path is None:
+            self._session_failed_fingerprints.add(fingerprint)
+            logger.warning(
+                "Marked %s as failed for this session (fingerprint: %s)",
+                audio_file.name,
+                fingerprint,
+            )
             return False
         
         # Post-process: generate summary and create markdown
