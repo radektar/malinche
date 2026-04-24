@@ -230,6 +230,7 @@ class TestDependencyDownloader:
 
         monkeypatch.setattr(downloader, "is_model_installed", lambda model=None: False)
         monkeypatch.setattr(downloader, "_download_file", _fake_download)
+        monkeypatch.setattr(downloader, "download_model_encoder", lambda model: True)
 
         assert downloader.download_model("medium") is True
         assert called["name"] == "model-medium"
@@ -249,6 +250,7 @@ class TestDependencyDownloader:
 
         monkeypatch.setattr(downloader, "is_model_installed", lambda model=None: False)
         monkeypatch.setattr(downloader, "_download_file", _fake_download)
+        monkeypatch.setattr(downloader, "download_model_encoder", lambda model: True)
 
         assert downloader.download_model("large") is True
         assert called["name"] == "model-large-v3"

@@ -5,6 +5,38 @@ All notable changes to Malinche will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0-alpha.12] - 2026-04-24
+
+### Fixed
+- **CoreML encoder automatycznie pobierany przy starcie**: `whisper-cli` skompilowany z `WHISPER_COREML=ON` crashował z kodem 3 (`failed to load Core ML model`), gdy brakował `ggml-{model}-encoder.mlmodelc/`. Nowy `DependencyDownloader.download_model_encoder()` pobiera encoder z HuggingFace i rozpakowuje go w tle przy starcie (`CoreMLEncoderDownload` thread w `_check_whisper()`). Checksums SHA-256 zweryfikowane z LFS pointer files.
+- **`missing_for_selected_model()` uwzględnia encoder**: setup wizard i `DependencyManager.status()` poprawnie raportują brakujący encoder jako wymaganą zależność.
+
+## [2.0.0-alpha.11] - 2026-04-24
+
+### Fixed
+- **Automatyczna kolejka transkrypcji oparta o fingerprint**: `process_recorder()` przetwarza teraz pliki `pending` (brakujące w `vault_index`) zamiast wyłącznie `mtime > last_sync`, więc starsze nieprzetranskrybowane nagrania są pobierane automatycznie.
+- **Stabilność statusu w menu bar**: przy zajętym locku aplikacja nie wymusza już przejścia do `IDLE`, co eliminuje „skakanie” statusu podczas równoległych triggerów monitora.
+- **Bundlowanie DMG**: pakiet `anthropic` nie jest już wykluczany z py2app — aplikacja z `.app` może wywołać Claude API (wcześniej log: `anthropic package not installed`, brak podsumowań i tagów mimo klucza).
+- **Runtime safeguard dla AI deps**: przy starcie `bootstrap` wykonuje best-effort `ensure_importable("anthropic")`, instalując brakujący pakiet do `~/Library/Application Support/Malinche/runtime/python-deps` bez psucia systemowego Pythona.
+- **Status recordera oparty o fingerprint index**: rozdzielono stany na `recorder_idle` i `recorder_pending`; UI i notyfikacje bazują na brakujących fingerprintach w `vault_index`, a nie tylko na `mtime > last_sync`.
+- **BYOK**: przy własnym `ANTHROPIC_API_KEY` (Claude) podsumowania i inteligentne tagi działają bez tieru PRO / `license_cache.json`.
+
+## [2.0.0-alpha.8] - 2026-04-24
+
+### Changed
+- **Pobieranie zależności działa asynchronicznie w tle** przez nowy `src/setup/dependency_manager.py` (single source of truth). UI nie zawiesza się podczas setupu ani zmiany modelu w Settings.
+- **Kolejność kroków wizarda zmieniona na** `WELCOME -> SOURCE_CONFIG -> BASIC_CONFIG -> DOWNLOAD -> PERMISSIONS -> AI_CONFIG -> FINISH`, dzięki czemu model jest wybierany zanim użytkownik zobaczy ekran pobierania.
+- **Natywne okno postępu pobierania** (`src/ui/download_window.py`) z `NSProgressIndicator` zastąpiło pętlę `rumps.alert` z przyciskiem "Sprawdź status".
+
+### Added
+- **`UserSettings.setup_stage`** — wizard zapisuje aktualny krok i wznawia od niego po przerwaniu / restarcie aplikacji.
+- **Automatyczne kolejkowanie pobierania po zmianie modelu** w Settings (`src/ui/settings_window.py`): brakujący model pobiera się w tle od razu po zapisaniu.
+- **`DependencyDownloader.missing_for_selected_model()` i `required_size_for_selected_model()`** — API do model-aware prezentacji wymagań w UI.
+- **Status `AppStatus.DOWNLOADING`** + ikona w menu bar z aktualizacją tytułu podczas pobierania.
+- **Testy regresji**: `tests/test_dependency_manager.py`, `tests/test_download_window_integration.py`, `tests/test_menu_app_download.py` oraz rozszerzone `tests/test_wizard.py` (reorder kroków, resume `setup_stage`, async download).
+- **Manual checklist** `tests/MANUAL_TEST_CHECKLIST_ALPHA8.md` do weryfikacji buildu.
+- **Test `test_app_version_format` zaktualizowany do pełnego SemVer 2.0.0** (akceptuje prerelease `-alpha.N` i build metadata `+build`).
+
 ## [2.0.0-alpha.7] - 2026-04-23
 
 ### Fixed

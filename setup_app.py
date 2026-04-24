@@ -4,7 +4,7 @@ from setuptools import setup
 import py2app
 from pathlib import Path
 
-APP_VERSION = "2.0.0-alpha.7"
+APP_VERSION = "2.0.0-alpha.12"
 
 # Entry point - menu bar application
 APP = ['src/menu_app.py']
@@ -49,6 +49,7 @@ OPTIONS = {
         'rumps',
         'mutagen',
         'httpx',
+        'anthropic',
         'dotenv',
         'click',
         'src',  # Include entire src package
@@ -89,7 +90,6 @@ OPTIONS = {
         'tests',  # Test modules
         'pytest',  # Test framework
         'unittest',  # Test framework
-        'anthropic',  # PRO-only dependency
         'distutils',
         'lib2to3',
         'docutils',

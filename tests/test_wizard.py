@@ -111,6 +111,125 @@ class TestSetupWizard:
 
         assert wizard._show_download() == "back"
 
+    def test_download_does_not_show_status_modal_after_start(self, monkeypatch):
+        """Po starcie pobierania wizard nie pokazuje statycznego modala statusu.
+
+        Regresja dla UX bugu: modal 'Pobieranie trwa w tle' nie reagował na
+        zakończenie pobierania i blokował wizard.
+        """
+        wizard = SetupWizard()
+        monkeypatch.setattr(
+            wizard.dependency_manager,
+            "status",
+            lambda: Mock(ready=False, total_missing_size=500_000_000),
+        )
+        monkeypatch.setattr(
+            wizard.dependency_manager,
+            "download_async",
+            lambda **kwargs: True,
+        )
+
+        alert_calls = []
+
+        def _fake_alert(**kwargs):
+            alert_calls.append(kwargs)
+            return 1  # "Pobierz teraz"
+
+        monkeypatch.setattr("rumps.alert", _fake_alert)
+
+        fake_window = Mock()
+        monkeypatch.setattr(
+            "src.setup.wizard.DownloadWindow", lambda **kwargs: fake_window
+        )
+
+        result = wizard._show_download()
+
+        assert result == "next"
+        for call in alert_calls:
+            title = call.get("title", "")
+            assert "Pobieranie trwa w tle" not in title, (
+                f"Unexpected status modal after download start: {title}"
+            )
+            assert "Pobrano" not in title, (
+                f"Unexpected success modal after download start: {title}"
+            )
+        fake_window.show.assert_called_once()
+
+    def test_download_done_closes_window_automatically(self, monkeypatch):
+        """Callback _done woła close_after na DownloadWindow."""
+        wizard = SetupWizard()
+        monkeypatch.setattr(
+            wizard.dependency_manager,
+            "status",
+            lambda: Mock(ready=False, total_missing_size=500_000_000),
+        )
+
+        captured = {}
+
+        def _fake_download_async(on_progress, on_done, on_error):
+            captured["on_done"] = on_done
+            captured["on_error"] = on_error
+            return True
+
+        monkeypatch.setattr(
+            wizard.dependency_manager, "download_async", _fake_download_async
+        )
+        monkeypatch.setattr("rumps.alert", lambda **kwargs: 1)
+
+        fake_window = Mock()
+        monkeypatch.setattr(
+            "src.setup.wizard.DownloadWindow", lambda **kwargs: fake_window
+        )
+
+        wizard._show_download()
+        captured["on_done"]()
+
+        fake_window.close_after.assert_called_once()
+        fake_window.update.assert_any_call(
+            detail="✓ Pobrano pomyślnie", progress=1.0
+        )
+
+    def test_download_error_keeps_window_open_and_notifies(self, monkeypatch):
+        """Callback _error pokazuje błąd w oknie i nie wywołuje close_after."""
+        wizard = SetupWizard()
+        monkeypatch.setattr(
+            wizard.dependency_manager,
+            "status",
+            lambda: Mock(ready=False, total_missing_size=500_000_000),
+        )
+
+        captured = {}
+
+        def _fake_download_async(on_progress, on_done, on_error):
+            captured["on_error"] = on_error
+            return True
+
+        monkeypatch.setattr(
+            wizard.dependency_manager, "download_async", _fake_download_async
+        )
+        monkeypatch.setattr("rumps.alert", lambda **kwargs: 1)
+
+        notifications = []
+        monkeypatch.setattr(
+            "rumps.notification",
+            lambda **kwargs: notifications.append(kwargs),
+        )
+
+        fake_window = Mock()
+        monkeypatch.setattr(
+            "src.setup.wizard.DownloadWindow", lambda **kwargs: fake_window
+        )
+
+        wizard._show_download()
+        captured["on_error"](RuntimeError("boom"))
+
+        fake_window.close_after.assert_not_called()
+        fake_window.update.assert_any_call(detail="❌ Błąd: boom")
+        assert any(
+            "Pobieranie nie powiodło się" in (n.get("subtitle") or "")
+            for n in notifications
+        ), "Error notification should be sent"
+
     def test_stage_is_persisted_on_step(self, tmp_path, monkeypatch):
         """Wizard zapisuje setup_stage, aby umożliwić wznowienie."""
         config_file = tmp_path / "config.json"

@@ -15,11 +15,16 @@ class TestUIConstants:
     """Test UI constants."""
 
     def test_app_version_format(self):
-        """APP_VERSION has format X.Y.Z."""
-        parts = APP_VERSION.split(".")
-        assert len(parts) == 3, "Version should be in format X.Y.Z"
-        for part in parts:
-            assert part.isdigit(), f"Version part '{part}' should be numeric"
+        """APP_VERSION follows SemVer 2.0.0, incl. optional prerelease/build metadata."""
+        import re
+
+        semver = re.compile(
+            r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$"
+        )
+        assert semver.match(APP_VERSION), (
+            f"APP_VERSION '{APP_VERSION}' must match SemVer 2.0.0 "
+            "(MAJOR.MINOR.PATCH with optional -prerelease/+build)"
+        )
 
     def test_app_name_not_empty(self):
         """APP_NAME is not empty."""

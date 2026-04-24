@@ -8,7 +8,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, Iterator, List, Optional
 
 from src.config import config as default_config
 from src.config.config import Config
@@ -234,7 +234,18 @@ class Transcriber:
         self.whisper_available = self._check_whisper()
         self.recorder_monitoring = False
         self.recorder_was_notified = False
-        self.state_updater: Optional[Callable[[AppStatus, Optional[str], Optional[str]], None]] = None
+        self.state_updater: Optional[
+            Callable[
+                [
+                    AppStatus,
+                    Optional[str],
+                    Optional[str],
+                    Optional[str],
+                    Optional[int],
+                ],
+                None,
+            ]
+        ] = None
         
         # Initialize summarizer and markdown generator
         self.summarizer: Optional[BaseSummarizer] = get_summarizer()
@@ -250,7 +261,10 @@ class Transcriber:
     
     def set_state_updater(
         self,
-        updater: Callable[[AppStatus, Optional[str], Optional[str]], None]
+        updater: Callable[
+            [AppStatus, Optional[str], Optional[str], Optional[str], Optional[int]],
+            None,
+        ],
     ) -> None:
         """Set callback function for state updates.
         
@@ -291,7 +305,9 @@ class Transcriber:
         self,
         status: AppStatus,
         current_file: Optional[str] = None,
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
+        recorder_name: Optional[str] = None,
+        pending_count: Optional[int] = None,
     ) -> None:
         """Update application state via callback if available.
         
@@ -302,7 +318,13 @@ class Transcriber:
         """
         if self.state_updater:
             try:
-                self.state_updater(status, current_file, error_message)
+                self.state_updater(
+                    status,
+                    current_file,
+                    error_message,
+                    recorder_name,
+                    pending_count,
+                )
             except Exception as e:
                 logger.debug(f"Error updating state: {e}")
     
@@ -339,15 +361,38 @@ class Transcriber:
             logger.info(f"✓ Found whisper.cpp at: {self.config.WHISPER_CPP_PATH}")
             logger.info(f"✓ Found ffmpeg at: {ffmpeg_path}")
             
-            # Check for Core ML model (Apple Silicon optimization)
+            # Check for Core ML encoder (required by whisper-cli built with WHISPER_COREML=ON)
             coreml_model = (
-                self.config.WHISPER_CPP_MODELS_DIR / 
+                self.config.WHISPER_CPP_MODELS_DIR /
                 f"ggml-{self.config.WHISPER_MODEL}-encoder.mlmodelc"
             )
             if coreml_model.exists():
-                logger.info("✓ Core ML model found - GPU acceleration enabled")
+                logger.info("✓ Core ML encoder found - GPU acceleration enabled")
             else:
-                logger.info("ℹ️  Core ML model not found - using CPU (still fast)")
+                logger.warning(
+                    "⚠️  Core ML encoder brakuje — whisper-cli może crashować. "
+                    "Startuje pobieranie w tle..."
+                )
+                import threading
+                from src.setup.downloader import DependencyDownloader
+
+                def _bg_download_encoder() -> None:
+                    try:
+                        DependencyDownloader().download_model_encoder(
+                            self.config.WHISPER_MODEL
+                        )
+                        logger.info(
+                            "✓ Core ML encoder pobrany — transkrypcja będzie działać "
+                            "od następnego cyklu skanowania"
+                        )
+                    except Exception as exc:
+                        logger.error("Błąd pobierania Core ML encodera: %s", exc)
+
+                threading.Thread(
+                    target=_bg_download_encoder,
+                    daemon=True,
+                    name="CoreMLEncoderDownload",
+                ).start()
             
             return True
         
@@ -485,6 +530,44 @@ class Transcriber:
         new_files.sort(key=lambda x: x.stat().st_mtime)
         
         return new_files
+
+    def _iter_audio_files(self, recorder_path: Path) -> Iterator[Path]:
+        """Yield audio files from recorder up to configured max depth."""
+        from src.config.defaults import defaults
+
+        max_depth = defaults.MAX_SCAN_DEPTH
+        for item in recorder_path.rglob("*"):
+            if not item.is_file():
+                continue
+            if item.name.startswith("._") or item.name == ".DS_Store":
+                continue
+            if item.suffix.lower() not in self.config.AUDIO_EXTENSIONS:
+                continue
+            try:
+                relative = item.relative_to(recorder_path)
+                dir_depth = len(relative.parts) - 1
+                if dir_depth > max_depth:
+                    continue
+            except ValueError:
+                continue
+            yield item
+
+    def find_pending_audio_files(self, recorder_path: Path) -> List[Path]:
+        """Return recorder audio files with no fingerprint in vault index."""
+        pending_files: List[Path] = []
+        try:
+            for audio_file in self._iter_audio_files(recorder_path):
+                try:
+                    fingerprint = compute_fingerprint(audio_file)
+                except OSError as error:
+                    logger.warning("Cannot fingerprint %s: %s", audio_file, error)
+                    continue
+                if self.vault_index.lookup(fingerprint) is None:
+                    pending_files.append(audio_file)
+        except OSError as error:
+            logger.error("Error scanning pending files on %s: %s", recorder_path, error)
+            return []
+        return pending_files
     
     def _stage_audio_file(self, audio_file: Path) -> Optional[Path]:
         """Copy audio file from recorder to local staging directory.
@@ -1171,7 +1254,7 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
                 "⛔️ Skipping process_recorder because another instance holds lock %s",
                 self.config.PROCESS_LOCK_FILE,
             )
-            self._update_state(AppStatus.IDLE)
+            # Keep current state to avoid UI flicker while another run is active.
             return
 
         try:
@@ -1185,7 +1268,11 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
                 logger.info("❌ Recorder not found")
                 self.recorder_monitoring = False
                 self.recorder_was_notified = False
-                self._update_state(AppStatus.IDLE)
+                self._update_state(
+                    AppStatus.IDLE,
+                    recorder_name=None,
+                    pending_count=None,
+                )
                 return
 
             logger.info(
@@ -1193,45 +1280,53 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
             )
 
             self.recorder_monitoring = True
+            recorder_names = ", ".join(r.name for r in recorders)
 
-            # Get last sync time once for this batch
-            last_sync = self.get_last_sync_time()
-            logger.info(f"📅 Looking for files modified after: {last_sync}")
-
-            # Aggregate new files across every detected recorder volume
-            new_files: List[Path] = []
+            pending_files: List[Path] = []
             for recorder in recorders:
-                found = self.find_audio_files(recorder, last_sync)
-                logger.info(
-                    f"📁 Found {len(found)} new audio file(s) on {recorder.name}"
+                pending_files.extend(self.find_pending_audio_files(recorder))
+            pending_count = len(pending_files)
+
+            if pending_count > 0:
+                self._update_state(
+                    AppStatus.RECORDER_PENDING,
+                    recorder_name=recorder_names,
+                    pending_count=pending_count,
                 )
-                new_files.extend(found)
+            else:
+                self._update_state(
+                    AppStatus.RECORDER_IDLE,
+                    recorder_name=recorder_names,
+                    pending_count=0,
+                )
 
-            # Send notification only if new files are found
-            # This prevents spam when recorder is connected but has no new recordings
-            if new_files:
-                if not self.recorder_was_notified:
-                    recorder_names = ", ".join(r.name for r in recorders)
-                    send_notification(
-                        title="Malinche",
-                        subtitle="Recorder wykryty",
-                        message=f"Podłączono: {recorder_names}"
-                    )
-                    self.recorder_was_notified = True
+            # Keep last_sync diagnostics, but process queue is based on fingerprint
+            # pending list so older unindexed recordings are never missed.
+            last_sync = self.get_last_sync_time()
+            logger.info("📅 Last sync timestamp: %s", last_sync)
+            logger.info(
+                "📁 Pending files by fingerprint: %s on %s",
+                pending_count,
+                recorder_names,
+            )
 
-                # Notify about new files found
+            if not self.recorder_was_notified:
+                subtitle = "Recorder wykryty"
+                if pending_count > 0:
+                    subtitle = f"Recorder wykryty: {pending_count} do transkrypcji"
                 send_notification(
                     title="Malinche",
-                    subtitle=f"Znaleziono {len(new_files)} nowych nagrań",
-                    message="Rozpoczynam transkrypcję..."
+                    subtitle=subtitle,
+                    message=f"Podłączono: {recorder_names}",
                 )
+                self.recorder_was_notified = True
 
             processed_success = 0
             processed_failed = 0
 
-            # Process each file: stage first, then transcribe
-            if new_files:
-                for recorder_file in new_files:
+            # Process each pending file (source of truth: missing fingerprint).
+            if pending_files:
+                for recorder_file in pending_files:
                     logger.info(f"Processing: {recorder_file.name}")
                     
                     existing_markdown = self._find_existing_markdown_for_audio(recorder_file)
@@ -1290,7 +1385,7 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
                     message=f"Przetworzono: {processed_success}/{total_processed} plików"
                 )
             else:
-                logger.info("ℹ️  No new files to transcribe")
+                logger.info("ℹ️  No pending files to transcribe")
             
             # Only advance sync time if ALL files were successfully processed
             # This prevents losing files that failed due to unmounting or other errors
@@ -1316,7 +1411,21 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
                 self.recorder_monitoring = False
                 self.recorder_was_notified = False
             
-            self._update_state(AppStatus.IDLE)
+            if self.recorder_monitoring:
+                if pending_count > 0:
+                    self._update_state(
+                        AppStatus.RECORDER_PENDING,
+                        recorder_name=recorder_names,
+                        pending_count=pending_count,
+                    )
+                else:
+                    self._update_state(
+                        AppStatus.RECORDER_IDLE,
+                        recorder_name=recorder_names,
+                        pending_count=0,
+                    )
+            else:
+                self._update_state(AppStatus.IDLE, recorder_name=None, pending_count=None)
         finally:
             lock.release()
 

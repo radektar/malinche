@@ -7,6 +7,7 @@ import socket
 import subprocess
 import tarfile
 import time
+import zipfile
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -207,6 +208,60 @@ class DependencyDownloader:
         model_path = self.models_dir / f"ggml-{selected_model}.bin"
         return model_path.exists()
 
+    def is_model_encoder_installed(self, model: Optional[str] = None) -> bool:
+        """Sprawdź czy CoreML encoder dla modelu jest zainstalowany.
+
+        Args:
+            model: Nazwa modelu; gdy None, używa ustawienia użytkownika.
+
+        Returns:
+            True jeśli katalog encodera istnieje lub model nie ma encodera
+        """
+        canonical = self._canonical_model(model)
+        if not URLS.get(f"model_{canonical}_encoder") and not URLS.get(f"model_{model}_encoder"):
+            return True  # Model nie ma encodera — nie wymagany
+        encoder_dir = self.models_dir / f"ggml-{canonical}-encoder.mlmodelc"
+        return encoder_dir.exists() and encoder_dir.is_dir()
+
+    def download_model_encoder(self, model: str) -> bool:
+        """Pobierz i zainstaluj CoreML encoder dla modelu.
+
+        Encoder jest wymagany gdy whisper-cli skompilowano z WHISPER_COREML=ON.
+        Plik zip jest pobierany do downloads_dir, rozpakowywany do models_dir,
+        a następnie usuwany.
+
+        Args:
+            model: Nazwa modelu (np. "small", "base", "medium").
+
+        Returns:
+            True jeśli encoder zainstalowany lub nie jest wymagany dla tego modelu.
+        """
+        canonical = self._canonical_model(model)
+        url_key = f"model_{model}_encoder"
+        url = URLS.get(url_key)
+        if not url:
+            logger.debug(f"Brak CoreML encodera dla modelu {model} — pomijam")
+            return True
+
+        if self.is_model_encoder_installed(model):
+            logger.info(f"CoreML encoder dla {model} już zainstalowany")
+            return True
+
+        zip_key = f"ggml-{canonical}-encoder.mlmodelc.zip"
+        expected_size = SIZES.get(zip_key)
+        expected_checksum = CHECKSUMS.get(zip_key)
+
+        zip_dest = self.downloads_dir / zip_key
+        self._download_file(url, zip_dest, f"encoder-{canonical}", expected_size, expected_checksum)
+
+        logger.info(f"Rozpakowywanie CoreML encodera dla {model}...")
+        with zipfile.ZipFile(zip_dest, "r") as zf:
+            zf.extractall(self.models_dir)
+
+        zip_dest.unlink(missing_ok=True)
+        logger.info(f"✓ CoreML encoder dla {model} zainstalowany")
+        return True
+
     def missing_for_selected_model(self) -> list[tuple[str, int]]:
         """Return missing artifacts required for current selected model.
 
@@ -236,6 +291,10 @@ class DependencyDownloader:
         model_key = f"ggml-{canonical_model}.bin"
         if not self.is_model_installed(selected_model):
             missing.append((model_key, int(SIZES.get(model_key, 0))))
+
+        encoder_key = f"ggml-{canonical_model}-encoder.mlmodelc.zip"
+        if not self.is_model_encoder_installed(selected_model) and SIZES.get(encoder_key):
+            missing.append((encoder_key, int(SIZES.get(encoder_key, 0))))
 
         return missing
 
@@ -673,6 +732,7 @@ class DependencyDownloader:
         self._download_file(
             url, dest, f"model-{canonical_model}", expected_size, expected_checksum
         )
+        self.download_model_encoder(model)
         return True
 
     def download_all(self) -> bool:
@@ -702,6 +762,10 @@ class DependencyDownloader:
                     f"ggml-{canonical_model}.bin",
                     MIN_DISK_SPACE_BYTES,
                 )
+            if not self.is_model_encoder_installed(selected_model):
+                total_size += SIZES.get(
+                    f"ggml-{canonical_model}-encoder.mlmodelc.zip", 0
+                )
             self.check_disk_space(total_size)
 
             # Pobierz brakujące zależności
@@ -715,6 +779,9 @@ class DependencyDownloader:
 
             if not self.is_model_installed(selected_model):
                 self.download_model(selected_model)
+            elif not self.is_model_encoder_installed(selected_model):
+                # Model .bin już jest, ale brakuje encodera CoreML
+                self.download_model_encoder(selected_model)
 
             logger.info("✓ Wszystkie zależności zainstalowane")
             return True

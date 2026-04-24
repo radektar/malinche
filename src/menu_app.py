@@ -145,6 +145,8 @@ class MalincheMenuApp(rumps.App):
             AppStatus.TRANSCRIBING: "transcribing.png",
             AppStatus.DOWNLOADING: "transcribing.png",
             AppStatus.MIGRATING: "migrating.png",
+            AppStatus.RECORDER_IDLE: "recorder_idle.png",
+            AppStatus.RECORDER_PENDING: "recorder_pending.png",
             AppStatus.ERROR: "error.png",
         }
         resolved: dict[AppStatus, Optional[str]] = {key: None for key in mapping}
@@ -184,6 +186,8 @@ class MalincheMenuApp(rumps.App):
             AppStatus.TRANSCRIBING: "⏳",
             AppStatus.DOWNLOADING: "⬇️",
             AppStatus.MIGRATING: "🔄",
+            AppStatus.RECORDER_IDLE: "🟢",
+            AppStatus.RECORDER_PENDING: "🟡",
             AppStatus.ERROR: "⚠️",
         }
         self.icon = None

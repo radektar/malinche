@@ -74,12 +74,9 @@ class MalincheTranscriber:
                 if not self.running:
                     break
 
-                # Only check if recorder is not already being monitored
-                if self.transcriber and not self.transcriber.recorder_monitoring:
-                    recorder = self.transcriber.find_recorder()
-                    if recorder:
-                        logger.debug("Periodic check triggered processing")
-                        self.transcriber.process_recorder()
+                if self.transcriber:
+                    logger.debug("Periodic check triggered processing")
+                    self.transcriber.process_recorder()
 
             except Exception as e:
                 logger.error(f"Error in periodic check: {e}", exc_info=True)
@@ -213,7 +210,9 @@ class MalincheTranscriber:
         self,
         status: AppStatus,
         current_file: Optional[str] = None,
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
+        recorder_name: Optional[str] = None,
+        pending_count: Optional[int] = None,
     ) -> None:
         """Update application state (called by Transcriber).
 
@@ -224,6 +223,8 @@ class MalincheTranscriber:
         """
         self.state.status = status
         self.state.current_file = current_file
+        self.state.recorder_name = recorder_name
+        self.state.pending_count = pending_count
         if error_message:
             self.state.error_message = error_message
 

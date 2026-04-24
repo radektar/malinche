@@ -352,11 +352,22 @@ def get_summarizer() -> Optional[BaseSummarizer]:
     Returns:
         Summarizer instance or None if summarization is disabled/unavailable
     """
-    # PRO Check: License must support AI summaries
+    # PRO or BYOK (own Anthropic key): summaries require one or the other
     features = license_manager.get_features()
+    byok_claude = (
+        config.LLM_PROVIDER == "claude" and bool(config.LLM_API_KEY)
+    )
     if not features.ai_summaries:
-        logger.info("AI summaries require PRO license - skipping")
-        return None
+        if byok_claude:
+            logger.info(
+                "BYOK: AI summaries enabled via customer ANTHROPIC_API_KEY "
+                "(no PRO license required)"
+            )
+        else:
+            logger.info(
+                "AI summaries require PRO license or BYOK Claude key — skipping"
+            )
+            return None
 
     if not config.ENABLE_SUMMARIZATION:
         logger.debug("Summarization disabled in config")

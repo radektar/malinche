@@ -10,7 +10,6 @@ from src.config import UserSettings, SUPPORTED_LANGUAGES, SUPPORTED_MODELS
 from src.setup.downloader import DependencyDownloader
 from src.setup.dependency_manager import DependencyManager
 from src.setup.permissions import check_full_disk_access, open_fda_preferences
-from src.setup.errors import NetworkError, DiskSpaceError, DownloadError
 from src.logger import logger
 from src.ui.dialogs import choose_folder_dialog
 from src.ui.constants import TEXTS
@@ -224,7 +223,6 @@ class SetupWizard:
         if response != 1:
             return "cancel"
 
-        # Resetuj flagi
         self._download_in_progress = True
         self._download_complete = False
         self._download_error = None
@@ -237,59 +235,10 @@ class SetupWizard:
         self._download_window.show()
         self._download_in_background()
 
-        # Użytkownik może iść dalej, pobieranie kończy się w tle.
-        if self._download_in_progress:
-            rumps.alert(
-                title="⬇️ Pobieranie trwa w tle",
-                message=(
-                    "Pobieranie wystartowało. Możesz dokończyć wizard,\n"
-                    "a aplikacja poczeka na zależności przy starcie."
-                ),
-                ok="Dalej",
-            )
-            return "next"
-
-        # Pobieranie zakończone - sprawdź wynik
-        if self._download_error:
-            error_msg = str(self._download_error)
-            if isinstance(self._download_error, NetworkError):
-                rumps.alert(
-                    title="❌ Brak połączenia",
-                    message=f"Brak połączenia z internetem:\n\n{error_msg}",
-                    ok="OK",
-                )
-            elif isinstance(self._download_error, DiskSpaceError):
-                rumps.alert(
-                    title="❌ Brak miejsca",
-                    message=f"Brak miejsca na dysku:\n\n{error_msg}",
-                    ok="OK",
-                )
-            elif isinstance(self._download_error, DownloadError):
-                rumps.alert(
-                    title="❌ Błąd pobierania",
-                    message=f"Nie udało się pobrać zależności:\n\n{error_msg}",
-                    ok="OK",
-                )
-            else:
-                rumps.alert(
-                    title="❌ Błąd",
-                    message=f"Nieoczekiwany błąd:\n\n{error_msg}",
-                    ok="OK",
-                )
-            return "cancel"
-
-        if self._download_complete:
-            if self._download_window is not None:
-                self._download_window.close()
-            rumps.alert(
-                title="✅ Pobrano",
-                message="Silnik transkrypcji został pobrany pomyślnie.",
-                ok="Dalej",
-            )
-            return "next"
-
-        # Nieoczekiwany stan
-        return "cancel"
+        # Pobieranie kontynuuje się w tle. Wizard idzie dalej od razu -
+        # użytkownik widzi postęp w `DownloadWindow`, które zamknie się
+        # samo po sukcesie (lub pozostanie z komunikatem błędu).
+        return "next"
 
     def _download_in_background(self):
         """Start asynchronous download and update wizard flags from callbacks."""
@@ -299,14 +248,33 @@ class SetupWizard:
             self._download_complete = True
             self._download_in_progress = False
             if self._download_window is not None:
-                self._download_window.update(detail="Pobieranie zakończone", progress=1.0)
+                self._download_window.update(
+                    detail="✓ Pobrano pomyślnie", progress=1.0
+                )
+                self._download_window.close_after(1.2)
+            try:
+                rumps.notification(
+                    title="Malinche",
+                    subtitle="Pobieranie zakończone",
+                    message="Silnik transkrypcji jest gotowy.",
+                )
+            except Exception:
+                pass
             logger.info("✓ Pobieranie zakończone pomyślnie")
 
         def _error(exc: Exception) -> None:
             self._download_error = exc
             self._download_in_progress = False
             if self._download_window is not None:
-                self._download_window.update(detail=f"Błąd: {exc}")
+                self._download_window.update(detail=f"❌ Błąd: {exc}")
+            try:
+                rumps.notification(
+                    title="Malinche",
+                    subtitle="Pobieranie nie powiodło się",
+                    message=str(exc),
+                )
+            except Exception:
+                pass
             logger.error(f"Błąd podczas pobierania: {exc}", exc_info=True)
 
         started = self.dependency_manager.download_async(

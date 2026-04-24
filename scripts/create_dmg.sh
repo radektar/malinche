@@ -5,12 +5,19 @@
 set -e
 
 APP_NAME="Malinche"
-VERSION=$(python3 -c "import setup_app; print(setup_app.APP_VERSION)" 2>/dev/null || echo "2.0.0-alpha.7")
+# Read version directly from source to avoid importing setup_app.py
+# (import may fail on system python without setuptools/py2app).
+VERSION=$(sed -n 's/^APP_VERSION = "\(.*\)"/\1/p' setup_app.py | head -n 1)
+if [ -z "${VERSION}" ]; then
+    echo "❌ Error: Could not read APP_VERSION from setup_app.py"
+    exit 1
+fi
 DMG_FILENAME="${APP_NAME}-${VERSION}-ARM64-UNSIGNED.dmg"
 DIST_DIR="dist"
 APP_PATH="${DIST_DIR}/${APP_NAME}.app"
 DMG_BACKGROUND="assets/dmg_background.png"
 DMG_VOLICON="assets/icon.icns"
+INFO_PLIST="${APP_PATH}/Contents/Info.plist"
 
 echo "📦 Creating DMG for ${APP_NAME} v${VERSION}..."
 
@@ -18,6 +25,16 @@ echo "📦 Creating DMG for ${APP_NAME} v${VERSION}..."
 if [ ! -d "${APP_PATH}" ]; then
     echo "❌ Error: ${APP_PATH} not found. Build the app first using scripts/build_app.sh"
     exit 1
+fi
+
+# Ensure app bundle version matches setup_app.py to avoid mislabeled DMG files.
+if [ -f "${INFO_PLIST}" ]; then
+    BUNDLE_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "${INFO_PLIST}" 2>/dev/null || echo "")
+    if [ "${BUNDLE_VERSION}" != "${VERSION}" ]; then
+        echo "⚠️  Bundle version (${BUNDLE_VERSION}) differs from setup_app.py (${VERSION})."
+        echo "🔨 Rebuilding app bundle to match DMG version..."
+        ./scripts/build_app.sh
+    fi
 fi
 
 # Remove old DMG if exists

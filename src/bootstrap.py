@@ -12,6 +12,7 @@ from typing import Any, Dict, Optional
 
 from src.config.settings import UserSettings
 from src.env_loader import load_env_file
+from src.runtime_deps import ensure_importable
 from src.ui.constants import APP_VERSION
 
 
@@ -203,6 +204,9 @@ def ensure_ready() -> UserSettings:
 
     moved_count += _cleanup_legacy_root(paths["legacy_runtime_root"], malinche_root)
     moved_count += _cleanup_legacy_root(paths["transrec_root"], malinche_root)
+
+    # Best-effort safeguard: do not block startup when offline.
+    ensure_importable("anthropic")
 
     settings = UserSettings.load()
     settings.transrec_migrated = True
