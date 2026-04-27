@@ -5,6 +5,11 @@ All notable changes to Malinche will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0-alpha.18] - 2026-04-24
+
+### Fixed
+- **Brak markdown + plik `.txt` w vault**: `create_markdown_document()` używał `str.format()` do wypełnienia szablonu, co powodowało `KeyError`/`ValueError` gdy AI-generowany tytuł, podsumowanie lub transkrypt zawierał literalne nawiasy klamrowe `{` lub `}` (np. `{projekt}`, `{action}`). Wyjątek był łapany przez outer `except Exception` w `_postprocess_transcript`, który zwracał `None` i nie usuwał pliku `.txt` ani nie aktualizował `vault_index`. Naprawione przez escape `{` → `{{` i `}` → `}}` we wszystkich polach user-content przed wywołaniem `.format()`.
+
 ## [2.0.0-alpha.17] - 2026-04-24
 
 ### Fixed
