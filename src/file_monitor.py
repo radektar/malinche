@@ -14,6 +14,11 @@ from src.logger import logger
 from src.config import config
 from src.config.settings import UserSettings
 from src.config.defaults import defaults
+from src.volume_utils import (
+    find_matching_volumes,
+    has_audio_files,
+    should_process_volume,
+)
 
 
 class FileMonitor:
@@ -143,86 +148,78 @@ class FileMonitor:
             self.observer.start()
             
             logger.info("✓ FSEvents monitor started (watching /Volumes)")
-            
+
+            self._initial_scan()
+
         except Exception as e:
             logger.error(f"Failed to start FSEvents monitor: {e}", exc_info=True)
             self.is_monitoring = False
+
+    def _initial_scan(self) -> None:
+        """Trigger callback once if any matching volume is already mounted.
+
+        FSEvents only fires on mount/change events, so recorders plugged in
+        BEFORE the daemon started would otherwise be ignored until the user
+        unplugs and re-plugs them. This scan closes that gap by checking the
+        current contents of ``/Volumes`` right after the observer is up.
+
+        The callback is invoked at most once per start because
+        ``Transcriber.process_recorder()`` already iterates over every
+        matching volume internally (``find_recorders()``).
+        """
+        try:
+            settings = UserSettings.load()
+            matching = find_matching_volumes(settings, volumes_root=Path("/Volumes"))
+        except Exception as error:  # noqa: BLE001
+            logger.debug(f"Initial volume scan skipped due to error: {error}")
+            return
+
+        if not matching:
+            logger.info("🔎 Initial scan: no matching volumes already mounted")
+            return
+
+        names = ", ".join(volume.name for volume in matching)
+        logger.info(
+            f"🔎 Initial scan: found {len(matching)} matching volume(s): {names}"
+        )
+
+        self._last_trigger_time = time.time()
+        try:
+            self.callback()
+        except Exception as error:  # noqa: BLE001
+            logger.error(
+                f"Error in callback during initial scan: {error}", exc_info=True
+            )
     
     def _should_process_volume(self, volume_path: Path, settings: UserSettings) -> bool:
         """Check if volume should be processed based on watch mode.
-        
+
+        Thin wrapper around :func:`src.volume_utils.should_process_volume` so
+        ``Transcriber`` and ``FileMonitor`` share one source of truth.
+
         Args:
             volume_path: Path to the volume (e.g., /Volumes/SD_CARD)
             settings: UserSettings instance with watch configuration
-            
+
         Returns:
             True if volume should be processed, False otherwise
         """
-        volume_name = volume_path.name
-        
-        # Ignore system volumes
-        if volume_name in defaults.SYSTEM_VOLUMES:
-            return False
-        
-        # Check watch mode
-        match settings.watch_mode:
-            case "auto":
-                # Auto mode: check if volume contains audio files
-                return self._has_audio_files(volume_path)
-            
-            case "specific":
-                # Specific mode: only process volumes in watched_volumes list
-                return volume_name in settings.watched_volumes
-            
-            case "manual":
-                # Manual mode: don't auto-process
-                return False
-            
-            case _:
-                # Unknown mode, default to False
-                logger.warning(f"Unknown watch_mode: {settings.watch_mode}")
-                return False
-    
+        return should_process_volume(volume_path, settings)
+
     def _has_audio_files(self, path: Path, max_depth: int = None) -> bool:
         """Check if folder contains audio files.
-        
+
+        Thin wrapper around :func:`src.volume_utils.has_audio_files` retained
+        for backward compatibility with existing tests.
+
         Args:
             path: Path to check
             max_depth: Maximum depth to scan (defaults to defaults.MAX_SCAN_DEPTH)
-            
+
         Returns:
             True if audio files found, False otherwise
         """
-        if max_depth is None:
-            max_depth = defaults.MAX_SCAN_DEPTH
-        
-        audio_extensions = defaults.AUDIO_EXTENSIONS
-        
-        try:
-            for item in path.rglob("*"):
-                # Check depth limit (count directories, not file name)
-                # max_depth=3 means up to 3 directory levels deep
-                try:
-                    relative = item.relative_to(path)
-                    # Count directory depth: parts - 1 (exclude filename)
-                    dir_depth = len(relative.parts) - 1
-                    if dir_depth > max_depth:
-                        continue
-                except ValueError:
-                    continue
-                
-                # Check if it's an audio file
-                if item.is_file() and item.suffix.lower() in audio_extensions:
-                    logger.debug(f"Found audio file: {item}")
-                    return True
-        except PermissionError:
-            logger.debug(f"Permission denied accessing {path}")
-            return False
-        except Exception as e:
-            logger.debug(f"Error scanning {path}: {e}")
-            return False
-        
-        return False
+        return has_audio_files(path, max_depth=max_depth)
     
     def stop(self) -> None:
         """Stop monitoring."""

@@ -34,7 +34,9 @@ class UserSettings:
     # Stan wizarda
     setup_completed: bool = defaults.DEFAULT_SETUP_COMPLETED
     setup_version: str = ""
+    setup_stage: str = "welcome"
     index_migrated: bool = False
+    transrec_migrated: bool = defaults.DEFAULT_TRANSREC_MIGRATED
 
     def __post_init__(self) -> None:
         """Normalize types after init (e.g., JSON-loaded values)."""
@@ -76,7 +78,9 @@ class UserSettings:
             "start_at_login": self.start_at_login,
             "setup_completed": self.setup_completed,
             "setup_version": self.setup_version,
+            "setup_stage": self.setup_stage,
             "index_migrated": self.index_migrated,
+            "transrec_migrated": self.transrec_migrated,
         }
 
     @staticmethod

@@ -10,6 +10,27 @@ from src.logger import logger
 Anthropic = None  # type: ignore[assignment]
 
 
+class APIBillingError(Exception):
+    """Claude API credit_balance exhausted (HTTP 400 invalid_request_error)."""
+
+
+def _is_permanent_api_error(exc: BaseException) -> str | None:
+    """Return error reason string when *exc* is a permanent Anthropic API error, else None."""
+    status = getattr(exc, "status_code", None)
+    message = str(getattr(exc, "message", exc)).lower()
+    exc_str = str(exc).lower()
+    if status == 400 and ("credit balance" in message or "credit balance is too low" in exc_str):
+        return "billing"
+    if status == 404 and ("model" in message or "not_found" in exc_str):
+        return "model_not_found"
+    return None
+
+
+def _is_credit_balance_error(exc: BaseException) -> bool:
+    """Return True when *exc* is an Anthropic 400 credit_balance error."""
+    return _is_permanent_api_error(exc) == "billing"
+
+
 class BaseSummarizer(ABC):
     """Base class for transcript summarizers.
     
@@ -126,6 +147,14 @@ class ClaudeSummarizer(BaseSummarizer):
             }
             
         except Exception as e:
+            reason = _is_permanent_api_error(e)
+            if reason:
+                logger.critical(
+                    "❌ Claude API permanent error (summarizer, reason=%s): %s",
+                    reason,
+                    e,
+                )
+                raise APIBillingError(str(e)) from e
             logger.error(f"Claude API error: {e}", exc_info=True)
             logger.warning("Falling back to simple title generation")
             return self._fallback_summary(transcript)
@@ -352,11 +381,22 @@ def get_summarizer() -> Optional[BaseSummarizer]:
     Returns:
         Summarizer instance or None if summarization is disabled/unavailable
     """
-    # PRO Check: License must support AI summaries
+    # PRO or BYOK (own Anthropic key): summaries require one or the other
     features = license_manager.get_features()
+    byok_claude = (
+        config.LLM_PROVIDER == "claude" and bool(config.LLM_API_KEY)
+    )
     if not features.ai_summaries:
-        logger.info("AI summaries require PRO license - skipping")
-        return None
+        if byok_claude:
+            logger.info(
+                "BYOK: AI summaries enabled via customer ANTHROPIC_API_KEY "
+                "(no PRO license required)"
+            )
+        else:
+            logger.info(
+                "AI summaries require PRO license or BYOK Claude key — skipping"
+            )
+            return None
 
     if not config.ENABLE_SUMMARIZATION:
         logger.debug("Summarization disabled in config")

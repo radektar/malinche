@@ -2,7 +2,12 @@
 
 import pytest
 from unittest.mock import Mock, patch, MagicMock
-from src.summarizer import BaseSummarizer, ClaudeSummarizer, get_summarizer
+from src.summarizer import (
+    APIBillingError,
+    BaseSummarizer,
+    ClaudeSummarizer,
+    get_summarizer,
+)
 from src.config import config
 from src.config.features import FeatureFlags
 
@@ -145,6 +150,39 @@ class TestClaudeSummarizer:
         assert "⚡" in result["summary"]
         assert "📝" in result["summary"]
     
+    def test_generate_raises_api_billing_error_on_credit_balance(
+        self, summarizer, mock_anthropic
+    ):
+        """Credit balance exhaustion must surface as APIBillingError."""
+        class FakeStatusError(Exception):
+            status_code = 400
+            message = "Your credit balance is too low to access the API"
+
+            def __str__(self) -> str:
+                return self.message
+
+        mock_anthropic.messages.create.side_effect = FakeStatusError()
+
+        with pytest.raises(APIBillingError):
+            summarizer.generate("Test transcript")
+
+    def test_generate_falls_back_on_other_api_errors(
+        self, summarizer, mock_anthropic
+    ):
+        """Non-billing API errors must still return a fallback summary."""
+        class FakeStatusError(Exception):
+            status_code = 500
+            message = "internal server error"
+
+            def __str__(self) -> str:
+                return self.message
+
+        mock_anthropic.messages.create.side_effect = FakeStatusError()
+
+        result = summarizer.generate("Test transcript")
+        assert "title" in result
+        assert "## Podsumowanie" in result["summary"]
+
     def test_title_length_limit(self, summarizer, mock_anthropic):
         """Test that title is truncated to max length."""
         long_title = "A" * 200
@@ -260,6 +298,32 @@ class TestGetSummarizer:
             mock_features.return_value = FeatureFlags(ai_summaries=False)
             result = get_summarizer()
             assert result is None
+
+    def test_get_summarizer_byok_bypasses_pro_without_key_still_none(self, monkeypatch):
+        """FREE tier + no API key → no summarizer."""
+        monkeypatch.setattr(config, "ENABLE_SUMMARIZATION", True)
+        monkeypatch.setattr(config, "LLM_PROVIDER", "claude")
+        monkeypatch.setattr(config, "LLM_API_KEY", None)
+        with patch("src.summarizer.license_manager.get_features") as mock_features:
+            mock_features.return_value = FeatureFlags(ai_summaries=False)
+            assert get_summarizer() is None
+
+    @patch("src.summarizer.ClaudeSummarizer")
+    def test_get_summarizer_byok_with_claude_key(self, mock_claude, monkeypatch):
+        """FREE tier but own Claude key → summarizer is created (BYOK)."""
+        monkeypatch.setattr(config, "ENABLE_SUMMARIZATION", True)
+        monkeypatch.setattr(config, "LLM_PROVIDER", "claude")
+        monkeypatch.setattr(config, "LLM_API_KEY", "sk-test")
+        monkeypatch.setattr(config, "LLM_MODEL", "claude-3-haiku-20240307")
+        mock_instance = MagicMock()
+        mock_claude.return_value = mock_instance
+        with patch("src.summarizer.license_manager.get_features") as mock_features:
+            mock_features.return_value = FeatureFlags(ai_summaries=False)
+            result = get_summarizer()
+        assert result is mock_instance
+        mock_claude.assert_called_once_with(
+            api_key="sk-test", model="claude-3-haiku-20240307"
+        )
 
     def test_get_summarizer_claude_no_key(self, monkeypatch):
         """Test that None is returned when Claude key is missing."""

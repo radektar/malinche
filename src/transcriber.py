@@ -8,12 +8,12 @@ import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, Iterator, List, Optional
 
 from src.config import config as default_config
 from src.config.config import Config
 from src.logger import logger
-from src.summarizer import get_summarizer, BaseSummarizer
+from src.summarizer import APIBillingError, get_summarizer, BaseSummarizer
 from src.markdown_generator import MarkdownGenerator
 from src.app_status import AppStatus
 from src.state_manager import get_last_sync_time, save_sync_time
@@ -26,6 +26,7 @@ from src.config.license import license_manager
 from src.config.features import FeatureTier
 from src.config.settings import UserSettings
 from src.markdown_frontmatter import read_frontmatter
+from src.volume_utils import find_matching_volumes
 
 
 def send_notification(title: str, message: str, subtitle: str = "") -> None:
@@ -72,6 +73,12 @@ class ProcessLock:
     def acquire(self) -> bool:
         """Attempt to acquire the lock.
 
+        The lock file stores ``<pid>\\n<timestamp>`` so a crashed process can
+        be detected reliably: if the recorded PID is no longer alive we treat
+        the file as stale and remove it. This avoids the "recorder looks
+        connected but nothing happens" symptom that followed Malinche
+        crashes or hard kills.
+
         Returns:
             True if lock acquired, False otherwise.
         """
@@ -81,47 +88,106 @@ class ProcessLock:
                 str(self.lock_path),
                 os.O_CREAT | os.O_EXCL | os.O_WRONLY,
             )
-            os.write(self._fd, f"{time.time():.0f}".encode("utf-8"))
+            payload = f"{os.getpid()}\n{time.time():.0f}".encode("utf-8")
+            os.write(self._fd, payload)
             return True
         except FileExistsError:
-            # Detect and clean up stale lock files left by crashed processes.
-            # Note: This uses default_config since ProcessLock is created before Transcriber instance
-            # In practice, this is fine as TRANSCRIPTION_TIMEOUT is a constant
-            stale_age_seconds = default_config.TRANSCRIPTION_TIMEOUT + 600
-            lock_age: Optional[float] = None
-
-            try:
-                if self.lock_path.exists():
-                    with self.lock_path.open("r", encoding="utf-8") as handle:
-                        content = handle.read().strip()
-                        timestamp = float(content)
-                        lock_age = time.time() - timestamp
-            except (OSError, ValueError):
-                # If we cannot read or parse the timestamp, treat as unknown age.
-                lock_age = None
-
-            if lock_age is not None and lock_age > stale_age_seconds:
-                logger.warning(
-                    "Detected stale process lock at %s (age=%.0fs), attempting "
-                    "cleanup",
-                    self.lock_path,
-                    lock_age,
-                )
-                try:
-                    self.lock_path.unlink()
-                except OSError as error:
-                    logger.warning(
-                        "Could not remove stale process lock file %s: %s",
-                        self.lock_path,
-                        error,
-                    )
-                else:
-                    # Retry acquisition once after successful cleanup.
-                    return self.acquire()
-
+            if self._try_cleanup_stale_lock():
+                return self.acquire()
             return False
         except OSError as error:
             logger.error("Could not create process lock at %s: %s", self.lock_path, error)
+            return False
+
+    def _try_cleanup_stale_lock(self) -> bool:
+        """Inspect an existing lock file and remove it if the owner is gone.
+
+        Cleanup happens in two stages:
+
+        1. **PID liveness.** If the stored PID is not running (``os.kill(pid,
+           0)`` raises ``ProcessLookupError``) the lock was left by a crashed
+           process and is safe to remove immediately.
+        2. **Absolute age.** As a fallback for legacy / malformed lock files
+           that lack a PID, we still honour the ``TRANSCRIPTION_TIMEOUT``
+           window so long-running but healthy transcriptions are never
+           interrupted.
+
+        Returns:
+            True when the lock file was removed and the caller should retry
+            acquisition, False if the lock is still considered valid.
+        """
+        stored_pid: Optional[int] = None
+        lock_age: Optional[float] = None
+
+        try:
+            if not self.lock_path.exists():
+                return True
+            content = self.lock_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return False
+
+        # Parse "<pid>\n<timestamp>" (new format) or "<timestamp>" (legacy).
+        lines = content.splitlines()
+        try:
+            if len(lines) >= 2:
+                stored_pid = int(lines[0])
+                lock_age = time.time() - float(lines[1])
+            elif len(lines) == 1:
+                lock_age = time.time() - float(lines[0])
+        except ValueError:
+            stored_pid = None
+            lock_age = None
+
+        if stored_pid is not None and not self._pid_alive(stored_pid):
+            logger.warning(
+                "Detected stale process lock at %s (pid %d no longer running), "
+                "removing",
+                self.lock_path,
+                stored_pid,
+            )
+            return self._remove_lock_file()
+
+        stale_age_seconds = default_config.TRANSCRIPTION_TIMEOUT + 600
+        if lock_age is not None and lock_age > stale_age_seconds:
+            logger.warning(
+                "Detected stale process lock at %s (age=%.0fs), removing",
+                self.lock_path,
+                lock_age,
+            )
+            return self._remove_lock_file()
+
+        return False
+
+    @staticmethod
+    def _pid_alive(pid: int) -> bool:
+        """Return True if *pid* refers to a running process.
+
+        Sends signal ``0`` which only performs an error check. A
+        ``ProcessLookupError`` means the process is gone; a
+        ``PermissionError`` means it is alive but owned by another user
+        (unlikely here but still counts as alive for safety).
+        """
+        if pid <= 0:
+            return False
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        return True
+
+    def _remove_lock_file(self) -> bool:
+        """Best-effort removal of the lock file. Returns True on success."""
+        try:
+            self.lock_path.unlink()
+            return True
+        except OSError as error:
+            logger.warning(
+                "Could not remove stale process lock file %s: %s",
+                self.lock_path,
+                error,
+            )
             return False
 
     def release(self) -> None:
@@ -168,13 +234,27 @@ class Transcriber:
         self.whisper_available = self._check_whisper()
         self.recorder_monitoring = False
         self.recorder_was_notified = False
-        self.state_updater: Optional[Callable[[AppStatus, Optional[str], Optional[str]], None]] = None
+        self.state_updater: Optional[
+            Callable[
+                [
+                    AppStatus,
+                    Optional[str],
+                    Optional[str],
+                    Optional[str],
+                    Optional[int],
+                ],
+                None,
+            ]
+        ] = None
         
         # Initialize summarizer and markdown generator
         self.summarizer: Optional[BaseSummarizer] = get_summarizer()
         self.markdown_generator = MarkdownGenerator()
         self.tag_index = TagIndex()
         self.tagger: Optional[BaseTagger] = get_tagger()
+        self._ai_disabled_reason: Optional[str] = None
+        self.ai_billing_callback: Optional[Callable[[Exception], None]] = None
+        self._session_failed_fingerprints: set = set()
         self.vault_index = VaultIndex(self.config.TRANSCRIBE_DIR)
         self.vault_index.load()
         self._run_index_migration_if_needed()
@@ -184,7 +264,10 @@ class Transcriber:
     
     def set_state_updater(
         self,
-        updater: Callable[[AppStatus, Optional[str], Optional[str]], None]
+        updater: Callable[
+            [AppStatus, Optional[str], Optional[str], Optional[str], Optional[int]],
+            None,
+        ],
     ) -> None:
         """Set callback function for state updates.
         
@@ -192,6 +275,24 @@ class Transcriber:
             updater: Function that takes (status, current_file, error_message)
         """
         self.state_updater = updater
+
+    def set_ai_billing_callback(
+        self, callback: Callable[[Exception], None]
+    ) -> None:
+        """Register a callback invoked once when the AI circuit breaker trips."""
+        self.ai_billing_callback = callback
+
+    def _disable_ai(self, reason: str, exc: Exception) -> None:
+        """Trip the AI circuit breaker for the rest of the session."""
+        if self._ai_disabled_reason is not None:
+            return
+        self._ai_disabled_reason = reason
+        logger.critical("🛑 AI disabled for this session (%s): %s", reason, exc)
+        if self.ai_billing_callback is not None:
+            try:
+                self.ai_billing_callback(exc)
+            except Exception as cb_exc:  # noqa: BLE001
+                logger.error("AI billing callback failed: %s", cb_exc)
 
     def _run_index_migration_if_needed(self) -> None:
         """Run one-time migration of legacy markdown metadata to index."""
@@ -225,7 +326,9 @@ class Transcriber:
         self,
         status: AppStatus,
         current_file: Optional[str] = None,
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
+        recorder_name: Optional[str] = None,
+        pending_count: Optional[int] = None,
     ) -> None:
         """Update application state via callback if available.
         
@@ -236,7 +339,13 @@ class Transcriber:
         """
         if self.state_updater:
             try:
-                self.state_updater(status, current_file, error_message)
+                self.state_updater(
+                    status,
+                    current_file,
+                    error_message,
+                    recorder_name,
+                    pending_count,
+                )
             except Exception as e:
                 logger.debug(f"Error updating state: {e}")
     
@@ -273,15 +382,38 @@ class Transcriber:
             logger.info(f"✓ Found whisper.cpp at: {self.config.WHISPER_CPP_PATH}")
             logger.info(f"✓ Found ffmpeg at: {ffmpeg_path}")
             
-            # Check for Core ML model (Apple Silicon optimization)
+            # Check for Core ML encoder (required by whisper-cli built with WHISPER_COREML=ON)
             coreml_model = (
-                self.config.WHISPER_CPP_MODELS_DIR / 
+                self.config.WHISPER_CPP_MODELS_DIR /
                 f"ggml-{self.config.WHISPER_MODEL}-encoder.mlmodelc"
             )
             if coreml_model.exists():
-                logger.info("✓ Core ML model found - GPU acceleration enabled")
+                logger.info("✓ Core ML encoder found - GPU acceleration enabled")
             else:
-                logger.info("ℹ️  Core ML model not found - using CPU (still fast)")
+                logger.warning(
+                    "⚠️  Core ML encoder brakuje — whisper-cli może crashować. "
+                    "Startuje pobieranie w tle..."
+                )
+                import threading
+                from src.setup.downloader import DependencyDownloader
+
+                def _bg_download_encoder() -> None:
+                    try:
+                        DependencyDownloader().download_model_encoder(
+                            self.config.WHISPER_MODEL
+                        )
+                        logger.info(
+                            "✓ Core ML encoder pobrany — transkrypcja będzie działać "
+                            "od następnego cyklu skanowania"
+                        )
+                    except Exception as exc:
+                        logger.error("Błąd pobierania Core ML encodera: %s", exc)
+
+                threading.Thread(
+                    target=_bg_download_encoder,
+                    daemon=True,
+                    name="CoreMLEncoderDownload",
+                ).start()
             
             return True
         
@@ -289,26 +421,52 @@ class Transcriber:
         return False
     
     def find_recorder(self) -> Optional[Path]:
-        """Search for connected Olympus recorder.
-        
+        """Search for a connected recorder volume.
+
+        Delegates to :func:`find_recorders` for discovery and returns the
+        first match. Kept for backward compatibility with callers and tests
+        that expect a single ``Optional[Path]``.
+
         Returns:
-            Path to recorder volume or None if not found
+            Path to the first matching recorder volume or None if none found.
         """
-        volumes_path = Path("/Volumes")
-        
-        if not volumes_path.exists():
-            logger.debug("/Volumes directory not found")
-            return None
-        
-        # Check each possible recorder name
-        for name in self.config.RECORDER_NAMES:
-            recorder = volumes_path / name
-            if recorder.exists() and recorder.is_dir():
-                logger.info(f"✓ Recorder found: {recorder}")
-                return recorder
-        
-        logger.debug("No recorder found in /Volumes")
+        recorders = self.find_recorders()
+        if recorders:
+            return recorders[0]
         return None
+
+    def find_recorders(self) -> List[Path]:
+        """Return every mounted volume that qualifies as a recorder.
+
+        Honours ``UserSettings.watch_mode`` so this stays consistent with
+        ``FileMonitor``:
+
+        * ``auto`` - any non-system volume containing audio files.
+        * ``specific`` - only volumes named in ``watched_volumes``.
+        * ``manual`` - never auto-detect.
+
+        For backward compatibility, if ``config.RECORDER_NAMES`` has been
+        set to a non-empty list (e.g. via explicit injection in tests), the
+        result is filtered to that whitelist.
+
+        Returns:
+            Sorted list of matching volume paths (possibly empty).
+        """
+        settings = UserSettings.load()
+        matching = find_matching_volumes(settings)
+
+        whitelist = getattr(self.config, "RECORDER_NAMES", None) or []
+        if whitelist and settings.watch_mode != "auto":
+            # Only enforce the legacy whitelist outside of auto mode; in auto
+            # mode the user explicitly asked for any volume with audio files.
+            matching = [v for v in matching if v.name in whitelist]
+
+        if matching:
+            for recorder in matching:
+                logger.info(f"✓ Recorder found: {recorder}")
+        else:
+            logger.debug("No recorder found in /Volumes")
+        return matching
     
     def get_last_sync_time(self) -> datetime:
         """Get timestamp of last synchronization.
@@ -393,6 +551,49 @@ class Transcriber:
         new_files.sort(key=lambda x: x.stat().st_mtime)
         
         return new_files
+
+    def _iter_audio_files(self, recorder_path: Path) -> Iterator[Path]:
+        """Yield audio files from recorder up to configured max depth."""
+        from src.config.defaults import defaults
+
+        max_depth = defaults.MAX_SCAN_DEPTH
+        for item in recorder_path.rglob("*"):
+            if not item.is_file():
+                continue
+            if item.name.startswith("._") or item.name == ".DS_Store":
+                continue
+            if item.suffix.lower() not in self.config.AUDIO_EXTENSIONS:
+                continue
+            try:
+                relative = item.relative_to(recorder_path)
+                dir_depth = len(relative.parts) - 1
+                if dir_depth > max_depth:
+                    continue
+            except ValueError:
+                continue
+            yield item
+
+    def find_pending_audio_files(self, recorder_path: Path) -> List[Path]:
+        """Return recorder audio files with no fingerprint in vault index."""
+        pending_files: List[Path] = []
+        try:
+            for audio_file in self._iter_audio_files(recorder_path):
+                try:
+                    fingerprint = compute_fingerprint(audio_file)
+                except OSError as error:
+                    logger.warning("Cannot fingerprint %s: %s", audio_file, error)
+                    continue
+                if fingerprint in self._session_failed_fingerprints:
+                    logger.debug(
+                        "Skipping previously failed file: %s", audio_file.name
+                    )
+                    continue
+                if self.vault_index.lookup(fingerprint) is None:
+                    pending_files.append(audio_file)
+        except OSError as error:
+            logger.error("Error scanning pending files on %s: %s", recorder_path, error)
+            return []
+        return pending_files
     
     def _stage_audio_file(self, audio_file: Path) -> Optional[Path]:
         """Copy audio file from recorder to local staging directory.
@@ -710,13 +911,16 @@ class Transcriber:
                 logger.warning("Empty transcript, skipping post-processing")
                 return None
             
-            # Generate summary (if summarizer available)
+            # Generate summary (if summarizer available and AI not disabled)
             summary = None
-            if self.summarizer:
+            if self.summarizer and self._ai_disabled_reason is None:
                 try:
                     logger.info("📝 Generating summary...")
                     summary = self.summarizer.generate(transcript_text)
                     logger.info(f"✓ Summary generated: {summary.get('title', 'N/A')}")
+                except APIBillingError as exc:
+                    self._disable_ai("billing", exc)
+                    summary = None
                 except Exception as e:
                     logger.error(f"Summary generation failed: {e}", exc_info=True)
                     logger.warning("Continuing without summary")
@@ -743,7 +947,11 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
 
             # Generate tags
             tags = ["transcription"]
-            if self.config.ENABLE_LLM_TAGGING and self.tagger:
+            if (
+                self.config.ENABLE_LLM_TAGGING
+                and self.tagger
+                and self._ai_disabled_reason is None
+            ):
                 try:
                     existing_tags = self.tag_index.existing_tags()
                     generated_tags = self.tagger.generate_tags(
@@ -754,6 +962,8 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
                     for tag in generated_tags:
                         if tag not in tags:
                             tags.append(tag)
+                except APIBillingError as exc:
+                    self._disable_ai("billing", exc)
                 except Exception as error:  # noqa: BLE001
                     logger.error(
                         "Tag generation failed for %s: %s",
@@ -1015,8 +1225,14 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
 
         # Run whisper transcription
         transcript_path = self._run_macwhisper(audio_file)
-        
+
         if transcript_path is None:
+            self._session_failed_fingerprints.add(fingerprint)
+            logger.warning(
+                "Marked %s as failed for this session (fingerprint: %s)",
+                audio_file.name,
+                fingerprint,
+            )
             return False
         
         # Post-process: generate summary and create markdown
@@ -1079,59 +1295,110 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
                 "⛔️ Skipping process_recorder because another instance holds lock %s",
                 self.config.PROCESS_LOCK_FILE,
             )
-            self._update_state(AppStatus.IDLE)
+            # Keep current state to avoid UI flicker while another run is active.
             return
 
         try:
             logger.info("=" * 60)
             logger.info("🔍 Checking for recorder...")
             self._update_state(AppStatus.SCANNING)
-            
-            # Find recorder
-            recorder = self.find_recorder()
-            if not recorder:
-                logger.info("❌ Recorder not found")
+
+            # Find all matching recorders (auto/specific/manual aware)
+            recorders = self.find_recorders()
+            if not recorders:
+                # No physical recorder — still check local staging dir for
+                # previously staged files that were never successfully transcribed.
+                staged_pending = self.find_pending_audio_files(
+                    self.config.LOCAL_RECORDINGS_DIR
+                )
+                if staged_pending:
+                    logger.info(
+                        "📂 No recorder, but %d staged file(s) pending in recordings/",
+                        len(staged_pending),
+                    )
+                    processed_s = 0
+                    processed_f = 0
+                    for staged_file in staged_pending:
+                        logger.info(f"Processing: {staged_file.name}")
+                        if self.transcribe_file(staged_file):
+                            processed_s += 1
+                        else:
+                            processed_f += 1
+                        time.sleep(1)
+                    logger.info(
+                        "✓ Staged batch: %d/%d succeeded",
+                        processed_s,
+                        processed_s + processed_f,
+                    )
+                    if processed_s:
+                        send_notification(
+                            title="Malinche",
+                            subtitle="Transkrypcja zakończona",
+                            message=f"Przetworzono: {processed_s}/{processed_s + processed_f} plików",
+                        )
+                else:
+                    logger.info("❌ Recorder not found")
                 self.recorder_monitoring = False
                 self.recorder_was_notified = False
-                self._update_state(AppStatus.IDLE)
+                self._update_state(
+                    AppStatus.IDLE,
+                    recorder_name=None,
+                    pending_count=None,
+                )
                 return
-            
-            logger.info(f"✓ Recorder detected: {recorder}")
-            
+
+            logger.info(
+                f"✓ Recorder(s) detected: {[r.name for r in recorders]}"
+            )
+
             self.recorder_monitoring = True
-            
-            # Get last sync time
+            recorder_names = ", ".join(r.name for r in recorders)
+
+            pending_files: List[Path] = []
+            for recorder in recorders:
+                pending_files.extend(self.find_pending_audio_files(recorder))
+            pending_count = len(pending_files)
+
+            if pending_count > 0:
+                self._update_state(
+                    AppStatus.RECORDER_PENDING,
+                    recorder_name=recorder_names,
+                    pending_count=pending_count,
+                )
+            else:
+                self._update_state(
+                    AppStatus.RECORDER_IDLE,
+                    recorder_name=recorder_names,
+                    pending_count=0,
+                )
+
+            # Keep last_sync diagnostics, but process queue is based on fingerprint
+            # pending list so older unindexed recordings are never missed.
             last_sync = self.get_last_sync_time()
-            logger.info(f"📅 Looking for files modified after: {last_sync}")
-            
-            # Find new audio files
-            new_files = self.find_audio_files(recorder, last_sync)
-            logger.info(f"📁 Found {len(new_files)} new audio file(s)")
-            
-            # Send notification only if new files are found
-            # This prevents spam when recorder is connected but has no new recordings
-            if new_files:
-                if not self.recorder_was_notified:
-                    send_notification(
-                        title="Malinche",
-                        subtitle="Recorder wykryty",
-                        message=f"Podłączono: {recorder.name}"
-                    )
-                    self.recorder_was_notified = True
-                
-                # Notify about new files found
+            logger.info("📅 Last sync timestamp: %s", last_sync)
+            logger.info(
+                "📁 Pending files by fingerprint: %s on %s",
+                pending_count,
+                recorder_names,
+            )
+
+            if not self.recorder_was_notified:
+                subtitle = "Recorder wykryty"
+                if pending_count > 0:
+                    subtitle = f"Recorder wykryty: {pending_count} do transkrypcji"
                 send_notification(
                     title="Malinche",
-                    subtitle=f"Znaleziono {len(new_files)} nowych nagrań",
-                    message="Rozpoczynam transkrypcję..."
+                    subtitle=subtitle,
+                    message=f"Podłączono: {recorder_names}",
                 )
-            
+                self.recorder_was_notified = True
+
             processed_success = 0
             processed_failed = 0
 
-            # Process each file: stage first, then transcribe
-            if new_files:
-                for recorder_file in new_files:
+            # Process each pending file (source of truth: missing fingerprint).
+            if pending_files:
+                for recorder_file in pending_files:
                     logger.info(f"Processing: {recorder_file.name}")
                     
                     existing_markdown = self._find_existing_markdown_for_audio(recorder_file)
@@ -1190,7 +1457,7 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
                     message=f"Przetworzono: {processed_success}/{total_processed} plików"
                 )
             else:
-                logger.info("ℹ️  No new files to transcribe")
+                logger.info("ℹ️  No pending files to transcribe")
             
             # Only advance sync time if ALL files were successfully processed
             # This prevents losing files that failed due to unmounting or other errors
@@ -1210,13 +1477,27 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
                 )
             logger.info("=" * 60)
             
-            # Keep recorder_monitoring True if recorder still connected
+            # Keep recorder_monitoring True if any recorder still connected
             # This prevents notification spam on periodic checks
-            if not self.find_recorder():
+            if not self.find_recorders():
                 self.recorder_monitoring = False
                 self.recorder_was_notified = False
             
-            self._update_state(AppStatus.IDLE)
+            if self.recorder_monitoring:
+                if pending_count > 0:
+                    self._update_state(
+                        AppStatus.RECORDER_PENDING,
+                        recorder_name=recorder_names,
+                        pending_count=pending_count,
+                    )
+                else:
+                    self._update_state(
+                        AppStatus.RECORDER_IDLE,
+                        recorder_name=recorder_names,
+                        pending_count=0,
+                    )
+            else:
+                self._update_state(AppStatus.IDLE, recorder_name=None, pending_count=None)
         finally:
             lock.release()
 

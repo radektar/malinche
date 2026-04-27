@@ -8,8 +8,11 @@ from src.config import Config
 def test_config_initialization():
     """Test that Config initializes with default values."""
     config = Config()
-    
-    assert config.RECORDER_NAMES == ["LS-P1", "OLYMPUS", "RECORDER"]
+
+    # RECORDER_NAMES is populated only in "specific" watch mode; in "auto"/"manual"
+    # modes detection delegates to volume_utils.find_matching_volumes so the list
+    # must be empty (no hardcoded whitelist leaks into auto mode).
+    assert isinstance(config.RECORDER_NAMES, list)
     assert config.TRANSCRIPTION_TIMEOUT == 3600  # 60 minutes
     assert config.PERIODIC_CHECK_INTERVAL == 30
     assert config.MOUNT_MONITOR_DELAY == 1
@@ -27,11 +30,11 @@ def test_config_paths():
     
     # Check paths contain expected components
     assert "11-Transcripts" in str(config.TRANSCRIBE_DIR) or "Transcriptions" in str(config.TRANSCRIBE_DIR)
-    assert "Logs" in str(config.LOG_DIR)
-    assert ".olympus_transcriber" in str(config.LOCAL_RECORDINGS_DIR)
+    assert "Application Support/Malinche/logs" in str(config.LOG_DIR)
+    assert "Application Support/Malinche" in str(config.LOCAL_RECORDINGS_DIR)
     assert "recordings" in str(config.LOCAL_RECORDINGS_DIR)
-    assert ".olympus_transcriber_state.json" in str(config.STATE_FILE)
-    assert "olympus_transcriber.log" in str(config.LOG_FILE)
+    assert "Application Support/Malinche/state.json" in str(config.STATE_FILE)
+    assert "Application Support/Malinche/logs/malinche.log" in str(config.LOG_FILE)
 
 
 def test_config_audio_extensions():
@@ -50,6 +53,22 @@ def test_config_whisper_cpp_paths():
     assert isinstance(config.WHISPER_CPP_PATH, Path)
     assert config.WHISPER_CPP_MODELS_DIR is not None
     assert isinstance(config.WHISPER_CPP_MODELS_DIR, Path)
+
+
+def test_config_uses_malinche_runtime_paths(tmp_path, monkeypatch):
+    """Config should consistently use Malinche runtime paths."""
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+    malinche_root = tmp_path / "Library" / "Application Support" / "Malinche"
+    malinche_models = malinche_root / "models"
+    malinche_bin = malinche_root / "bin"
+    malinche_models.mkdir(parents=True, exist_ok=True)
+    malinche_bin.mkdir(parents=True, exist_ok=True)
+
+    config = Config()
+
+    assert config.WHISPER_CPP_MODELS_DIR == malinche_models
+    assert str(config.FFMPEG_PATH).endswith("/ffmpeg") or config.FFMPEG_PATH.name == "ffmpeg"
 
 
 def test_config_tagging_defaults(monkeypatch):

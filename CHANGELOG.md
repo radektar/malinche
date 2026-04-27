@@ -5,6 +5,173 @@ All notable changes to Malinche will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0-alpha.18] - 2026-04-24
+
+### Fixed
+- **Brak markdown + plik `.txt` w vault**: `create_markdown_document()` używał `str.format()` do wypełnienia szablonu, co powodowało `KeyError`/`ValueError` gdy AI-generowany tytuł, podsumowanie lub transkrypt zawierał literalne nawiasy klamrowe `{` lub `}` (np. `{projekt}`, `{action}`). Wyjątek był łapany przez outer `except Exception` w `_postprocess_transcript`, który zwracał `None` i nie usuwał pliku `.txt` ani nie aktualizował `vault_index`. Naprawione przez escape `{` → `{{` i `}` → `}}` we wszystkich polach user-content przed wywołaniem `.format()`.
+
+## [2.0.0-alpha.17] - 2026-04-24
+
+### Fixed
+- **Staged pliki porzucone bez recordera**: `process_recorder()` skanuje teraz `LOCAL_RECORDINGS_DIR` jako fallback gdy żaden recorder nie jest podłączony. Pliki wcześniej skopiowane do staging, które nie zostały transkrybowane (np. po restarcie lub błędzie), są przetwarzane automatycznie bez potrzeby ponownego podłączania dyktafonu.
+
+### Added
+- **Automatyczne czyszczenie martwych wpisów w vault_index**: wpisy wskazujące na nieistniejące pliki markdown są teraz wykrywalne — usunięto 27 porzuconych wpisów (260420–260423) z `index.json` po tym jak użytkownik ręcznie usunął pliki markdown.
+
+## [2.0.0-alpha.16] - 2026-04-24
+
+### Fixed
+- **Nieskończona pętla retry dla uszkodzonych plików audio**: gdy whisper-cli nie może odczytać pliku (`failed to read audio data`), fingerprint trafia do `_session_failed_fingerprints` i plik jest pomijany przez `find_pending_audio_files()` do końca sesji. Efekt: uszkodzony `test_depth3.mp3` (i każdy inny plik który whisper nie może przetworzyć) jest próbowany dokładnie raz, nie co 20 sekund.
+
+## [2.0.0-alpha.15] - 2026-04-24
+
+### Fixed
+- **Model `claude-3-haiku-20240307` wycofany przez Anthropic (HTTP 404)**: zmiana domyślnego modelu na `claude-haiku-4-5-20251001` w `src/config/config.py`. Efekt: API calls trafiają do istniejącego modelu zamiast generować 404 na każdym pliku.
+- **Circuit breaker obejmuje teraz 404 "model not found"**: `_is_permanent_api_error()` wykrywa zarówno 400 `credit_balance` jak i 404 `not_found_error` (wycofany model). Pierwszy taki błąd wyłącza AI na czas sesji i pokazuje stosowny alert w menu bar.
+
+## [2.0.0-alpha.14] - 2026-04-24
+
+### Fixed
+- **Bootstrap idempotencja**: `ensure_ready()` ma teraz fast-path i pomija pełny skan migracji, gdy `settings.transrec_migrated == True`. Efekt: brak logów `[bootstrap] migrated N items` przy każdym starcie, brak przypadkowych kolizji typu `recordings.transrec.bak.legacy.bak…` gdy dwa procesy wystartują równolegle.
+- **Circuit breaker dla wyczerpanych kredytów Claude API (`credit_balance is too low`)**: nowy `APIBillingError` w `src/summarizer.py`, wykrywany w summarizerze i taggerze. Po pierwszym takim błędzie `Transcriber` ustawia `_ai_disabled_reason = "billing"` i nie wywołuje już AI dla kolejnych plików — Whisper działa normalnie, markdown dostaje fallback summary. Zamiast spamu HTTP 400 w logu, użytkownik widzi jednorazowy alert w menu bar z instrukcją doładowania konta na `console.anthropic.com`.
+
+## [2.0.0-alpha.13] - 2026-04-24
+
+### Fixed
+- **Crash w `done_callback`/`error_callback` przy pobieraniu zależności** (`NSInternalInconsistencyException - NSWindow should only be instantiated on the main thread!`). Wywołania `rumps.alert` i mutacje `status_item`/ikon z wątku `DependencyDownload` są teraz kolejkowane przez `PyObjCTools.AppHelper.callAfter` na main run loop. Skutek: po pobraniu CoreML encodera aplikacja nie ginie w połowie cyklu, a transkrypcja kontynuuje w kolejnej iteracji `process_recorder`.
+
+## [2.0.0-alpha.12] - 2026-04-24
+
+### Fixed
+- **CoreML encoder automatycznie pobierany przy starcie**: `whisper-cli` skompilowany z `WHISPER_COREML=ON` crashował z kodem 3 (`failed to load Core ML model`), gdy brakował `ggml-{model}-encoder.mlmodelc/`. Nowy `DependencyDownloader.download_model_encoder()` pobiera encoder z HuggingFace i rozpakowuje go w tle przy starcie (`CoreMLEncoderDownload` thread w `_check_whisper()`). Checksums SHA-256 zweryfikowane z LFS pointer files.
+- **`missing_for_selected_model()` uwzględnia encoder**: setup wizard i `DependencyManager.status()` poprawnie raportują brakujący encoder jako wymaganą zależność.
+
+## [2.0.0-alpha.11] - 2026-04-24
+
+### Fixed
+- **Automatyczna kolejka transkrypcji oparta o fingerprint**: `process_recorder()` przetwarza teraz pliki `pending` (brakujące w `vault_index`) zamiast wyłącznie `mtime > last_sync`, więc starsze nieprzetranskrybowane nagrania są pobierane automatycznie.
+- **Stabilność statusu w menu bar**: przy zajętym locku aplikacja nie wymusza już przejścia do `IDLE`, co eliminuje „skakanie” statusu podczas równoległych triggerów monitora.
+- **Bundlowanie DMG**: pakiet `anthropic` nie jest już wykluczany z py2app — aplikacja z `.app` może wywołać Claude API (wcześniej log: `anthropic package not installed`, brak podsumowań i tagów mimo klucza).
+- **Runtime safeguard dla AI deps**: przy starcie `bootstrap` wykonuje best-effort `ensure_importable("anthropic")`, instalując brakujący pakiet do `~/Library/Application Support/Malinche/runtime/python-deps` bez psucia systemowego Pythona.
+- **Status recordera oparty o fingerprint index**: rozdzielono stany na `recorder_idle` i `recorder_pending`; UI i notyfikacje bazują na brakujących fingerprintach w `vault_index`, a nie tylko na `mtime > last_sync`.
+- **BYOK**: przy własnym `ANTHROPIC_API_KEY` (Claude) podsumowania i inteligentne tagi działają bez tieru PRO / `license_cache.json`.
+
+## [2.0.0-alpha.8] - 2026-04-24
+
+### Changed
+- **Pobieranie zależności działa asynchronicznie w tle** przez nowy `src/setup/dependency_manager.py` (single source of truth). UI nie zawiesza się podczas setupu ani zmiany modelu w Settings.
+- **Kolejność kroków wizarda zmieniona na** `WELCOME -> SOURCE_CONFIG -> BASIC_CONFIG -> DOWNLOAD -> PERMISSIONS -> AI_CONFIG -> FINISH`, dzięki czemu model jest wybierany zanim użytkownik zobaczy ekran pobierania.
+- **Natywne okno postępu pobierania** (`src/ui/download_window.py`) z `NSProgressIndicator` zastąpiło pętlę `rumps.alert` z przyciskiem "Sprawdź status".
+
+### Added
+- **`UserSettings.setup_stage`** — wizard zapisuje aktualny krok i wznawia od niego po przerwaniu / restarcie aplikacji.
+- **Automatyczne kolejkowanie pobierania po zmianie modelu** w Settings (`src/ui/settings_window.py`): brakujący model pobiera się w tle od razu po zapisaniu.
+- **`DependencyDownloader.missing_for_selected_model()` i `required_size_for_selected_model()`** — API do model-aware prezentacji wymagań w UI.
+- **Status `AppStatus.DOWNLOADING`** + ikona w menu bar z aktualizacją tytułu podczas pobierania.
+- **Testy regresji**: `tests/test_dependency_manager.py`, `tests/test_download_window_integration.py`, `tests/test_menu_app_download.py` oraz rozszerzone `tests/test_wizard.py` (reorder kroków, resume `setup_stage`, async download).
+- **Manual checklist** `tests/MANUAL_TEST_CHECKLIST_ALPHA8.md` do weryfikacji buildu.
+- **Test `test_app_version_format` zaktualizowany do pełnego SemVer 2.0.0** (akceptuje prerelease `-alpha.N` i build metadata `+build`).
+
+## [2.0.0-alpha.7] - 2026-04-23
+
+### Fixed
+- **Dodano pełne wsparcie pobierania modeli Whisper używanych w aplikacji** (`tiny`, `base`, `small`, `medium`, `large`) przez rozszerzenie metadanych URL/checksum/size oraz mapowanie `large` na kanoniczny artefakt `large-v3`.
+- **Usunięto root cause błędu `Nieznany model: medium`**: downloader buduje teraz ścieżki modelu po nazwie kanonicznej i poprawnie obsługuje konfiguracje zmigrowane z `whisper_model: "medium"`.
+- **Naprawiono fałszywe błędy miejsca na dysku podczas setupu**: `download_all()` liczy wymagany rozmiar tylko dla brakujących komponentów zamiast sumy wszystkich możliwych modeli.
+
+### Added
+- **Obsługa prefiksowanych checksumów `sha1:` i `sha256:`** w weryfikacji pobranych artefaktów modeli.
+- **Nowe testy guardrail dla modeli** (`tests/test_checksums.py`) oraz rozszerzone testy downloadera dla `medium`, aliasu `large -> large-v3`, checksumu SHA-1 i kalkulacji miejsca (`tests/test_downloader.py`).
+
+## [2.0.0-alpha.6] - 2026-04-23
+
+### Fixed
+- **Wdrożono pojedynczy bootstrap `ensure_ready()` jako źródło prawdy dla migracji legacy** i podpięto go do obu entry-pointów (`src/main.py`, `src/menu_app.py`), dzięki czemu migracja uruchamia się deterministycznie również w aplikacji menu bar.
+- **Usunięto runtime fallbacki do `Transrec` i `.olympus_transcriber*` poza bootstrapem**: `Config` używa teraz wyłącznie ścieżek `Malinche` dla `state.json`, locka, recordings i loga.
+- **Naprawiono root cause pobierania złego modelu**: `DependencyDownloader.download_all()` pobiera teraz model wybrany przez użytkownika (`self._selected_model()`), a `download_model()` wymaga jawnego argumentu modelu.
+
+### Added
+- **Nowe testy strażnicze architektury migracji**:
+  - `tests/test_bootstrap.py` (migracja e2e + idempotencja),
+  - `tests/test_entry_points_bootstrap.py` (kolejność bootstrap przed config/logger),
+  - `tests/test_no_legacy_names.py` (blokada legacy nazw poza `src/bootstrap.py`).
+- **Rozszerzone testy downloadera i uproszczone testy migracji/config** pod nowy model z jednym boundary legacy.
+
+## [2.0.0-alpha.5] - 2026-04-23
+
+### Fixed
+- **Ujednolicono ścieżki runtime zależności do `~/Library/Application Support/Malinche`** w `Config` (model i ffmpeg), z read-only fallbackiem do legacy `Transrec` tylko dla kompatybilności.
+- **Naprawiono przyczynę błędu ładowania modelu po migracji**: `perform_migration_if_needed()` wykonuje teraz jednorazową migrację zasobów `Transrec/bin` i `Transrec/models` także wtedy, gdy `Malinche/config.json` już istnieje.
+- **`check_all()` w downloaderze weryfikuje model wybrany przez użytkownika**, a nie zawsze `ggml-small.bin`, więc brak np. `ggml-medium.bin` poprawnie wymusza pobranie zależności.
+- **`SetupWizard.needs_setup()` porównuje tylko linię kompatybilności `major.minor`**, co eliminuje niepotrzebne retriggerowanie wizarda przy bumpach alpha/patch.
+- **Wersja UI została zsynchronizowana z buildem** (`src/ui/constants.py` -> `2.0.0-alpha.5`), więc About i logika wersji nie rozjeżdżają się z `setup_app.py`.
+
+### Added
+- **Flaga migracji `transrec_migrated`** w `UserSettings` do idempotentnego przenoszenia legacy assetów.
+- **Nowe testy regresji** dla:
+  - ścieżek `Malinche` i fallbacku `Transrec` (`tests/test_config.py`),
+  - migracji assetów legacy (`tests/test_migration.py`),
+  - walidacji wybranego modelu w downloaderze (`tests/test_downloader.py`),
+  - braku retriggera wizarda przy bumpie alfy (`tests/test_wizard.py`),
+  - spójności wersji setup/UI (`tests/test_versions_sync.py`).
+
+## [2.0.0-alpha.4] - 2026-04-23
+
+### Fixed
+- **Naprawiono źródłową przyczynę błędu `dyld: Library not loaded` dla `whisper-cli`.** Pipeline [`.github/workflows/build-whisper.yml`](.github/workflows/build-whisper.yml) buduje teraz dwa warianty (`static` i `bundled`), waliduje `otool -L`/`LC_RPATH` pod kątem ścieżek CI (`/Users/runner/...`) i publikuje artefakty porównawcze; release `deps-v1.1.0` jest tworzony przez osobny job `release-winner` z wyborem wariantu.
+- **Downloader wykrywa uszkodzoną instalację runtime, a nie tylko obecność pliku.** `DependencyDownloader` dodaje `verify_whisper_runtime()` (`whisper-cli --help`), sprawdzanie kompletności dylibów dla wariantu bundled, migrację starej niekompletnej instalacji i bezpieczne rozpakowanie archiwum.
+
+### Added
+- **Nowy błąd domenowy `DependencyRuntimeError`** do sygnalizowania sytuacji „binarka pobrana, ale nieuruchamialna”.
+- **Nowe testy regresji downloadera** dla smoke-testu runtime, scenariusza `dyld` i rozpakowania wariantu bundled (`tests/test_downloader.py`).
+
+## [2.0.0-alpha.3] - 2026-04-22
+
+### Fixed
+- **Recorder już zamontowany przed startem Malinche jest teraz natychmiast wykrywany.** `FileMonitor.start()` dodaje jednorazowy `_initial_scan()`, który po założeniu obserwatora FSEvents sprawdza aktualną zawartość `/Volumes` i wywołuje `callback()`, jeśli któryś z wolumenów spełnia `should_process_volume()`. Do tej pory FSEvents reagował wyłącznie na zdarzenia mount/zmiana, więc po restarcie daemona z już podłączonym LS-P1 Malinche siedziała bezczynnie aż do wyjęcia i ponownego włożenia urządzenia.
+- **Zaślepka po pythonowym circular imporcie.** `src/config/license.py` importował `src.logger` na poziomie modułu, co tworzyło cykl `logger → config → license → logger` i wywalało testy uruchamiane w izolacji (np. `pytest tests/test_file_monitor.py`). Import przeniesiono do środka metod (`activate_license`, `deactivate_license`), zachowując identyczne zachowanie publiczne.
+- **`ProcessLock` wykrywa i usuwa lock pozostawiony przez ubity proces.** Plik locka zawiera teraz `<pid>\n<timestamp>` (zamiast samego timestampa). Przy `FileExistsError` sprawdzamy `os.kill(pid, 0)` — jeśli proces nie żyje, lock jest natychmiast kasowany i akwizycja ponawiana. Legacy format (sam timestamp) nadal obsługiwany jako fallback.
+
+### Added
+- **Autouse izolacja HOME w testach.** Nowy `tests/conftest.py` przekierowuje `$HOME` na tymczasowy katalog sesji ZANIM którykolwiek moduł testowy zaimportuje `src.logger`/`src.config`. Efekt: żaden `pytest` nie zmienia już `~/.olympus_transcriber_state.json`, `~/.olympus_transcriber/transcriber.lock` ani `~/Library/Logs/olympus_transcriber.log` zainstalowanej Malinche.
+- **Session-level guard `_assert_real_home_untouched`** robi snapshot mtime chronionych plików na starcie sesji testowej i fail-uje run, jeśli którykolwiek zostanie zmieniony. Regresja, która przywróciłaby pisanie do realnego HOME, zostanie złapana w CI/lokalnie.
+- **Nowe testy regresji:**
+  - `tests/test_file_monitor.py::TestFileMonitorInitialScan` — 5 przypadków: volumen istnieje, brak volumenów, wiele volumenów (callback wołany dokładnie raz), debounce timer, wyjątki w callbacku nie zatrzymują monitora.
+  - `tests/test_transcriber.py::test_process_lock_removes_dead_pid_lock` — martwy PID w locku jest natychmiast usuwany.
+  - `tests/test_transcriber.py::test_process_lock_keeps_lock_for_live_foreign_pid` — żywy PID `1` (`launchd`) blokuje akwizycję.
+
+### Changed
+- `FileMonitor.start()` inicjalizuje `_last_trigger_time` po initial scan, żeby mount-driven FSEvent-y następujące tuż po starcie były debounce'owane (nie duplikowały work).
+- `ProcessLock.acquire()` zapisuje PID bieżącego procesu w locku; istniejący test `test_process_lock_removes_stale_file` zaktualizowany, żeby weryfikować nowy format.
+- `tests/test_file_monitor.py` — trzy testy, które wcześniej patrzyły na prawdziwy `/Volumes`, teraz jawnie patchują `find_matching_volumes` na pustą listę, żeby initial scan nie fałszował ich intencji.
+- `tests/test_transcriber.py::test_run_macwhisper_retries_on_metal_error` — forsuje `transcriber.whisper_available = True` zamiast polegać na prawdziwym binarium w user HOME (teraz wyizolowanym przez conftest).
+
+---
+
+## [2.0.0-alpha.2] - 2026-04-22
+
+### Fixed
+- **Wykrywanie recordera w trybie `auto` respektuje `watch_mode`** — naprawiono regresję, w której Malinche pokazywała `Oczekiwanie na recorder...` mimo że macOS wykrył i zamontował dyktafon.
+  - `Transcriber.find_recorder()` poprzednio iterował wyłącznie po hardkodowanej liście `RECORDER_NAMES` (`LS-P1`, `OLYMPUS`, `RECORDER`), podczas gdy `FileMonitor` w trybie `auto` akceptował dowolny niesystemowy wolumen z plikami audio. Przy dyktafonie o innej nazwie (`IC RECORDER`, `SD_CARD`, `ZOOM`, itp.) `process_recorder()` ustawiał status `IDLE` i UI dalej wyświetlał komunikat oczekiwania.
+  - Wykrywanie scentralizowano w nowym module `src/volume_utils.py`, z którego korzystają zarówno `FileMonitor` jak i `Transcriber`. Obie klasy honorują teraz ten sam `watch_mode` (`auto` / `specific` / `manual`).
+  - `Transcriber.find_recorders()` (nowa metoda) zwraca **wszystkie** pasujące wolumeny, a `process_recorder()` iteruje po nich i agreguje nowe pliki. `find_recorder()` zachowano jako cienki wrapper dla kompatybilności wstecznej.
+  - Usunięto mylący fallback `RECORDER_NAMES = ["LS-P1", "OLYMPUS", "RECORDER"]` w trybie `auto` — lista jest teraz wypełniana tylko w trybie `specific` (na podstawie `watched_volumes`).
+
+### Added
+- **Nowy moduł `src/volume_utils.py`** — wspólne helpery `has_audio_files()`, `should_process_volume()`, `find_matching_volumes()` z testowalnym parametrem `volumes_root`.
+- **Testy regresji** w `tests/test_volume_utils.py` i `tests/test_transcriber.py`:
+  - Auto mode wykrywa wolumeny o dowolnych nazwach zawierające audio.
+  - Auto mode pomija wolumeny systemowe oraz puste.
+  - Specific mode respektuje `watched_volumes`.
+  - Manual mode nigdy nie wykrywa automatycznie.
+  - Wyniki `find_matching_volumes()` są posortowane alfabetycznie (deterministyczność).
+
+### Changed
+- `FileMonitor._should_process_volume()` oraz `FileMonitor._has_audio_files()` zredukowane do cienkich wrapperów nad `volume_utils` — eliminuje duplikację logiki skanowania.
+- `process_recorder()` obsługuje wiele jednocześnie podłączonych wolumenów: notyfikacja "Podłączono" wymienia wszystkie wykryte urządzenia.
+
+---
+
 ## [2.0.0-alpha.1] - 2026-02-08
 
 ### Added

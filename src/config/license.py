@@ -6,7 +6,12 @@ from typing import Dict, Optional, Tuple
 import httpx
 
 from src.config.features import FeatureFlags, FeatureTier
-from src.logger import logger
+
+# NOTE: ``src.logger`` imports ``src.config`` which in turn imports this module.
+# Importing the logger at module top-level therefore creates a circular import
+# (ImportError: cannot import name 'logger' from partially initialized module
+# 'src.logger'). Using lazy, function-level imports keeps the public behaviour
+# identical while breaking the cycle.
 
 
 class LicenseManager:
@@ -32,6 +37,8 @@ class LicenseManager:
 
     def activate_license(self, key: str) -> Tuple[bool, str]:
         """Activate a license key. Returns (success, message)."""
+        from src.logger import logger
+
         # Placeholder for v2.0.0 FREE - currently no backend to activate against
         logger.info(f"Attempting to activate license key: {key[:4]}...")
         
@@ -54,6 +61,9 @@ class LicenseManager:
         cache_file = self._cache_path()
         if cache_file.exists():
             cache_file.unlink()
+
+        from src.logger import logger
+
         logger.info("License deactivated")
 
     def get_usage_limits(self) -> Dict:

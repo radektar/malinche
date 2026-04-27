@@ -7,16 +7,10 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional, List
 
-# Load environment variables from project .env so Claude credentials
-# are available even when launching the menu app directly.
-try:
-    from dotenv import load_dotenv
+from src.bootstrap import ensure_ready
 
-    _ENV_PATH = Path(__file__).parent.parent / ".env"
-    if _ENV_PATH.exists():
-        load_dotenv(_ENV_PATH)
-except ImportError:
-    pass
+# Bootstrap must run before any config-dependent imports.
+ensure_ready()
 
 try:
     import rumps
@@ -24,10 +18,19 @@ try:
 except ImportError:
     RUMPS_AVAILABLE = False
 
-from src.env_loader import load_env_file
+try:
+    from PyObjCTools import AppHelper
+    _APPHELPER_AVAILABLE = True
+except ImportError:
+    _APPHELPER_AVAILABLE = False
 
-# Ensure .env variables (e.g., ANTHROPIC_API_KEY) are available before config load
-load_env_file()
+
+def _run_on_main_thread(func):
+    """Schedule *func* on the main thread; fall back to direct call in tests."""
+    if _APPHELPER_AVAILABLE:
+        AppHelper.callAfter(func)
+    else:
+        func()
 
 from src.config import config
 from src.logger import logger
@@ -36,12 +39,14 @@ from src.app_status import AppStatus
 from src.state_manager import reset_state
 from src.transcriber import send_notification
 from src.setup.downloader import DependencyDownloader
+from src.setup.dependency_manager import DependencyManager
 from src.setup.errors import NetworkError, DiskSpaceError, DownloadError
 from src.setup import SetupWizard
 from src.ui.dialogs import choose_date_dialog, show_about_dialog
 from src.ui.constants import TEXTS
 from src.ui.settings_window import show_settings_window
 from src.ui.pro_activation import show_pro_activation, show_pro_status
+from src.ui.download_window import DownloadWindow
 from src.config.license import license_manager
 from src.config.features import FeatureTier
 
@@ -70,6 +75,9 @@ class MalincheMenuApp(rumps.App):
         self._running = False
         self._retranscription_in_progress = False
         self._retranscription_file: Optional[str] = None
+        self._download_active = False
+        self._download_manager = DependencyManager()
+        self._download_window: Optional[DownloadWindow] = None
 
         # Create menu items
         self.status_item = rumps.MenuItem("Status: Inicjalizacja...")
@@ -149,7 +157,10 @@ class MalincheMenuApp(rumps.App):
             AppStatus.IDLE: "idle.png",
             AppStatus.SCANNING: "scanning.png",
             AppStatus.TRANSCRIBING: "transcribing.png",
+            AppStatus.DOWNLOADING: "transcribing.png",
             AppStatus.MIGRATING: "migrating.png",
+            AppStatus.RECORDER_IDLE: "recorder_idle.png",
+            AppStatus.RECORDER_PENDING: "recorder_pending.png",
             AppStatus.ERROR: "error.png",
         }
         resolved: dict[AppStatus, Optional[str]] = {key: None for key in mapping}
@@ -187,7 +198,10 @@ class MalincheMenuApp(rumps.App):
             AppStatus.IDLE: "🎙️",
             AppStatus.SCANNING: "🔎",
             AppStatus.TRANSCRIBING: "⏳",
+            AppStatus.DOWNLOADING: "⬇️",
             AppStatus.MIGRATING: "🔄",
+            AppStatus.RECORDER_IDLE: "🟢",
+            AppStatus.RECORDER_PENDING: "🟡",
             AppStatus.ERROR: "⚠️",
         }
         self.icon = None
@@ -228,22 +242,22 @@ class MalincheMenuApp(rumps.App):
     def _check_dependencies(self):
         """Sprawdź czy wszystkie zależności są zainstalowane."""
         try:
-            downloader = DependencyDownloader()
-            if downloader.check_all():
+            status = self._download_manager.status()
+            if status.ready:
                 logger.info("✓ Wszystkie zależności zainstalowane")
                 return True
             
             # Brakuje zależności - pokaż komunikat
             logger.warning("Brakuje zależności - wymagane pobranie")
+            model = config.WHISPER_MODEL
+            size_mb = status.total_missing_size / 1_000_000
             response = rumps.alert(
                 title="📥 Pobieranie zależności",
                 message=(
-                    "Malinche wymaga pobrania silnika transkrypcji (~500MB).\n\n"
+                    f"Wybrany model: {model}\n"
+                    f"Brakujące dane: ~{size_mb:.0f}MB.\n\n"
                     "Czy chcesz pobrać teraz?\n\n"
-                    "Wymagane:\n"
-                    "• whisper.cpp (~10MB)\n"
-                    "• ffmpeg (~15MB)\n"
-                    "• Model transkrypcji (~466MB)"
+                    "Pobieranie działa w tle - aplikacja pozostanie responsywna."
                 ),
                 ok="Pobierz teraz",
                 cancel="Pomiń"
@@ -271,61 +285,97 @@ class MalincheMenuApp(rumps.App):
             return False
     
     def _download_dependencies(self):
-        """Pobierz wszystkie brakujące zależności z progress callback."""
+        """Pobierz wszystkie brakujące zależności asynchronicznie."""
+        if self._download_active:
+            return
+        self._download_active = True
+        self._update_icon(AppStatus.DOWNLOADING)
+        self.status_item.title = "Status: Pobieranie zależności..."
+        self._download_window = DownloadWindow(
+            title="Pobieranie zależności",
+            detail="Start pobierania...",
+        )
+        self._download_window.show()
+
         def progress_callback(name: str, progress: float):
             """Update status z postępem pobierania."""
             percent = int(progress * 100)
             self.status_item.title = f"Status: Pobieranie {name}... {percent}%"
+            if self._download_window is not None:
+                self._download_window.update(
+                    detail=f"Pobieranie: {name}",
+                    progress=progress,
+                )
             logger.debug(f"Pobieranie {name}: {percent}%")
-        
-        try:
-            downloader = DependencyDownloader(progress_callback=progress_callback)
-            downloader.download_all()
-            
-            logger.info("✓ Wszystkie zależności pobrane")
-            rumps.alert(
-                title="✅ Gotowe",
-                message="Wszystkie zależności zostały pobrane.\n\nAplikacja jest gotowa do użycia.",
-                ok="OK"
-            )
-            self.status_item.title = "Status: Gotowe"
-            
-        except NetworkError as e:
-            logger.error(f"Brak połączenia: {e}")
-            rumps.alert(
-                title="⚠️ Brak połączenia",
-                message=(
-                    "Brak połączenia z internetem.\n\n"
-                    "Malinche wymaga jednorazowego pobrania silnika transkrypcji (~500MB).\n"
-                    "Połącz się z internetem i spróbuj ponownie."
-                ),
-                ok="OK"
-            )
-            self.status_item.title = "Status: Brak połączenia"
-        except DiskSpaceError as e:
-            logger.error(f"Brak miejsca: {e}")
-            rumps.alert(
-                title="⚠️ Brak miejsca",
-                message=str(e),
-                ok="OK"
-            )
-            self.status_item.title = "Status: Brak miejsca"
-        except DownloadError as e:
-            logger.error(f"Błąd pobierania: {e}")
-            rumps.alert(
-                title="⚠️ Błąd pobierania",
-                message=f"Nie udało się pobrać zależności:\n\n{str(e)}\n\nSpróbuj ponownie później.",
-                ok="OK"
-            )
-            self.status_item.title = "Status: Błąd pobierania"
-        except Exception as e:
-            logger.error(f"Nieoczekiwany błąd: {e}", exc_info=True)
-            rumps.alert(
-                title="⚠️ Błąd",
-                message=f"Nieoczekiwany błąd:\n\n{str(e)}",
-                ok="OK"
-            )
-            self.status_item.title = "Status: Błąd"
+
+        def done_callback():
+            def _on_main() -> None:
+                self._download_active = False
+                if self._download_window is not None:
+                    self._download_window.update(detail="Pobieranie zakończone", progress=1.0)
+                    self._download_window.close()
+                logger.info("✓ Wszystkie zależności pobrane")
+                rumps.alert(
+                    title="✅ Gotowe",
+                    message="Wszystkie zależności zostały pobrane.\n\nAplikacja jest gotowa do użycia.",
+                    ok="OK"
+                )
+                self.status_item.title = "Status: Gotowe"
+                self._update_icon(AppStatus.IDLE)
+            _run_on_main_thread(_on_main)
+
+        def error_callback(exc: Exception):
+            def _on_main() -> None:
+                self._download_active = False
+                if self._download_window is not None:
+                    self._download_window.update(detail=f"Błąd: {exc}")
+                if isinstance(exc, NetworkError):
+                    logger.error(f"Brak połączenia: {exc}")
+                    rumps.alert(
+                        title="⚠️ Brak połączenia",
+                        message=(
+                            "Brak połączenia z internetem.\n\n"
+                            "Malinche wymaga jednorazowego pobrania silnika transkrypcji (~500MB).\n"
+                            "Połącz się z internetem i spróbuj ponownie."
+                        ),
+                        ok="OK"
+                    )
+                    self.status_item.title = "Status: Brak połączenia"
+                elif isinstance(exc, DiskSpaceError):
+                    logger.error(f"Brak miejsca: {exc}")
+                    rumps.alert(
+                        title="⚠️ Brak miejsca",
+                        message=str(exc),
+                        ok="OK"
+                    )
+                    self.status_item.title = "Status: Brak miejsca"
+                elif isinstance(exc, DownloadError):
+                    logger.error(f"Błąd pobierania: {exc}")
+                    rumps.alert(
+                        title="⚠️ Błąd pobierania",
+                        message=f"Nie udało się pobrać zależności:\n\n{str(exc)}\n\nSpróbuj ponownie później.",
+                        ok="OK"
+                    )
+                    self.status_item.title = "Status: Błąd pobierania"
+                else:
+                    logger.error(f"Nieoczekiwany błąd: {exc}", exc_info=True)
+                    rumps.alert(
+                        title="⚠️ Błąd",
+                        message=f"Nieoczekiwany błąd:\n\n{str(exc)}",
+                        ok="OK"
+                    )
+                    self.status_item.title = "Status: Błąd"
+                self._update_icon(AppStatus.ERROR)
+            _run_on_main_thread(_on_main)
+
+        started = self._download_manager.download_async(
+            on_progress=progress_callback,
+            on_done=done_callback,
+            on_error=error_callback,
+        )
+        if not started:
+            self._download_active = True
+
 
     def _update_status(self, _):
         """Update status menu item based on current state."""
@@ -346,6 +396,10 @@ class MalincheMenuApp(rumps.App):
             filename = self._retranscription_file or "..."
             self.status_item.title = f"Status: Retranskrybowanie {filename}"
             self._update_icon(AppStatus.TRANSCRIBING)
+            return
+
+        if self._download_active:
+            self._update_icon(AppStatus.DOWNLOADING)
             return
 
         state = self.transcriber.state
@@ -604,12 +658,49 @@ class MalincheMenuApp(rumps.App):
             if self.daemon_thread and self.daemon_thread.is_alive():
                 self.daemon_thread.join(timeout=5.0)
 
+    def _notify_billing_error(self, exc: Exception) -> None:
+        """Show a one-time alert when Claude API hits a permanent error."""
+        exc_str = str(exc).lower()
+        if "credit balance" in exc_str:
+            title = "⚠️ Claude API: Niedostateczne kredyty"
+            message = (
+                "Twoje konto Anthropic (BYOK) ma wyczerpane kredyty.\n\n"
+                "Doładuj je w: https://console.anthropic.com/account/billing\n\n"
+                "Do końca tej sesji Malinche transkrybuje bez AI "
+                "podsumowań i tagów (Whisper działa normalnie)."
+            )
+        elif "not_found" in exc_str or "model" in exc_str:
+            title = "⚠️ Claude API: Nieznany model"
+            message = (
+                "Model Claude skonfigurowany w ustawieniach nie istnieje "
+                "lub został wycofany.\n\n"
+                "Zmień model w Ustawieniach → AI.\n\n"
+                "Do końca tej sesji Malinche transkrybuje bez AI "
+                "podsumowań i tagów (Whisper działa normalnie)."
+            )
+        else:
+            title = "⚠️ Claude API: Błąd trwały"
+            message = (
+                f"Claude API zwróciło błąd trwały:\n{exc}\n\n"
+                "Do końca tej sesji Malinche transkrybuje bez AI "
+                "podsumowań i tagów (Whisper działa normalnie)."
+            )
+
+        def _on_main() -> None:
+            try:
+                rumps.alert(title=title, message=message, ok="Zrozumiano")
+            except Exception as alert_exc:  # noqa: BLE001
+                logger.error("AI error alert failed to display: %s", alert_exc)
+
+        _run_on_main_thread(_on_main)
+
     def _run_daemon(self):
         """Run transcriber daemon in background thread."""
         try:
             logger.info("Starting transcriber daemon from menu app...")
             # Don't setup signal handlers in background thread
             self.transcriber = MalincheTranscriber(setup_signals=False)
+            self.transcriber.set_ai_billing_callback(self._notify_billing_error)
             self.transcriber.start()
         except Exception as e:
             logger.error(f"Error in daemon thread: {e}", exc_info=True)

@@ -11,7 +11,10 @@ class AppStatus(Enum):
     IDLE = "idle"
     SCANNING = "scanning"
     TRANSCRIBING = "transcribing"
+    DOWNLOADING = "downloading"
     MIGRATING = "migrating"
+    RECORDER_IDLE = "recorder_idle"
+    RECORDER_PENDING = "recorder_pending"
     ERROR = "error"
 
 
@@ -30,6 +33,8 @@ class AppState:
         self._status = AppStatus.IDLE
         self._current_file: Optional[str] = None
         self._error_message: Optional[str] = None
+        self._recorder_name: Optional[str] = None
+        self._pending_count: Optional[int] = None
 
     @property
     def status(self) -> AppStatus:
@@ -67,6 +72,30 @@ class AppState:
         with self._lock:
             self._error_message = value
 
+    @property
+    def recorder_name(self) -> Optional[str]:
+        """Get current recorder display name."""
+        with self._lock:
+            return self._recorder_name
+
+    @recorder_name.setter
+    def recorder_name(self, value: Optional[str]) -> None:
+        """Set current recorder display name."""
+        with self._lock:
+            self._recorder_name = value
+
+    @property
+    def pending_count(self) -> Optional[int]:
+        """Get pending files count for current recorder."""
+        with self._lock:
+            return self._pending_count
+
+    @pending_count.setter
+    def pending_count(self, value: Optional[int]) -> None:
+        """Set pending files count for current recorder."""
+        with self._lock:
+            self._pending_count = value
+
     def get_status_string(self) -> str:
         """Get human-readable status string.
 
@@ -82,8 +111,17 @@ class AppState:
                 if self._current_file:
                     return f"Przetwarzam: {self._current_file}"
                 return "Przetwarzanie..."
+            elif self._status == AppStatus.DOWNLOADING:
+                return "Pobieranie zależności..."
             elif self._status == AppStatus.MIGRATING:
                 return "Migracja indeksu..."
+            elif self._status == AppStatus.RECORDER_IDLE:
+                recorder_name = self._recorder_name or "Recorder"
+                return f"Recorder: {recorder_name} (zsynchronizowany)"
+            elif self._status == AppStatus.RECORDER_PENDING:
+                recorder_name = self._recorder_name or "Recorder"
+                pending_count = self._pending_count or 0
+                return f"Recorder: {recorder_name} ({pending_count} do transkrypcji)"
             elif self._status == AppStatus.ERROR:
                 if self._error_message:
                     return f"Błąd: {self._error_message}"

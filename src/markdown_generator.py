@@ -180,9 +180,13 @@ class MarkdownGenerator:
                 f"\nprevious_version: {extra_frontmatter['previous_version']}"
             )
 
-        # Fill template
+        # Fill template — escape braces in AI-generated / user content to prevent
+        # KeyError/ValueError when the content itself contains literal { or }.
+        def _esc(v: str) -> str:
+            return str(v).replace("{", "{{").replace("}", "}}")
+
         content = self.template.format(
-            title=summary.get("title", "Nagranie"),
+            title=_esc(summary.get("title", "Nagranie")),
             date=date_str,
             recording_date=recording_date_str,
             source_file=metadata["source_file"],
@@ -195,8 +199,8 @@ class MarkdownGenerator:
             previous_version_line=previous_version_line,
             duration=metadata["duration_formatted"],
             tags=tags_str,
-            summary=summary.get("summary", "Brak podsumowania."),
-            transcript=transcript,
+            summary=_esc(summary.get("summary", "Brak podsumowania.")),
+            transcript=_esc(transcript),
         )
         
         # Write file

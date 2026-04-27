@@ -8,6 +8,7 @@ from typing import Iterable, List, Optional
 
 from src.config import config
 from src.logger import logger
+from src.summarizer import APIBillingError, _is_permanent_api_error
 from src.tag_index import TagIndex
 
 Anthropic = None  # type: ignore[assignment]
@@ -85,6 +86,14 @@ class ClaudeTagger(BaseTagger):
             response_text = message.content[0].text if message.content else ""
             return self._parse_tags_response(response_text)
         except Exception as exc:  # noqa: BLE001
+            reason = _is_permanent_api_error(exc)
+            if reason:
+                logger.critical(
+                    "❌ Claude API permanent error (tagger, reason=%s): %s",
+                    reason,
+                    exc,
+                )
+                raise APIBillingError(str(exc)) from exc
             logger.error("ClaudeTagger API error: %s", exc, exc_info=True)
             return []
 
@@ -201,11 +210,22 @@ from src.config.license import license_manager
 
 def get_tagger() -> Optional[BaseTagger]:
     """Factory returning tagger instance based on configuration."""
-    # PRO Check: License must support AI tags
+    # PRO or BYOK (own Anthropic key)
     features = license_manager.get_features()
+    byok_claude = (
+        config.LLM_PROVIDER == "claude" and bool(config.LLM_API_KEY)
+    )
     if not features.ai_smart_tags:
-        logger.info("AI tags require PRO license - skipping")
-        return None
+        if byok_claude:
+            logger.info(
+                "BYOK: AI smart tags enabled via customer ANTHROPIC_API_KEY "
+                "(no PRO license required)"
+            )
+        else:
+            logger.info(
+                "AI tags require PRO license or BYOK Claude key — skipping"
+            )
+            return None
 
     if not config.ENABLE_LLM_TAGGING:
         logger.debug("LLM tagging disabled in config.")

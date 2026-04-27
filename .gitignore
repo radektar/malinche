@@ -68,4 +68,7 @@ olympus-transcriber-err.log
 # Environment variables
 .env
 
+# Local license / dev bypass cache (never commit)
+license_cache.json
+
 

@@ -73,7 +73,7 @@ def test_fallback_match_upgrades_index_to_sha256(tmp_path: Path) -> None:
 
     with (
         patch("src.transcriber.send_notification", return_value=None),
-        patch.object(transcriber, "find_recorder", return_value=recorder),
+        patch.object(transcriber, "find_recorders", return_value=[recorder]),
         patch.object(
             transcriber,
             "get_last_sync_time",

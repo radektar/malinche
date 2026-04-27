@@ -78,7 +78,7 @@ class Config:
     # LLM/Summarization configuration
     ENABLE_SUMMARIZATION: bool = True
     LLM_PROVIDER: str = "claude"
-    LLM_MODEL: str = "claude-3-haiku-20240307"
+    LLM_MODEL: str = "claude-haiku-4-5-20251001"
     LLM_API_KEY: Optional[str] = None
     SUMMARY_MAX_WORDS: int = 200
     TITLE_MAX_LENGTH: int = 60
@@ -128,14 +128,23 @@ tags: [{tags}]
         # This makes Config deterministic and testable
         self._user_settings = UserSettings.load()
         
-        # Map UserSettings to old Config attributes
+        # Map UserSettings to old Config attributes.
+        #
+        # ``RECORDER_NAMES`` is a legacy field that previously forced detection
+        # to a hardcoded list even in "auto" mode - which caused recorders with
+        # non-matching volume names to be ignored. Discovery now lives in
+        # ``Transcriber.find_recorders`` / ``volume_utils`` and honours the
+        # user's ``watch_mode``. This field is kept populated only when the
+        # user explicitly selected "specific" mode, so callers that still rely
+        # on it have a meaningful whitelist; otherwise it stays empty.
         if self.RECORDER_NAMES is None:
-            # Use watched_volumes if in specific mode, otherwise use defaults
-            if self._user_settings.watch_mode == "specific" and self._user_settings.watched_volumes:
-                self.RECORDER_NAMES = self._user_settings.watched_volumes
+            if (
+                self._user_settings.watch_mode == "specific"
+                and self._user_settings.watched_volumes
+            ):
+                self.RECORDER_NAMES = list(self._user_settings.watched_volumes)
             else:
-                # Legacy default for backward compatibility
-                self.RECORDER_NAMES = ["LS-P1", "OLYMPUS", "RECORDER"]
+                self.RECORDER_NAMES = []
         
         if self.TRANSCRIBE_DIR is None:
             # UserSettings stores output_dir as str (JSON), but legacy Config expects Path
@@ -145,22 +154,22 @@ tags: [{tags}]
             else:
                 self.TRANSCRIBE_DIR = Path(str(out_dir)).expanduser()
         
+        support_dir = Path.home() / "Library" / "Application Support" / "Malinche"
+
         if self.LOG_DIR is None:
-            self.LOG_DIR = Path.home() / "Library" / "Logs"
+            self.LOG_DIR = support_dir / "logs"
         
         if self.STATE_FILE is None:
-            # Keep legacy state file path for backward compatibility
-            self.STATE_FILE = Path.home() / ".olympus_transcriber_state.json"
+            self.STATE_FILE = support_dir / "state.json"
         
         if self.LOG_FILE is None:
-            self.LOG_FILE = self.LOG_DIR / "olympus_transcriber.log"
+            self.LOG_FILE = self.LOG_DIR / "malinche.log"
         
         if self.LOCAL_RECORDINGS_DIR is None:
-            # Default to ~/.olympus_transcriber/recordings for staging
-            self.LOCAL_RECORDINGS_DIR = Path.home() / ".olympus_transcriber" / "recordings"
+            self.LOCAL_RECORDINGS_DIR = support_dir / "recordings"
         
         if self.PROCESS_LOCK_FILE is None:
-            self.PROCESS_LOCK_FILE = Path.home() / ".olympus_transcriber" / "transcriber.lock"
+            self.PROCESS_LOCK_FILE = support_dir / "runtime" / "transcriber.lock"
         
         if self.AUDIO_EXTENSIONS is None:
             self.AUDIO_EXTENSIONS = defaults.AUDIO_EXTENSIONS
@@ -196,37 +205,17 @@ tags: [{tags}]
                     self.WHISPER_CPP_PATH = new_whisper_path
         
         if self.WHISPER_CPP_MODELS_DIR is None:
-            # Nowa lokalizacja: ~/Library/Application Support/Transrec/models/
-            support_dir = (
-                Path.home() / "Library" / "Application Support" / "Transrec"
-            )
-            new_models_dir = support_dir / "models"
-            
-            # Sprawdź nową lokalizację
-            if new_models_dir.exists():
-                self.WHISPER_CPP_MODELS_DIR = new_models_dir
-            else:
-                # Fallback do starej lokalizacji
-                self.WHISPER_CPP_MODELS_DIR = Path.home() / "whisper.cpp" / "models"
+            self.WHISPER_CPP_MODELS_DIR = support_dir / "models"
         
         if self.FFMPEG_PATH is None:
-            # Nowa lokalizacja: ~/Library/Application Support/Transrec/bin/ffmpeg
-            support_dir = (
-                Path.home() / "Library" / "Application Support" / "Transrec"
-            )
-            new_ffmpeg_path = support_dir / "bin" / "ffmpeg"
-            
-            # Sprawdź nową lokalizację (Faza 2)
-            if new_ffmpeg_path.exists():
-                self.FFMPEG_PATH = new_ffmpeg_path
+            malinche_ffmpeg_path = support_dir / "bin" / "ffmpeg"
+            # Fallback do systemowego ffmpeg (dev environment).
+            system_ffmpeg = shutil.which("ffmpeg")
+            if system_ffmpeg:
+                self.FFMPEG_PATH = Path(system_ffmpeg)
             else:
-                # Fallback do systemowego ffmpeg (shutil.which)
-                system_ffmpeg = shutil.which("ffmpeg")
-                if system_ffmpeg:
-                    self.FFMPEG_PATH = Path(system_ffmpeg)
-                else:
-                    # Default - nowa lokalizacja (będzie pobrana przez downloader)
-                    self.FFMPEG_PATH = new_ffmpeg_path
+                # Default - new location (downloaded by DependencyDownloader)
+                self.FFMPEG_PATH = malinche_ffmpeg_path
         
         # Load LLM API key from UserSettings only
         # Environment variables should be migrated to UserSettings via perform_migration_if_needed()
@@ -268,6 +257,8 @@ tags: [{tags}]
         self.TRANSCRIBE_DIR.mkdir(parents=True, exist_ok=True)
         self.LOG_DIR.mkdir(parents=True, exist_ok=True)
         self.LOCAL_RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+        self.STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        self.PROCESS_LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 
 # Global configuration instance

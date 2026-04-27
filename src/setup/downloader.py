@@ -4,16 +4,21 @@ import hashlib
 import platform
 import shutil
 import socket
+import subprocess
+import tarfile
 import time
+import zipfile
 from pathlib import Path
 from typing import Callable, Optional
 
 import httpx
 
+from src.config.settings import UserSettings
 from src.logger import logger
-from src.setup.checksums import CHECKSUMS, SIZES, URLS
+from src.setup.checksums import CHECKSUMS, MODEL_ALIASES, SIZES, URLS, VERSIONS
 from src.setup.errors import (
     ChecksumError,
+    DependencyRuntimeError,
     DiskSpaceError,
     DownloadError,
     NetworkError,
@@ -95,11 +100,11 @@ class DependencyDownloader:
         return True
 
     def verify_checksum(self, file_path: Path, expected_checksum: str) -> bool:
-        """Zweryfikuj SHA256 checksum pliku.
+        """Zweryfikuj checksum pliku (sha256 lub sha1).
 
         Args:
             file_path: Ścieżka do pliku
-            expected_checksum: Oczekiwany checksum SHA256
+            expected_checksum: Oczekiwany checksum (sha256/sha1)
 
         Returns:
             True jeśli checksum się zgadza, False w przeciwnym razie
@@ -110,17 +115,27 @@ class DependencyDownloader:
             )
             return True
 
-        sha256 = hashlib.sha256()
+        algo = "sha256"
+        expected_hash = expected_checksum.lower()
+        if ":" in expected_hash:
+            algo, expected_hash = expected_hash.split(":", 1)
+
+        try:
+            digest = hashlib.new(algo)
+        except ValueError:
+            logger.error(f"Nieobsługiwany algorytm checksum: {algo}")
+            return False
+
         try:
             with open(file_path, "rb") as f:
                 for chunk in iter(lambda: f.read(8192), b""):
-                    sha256.update(chunk)
+                    digest.update(chunk)
         except IOError as e:
             logger.error(f"Błąd podczas czytania pliku {file_path}: {e}")
             return False
 
-        actual_checksum = sha256.hexdigest()
-        return actual_checksum == expected_checksum.lower().replace("sha256:", "")
+        actual_checksum = digest.hexdigest()
+        return actual_checksum == expected_hash
 
     def is_whisper_installed(self) -> bool:
         """Sprawdź czy whisper.cpp jest zainstalowany.
@@ -131,6 +146,33 @@ class DependencyDownloader:
         whisper_path = self.bin_dir / "whisper-cli"
         return whisper_path.exists() and whisper_path.stat().st_size > 0
 
+    def _expected_whisper_dylibs(self) -> list[str]:
+        """Return dylibs required by bundled whisper distribution."""
+        return [
+            "libwhisper.1.dylib",
+            "libwhisper.coreml.dylib",
+            "libggml.0.dylib",
+            "libggml-base.0.dylib",
+            "libggml-cpu.0.dylib",
+            "libggml-blas.0.dylib",
+            "libggml-metal.0.dylib",
+        ]
+
+    def _whisper_distribution(self) -> str:
+        """Return selected whisper distribution mode.
+
+        Supported values:
+            - "static": single standalone binary
+            - "bundled": tar.gz with whisper-cli + dylibs
+        """
+        return VERSIONS.get("whisper_distribution", "static")
+
+    def _is_bundled_install_complete(self) -> bool:
+        """Check if bundled installation has all companion dylibs."""
+        if not self.is_whisper_installed():
+            return False
+        return all((self.bin_dir / name).exists() for name in self._expected_whisper_dylibs())
+
     def is_ffmpeg_installed(self) -> bool:
         """Sprawdź czy ffmpeg jest zainstalowany.
 
@@ -140,17 +182,125 @@ class DependencyDownloader:
         ffmpeg_path = self.bin_dir / "ffmpeg"
         return ffmpeg_path.exists() and ffmpeg_path.stat().st_size > 0
 
-    def is_model_installed(self, model: str = "small") -> bool:
+    def _selected_model(self) -> str:
+        """Return model selected in user settings, fallback to small."""
+        try:
+            model = UserSettings.load().whisper_model
+        except Exception:
+            return "small"
+        return model or "small"
+
+    def _canonical_model(self, model: Optional[str] = None) -> str:
+        """Map user-facing model key to canonical whisper.cpp artifact key."""
+        selected = model or self._selected_model()
+        return MODEL_ALIASES.get(selected, selected)
+
+    def is_model_installed(self, model: Optional[str] = None) -> bool:
         """Sprawdź czy model jest pobrany.
 
         Args:
-            model: Nazwa modelu (default: "small")
+            model: Nazwa modelu; gdy None, używa ustawienia użytkownika.
 
         Returns:
             True jeśli model istnieje
         """
-        model_path = self.models_dir / f"ggml-{model}.bin"
+        selected_model = self._canonical_model(model)
+        model_path = self.models_dir / f"ggml-{selected_model}.bin"
         return model_path.exists()
+
+    def is_model_encoder_installed(self, model: Optional[str] = None) -> bool:
+        """Sprawdź czy CoreML encoder dla modelu jest zainstalowany.
+
+        Args:
+            model: Nazwa modelu; gdy None, używa ustawienia użytkownika.
+
+        Returns:
+            True jeśli katalog encodera istnieje lub model nie ma encodera
+        """
+        canonical = self._canonical_model(model)
+        if not URLS.get(f"model_{canonical}_encoder") and not URLS.get(f"model_{model}_encoder"):
+            return True  # Model nie ma encodera — nie wymagany
+        encoder_dir = self.models_dir / f"ggml-{canonical}-encoder.mlmodelc"
+        return encoder_dir.exists() and encoder_dir.is_dir()
+
+    def download_model_encoder(self, model: str) -> bool:
+        """Pobierz i zainstaluj CoreML encoder dla modelu.
+
+        Encoder jest wymagany gdy whisper-cli skompilowano z WHISPER_COREML=ON.
+        Plik zip jest pobierany do downloads_dir, rozpakowywany do models_dir,
+        a następnie usuwany.
+
+        Args:
+            model: Nazwa modelu (np. "small", "base", "medium").
+
+        Returns:
+            True jeśli encoder zainstalowany lub nie jest wymagany dla tego modelu.
+        """
+        canonical = self._canonical_model(model)
+        url_key = f"model_{model}_encoder"
+        url = URLS.get(url_key)
+        if not url:
+            logger.debug(f"Brak CoreML encodera dla modelu {model} — pomijam")
+            return True
+
+        if self.is_model_encoder_installed(model):
+            logger.info(f"CoreML encoder dla {model} już zainstalowany")
+            return True
+
+        zip_key = f"ggml-{canonical}-encoder.mlmodelc.zip"
+        expected_size = SIZES.get(zip_key)
+        expected_checksum = CHECKSUMS.get(zip_key)
+
+        zip_dest = self.downloads_dir / zip_key
+        self._download_file(url, zip_dest, f"encoder-{canonical}", expected_size, expected_checksum)
+
+        logger.info(f"Rozpakowywanie CoreML encodera dla {model}...")
+        with zipfile.ZipFile(zip_dest, "r") as zf:
+            zf.extractall(self.models_dir)
+
+        zip_dest.unlink(missing_ok=True)
+        logger.info(f"✓ CoreML encoder dla {model} zainstalowany")
+        return True
+
+    def missing_for_selected_model(self) -> list[tuple[str, int]]:
+        """Return missing artifacts required for current selected model.
+
+        Returns:
+            List of tuples (artifact_key, expected_size_bytes).
+        """
+        missing: list[tuple[str, int]] = []
+
+        whisper_ok = (
+            self._is_bundled_install_complete()
+            if self._whisper_distribution() == "bundled"
+            else self.is_whisper_installed()
+        )
+        if not whisper_ok:
+            whisper_key = (
+                "whisper-bundled-arm64.tar.gz"
+                if self._whisper_distribution() == "bundled"
+                else "whisper-cli"
+            )
+            missing.append((whisper_key, int(SIZES.get(whisper_key, 0))))
+
+        if not self.is_ffmpeg_installed():
+            missing.append(("ffmpeg-arm64", int(SIZES.get("ffmpeg-arm64", 0))))
+
+        selected_model = self._selected_model()
+        canonical_model = self._canonical_model(selected_model)
+        model_key = f"ggml-{canonical_model}.bin"
+        if not self.is_model_installed(selected_model):
+            missing.append((model_key, int(SIZES.get(model_key, 0))))
+
+        encoder_key = f"ggml-{canonical_model}-encoder.mlmodelc.zip"
+        if not self.is_model_encoder_installed(selected_model) and SIZES.get(encoder_key):
+            missing.append((encoder_key, int(SIZES.get(encoder_key, 0))))
+
+        return missing
+
+    def required_size_for_selected_model(self) -> int:
+        """Total expected download size in bytes for currently missing artifacts."""
+        return sum(size for _, size in self.missing_for_selected_model())
 
     def check_all(self) -> bool:
         """Sprawdź czy wszystkie zależności są zainstalowane i zweryfikowane.
@@ -159,21 +309,27 @@ class DependencyDownloader:
             True jeśli wszystkie zależności są dostępne i mają poprawne checksumy
         """
         # Sprawdź czy pliki istnieją
+        if self._whisper_distribution() == "bundled":
+            whisper_present = self._is_bundled_install_complete()
+        else:
+            whisper_present = self.is_whisper_installed()
+
+        selected_model = self._canonical_model(self._selected_model())
         if not (
-            self.is_whisper_installed()
+            whisper_present
             and self.is_ffmpeg_installed()
-            and self.is_model_installed()
+            and self.is_model_installed(selected_model)
         ):
             return False
         
         # Weryfikuj checksumy
         whisper_path = self.bin_dir / "whisper-cli"
         ffmpeg_path = self.bin_dir / "ffmpeg"
-        model_path = self.models_dir / "ggml-small.bin"
+        model_path = self.models_dir / f"ggml-{selected_model}.bin"
         
         whisper_checksum = CHECKSUMS.get("whisper-cli")
         ffmpeg_checksum = CHECKSUMS.get("ffmpeg-arm64")
-        model_checksum = CHECKSUMS.get("ggml-small.bin")
+        model_checksum = CHECKSUMS.get(f"ggml-{selected_model}.bin")
         
         # Weryfikuj whisper-cli
         if whisper_checksum:
@@ -199,7 +355,70 @@ class DependencyDownloader:
                 )
                 return False
         
+        try:
+            self.verify_whisper_runtime()
+        except DependencyRuntimeError as error:
+            logger.warning("Runtime check whisper-cli failed in check_all(): %s", error)
+            return False
+
         return True
+
+    def verify_whisper_runtime(self) -> None:
+        """Ensure whisper-cli can start and link runtime dependencies."""
+        binary = self.bin_dir / "whisper-cli"
+        if not binary.exists():
+            raise DependencyRuntimeError("whisper-cli nie istnieje")
+
+        try:
+            result = subprocess.run(
+                [str(binary), "--help"],
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise DependencyRuntimeError(
+                f"Nie można uruchomić whisper-cli: {error}"
+            ) from error
+
+        if result.returncode == 0:
+            return
+
+        stderr = result.stderr.decode("utf-8", errors="replace").strip()
+        stdout = result.stdout.decode("utf-8", errors="replace").strip()
+        details = stderr or stdout or f"exit code {result.returncode}"
+        raise DependencyRuntimeError(
+            f"whisper-cli zainstalowany ale nie startuje: {details}"
+        )
+
+    def _cleanup_bundled_whisper(self) -> None:
+        """Remove whisper binary and companion dylibs before reinstall."""
+        for name in ["whisper-cli", *self._expected_whisper_dylibs()]:
+            target = self.bin_dir / name
+            try:
+                if target.exists():
+                    target.unlink()
+            except OSError:
+                logger.debug("Could not remove previous bundled artifact: %s", target)
+
+    def _extract_whisper_bundle(self, archive_path: Path) -> None:
+        """Extract bundled whisper tarball into bin directory safely."""
+        self.bin_dir.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(archive_path, "r:gz") as tar:
+            for member in tar.getmembers():
+                member_path = Path(member.name)
+                if member_path.is_absolute() or ".." in member_path.parts:
+                    raise DownloadError(
+                        f"Niebezpieczna ścieżka w archiwum whisper: {member.name}"
+                    )
+            try:
+                tar.extractall(self.bin_dir, filter="data")
+            except TypeError:
+                tar.extractall(self.bin_dir)
+
+        whisper_path = self.bin_dir / "whisper-cli"
+        if whisper_path.exists():
+            whisper_path.chmod(0o755)
 
     def _download_file(
         self,
@@ -377,10 +596,52 @@ class DependencyDownloader:
         if arch != "arm64":
             raise RuntimeError(f"Nieobsługiwana architektura: {arch}")
 
+        distribution = self._whisper_distribution()
         url = URLS["whisper"]
         dest = self.bin_dir / "whisper-cli"
         expected_size = SIZES.get("whisper-cli")
         expected_checksum = CHECKSUMS.get("whisper-cli")
+
+        if distribution == "bundled":
+            archive_name = "whisper-bundled-arm64.tar.gz"
+            archive_dest = self.downloads_dir / archive_name
+            expected_size = SIZES.get(archive_name)
+            expected_checksum = CHECKSUMS.get(archive_name)
+
+            # Broken migration: existing bare whisper-cli from old deps-v1.0.0.
+            if self.is_whisper_installed() and not self._is_bundled_install_complete():
+                logger.warning(
+                    "Wykryto niekompletną instalację whisper-cli (brak dylib), "
+                    "wymuszam ponowne pobranie"
+                )
+                self._cleanup_bundled_whisper()
+
+            if self._is_bundled_install_complete():
+                if expected_checksum and self.verify_checksum(archive_dest, expected_checksum):
+                    logger.info("Bundled whisper archive już zweryfikowany")
+                try:
+                    self.verify_whisper_runtime()
+                    logger.info("whisper bundled already installed and healthy")
+                    return True
+                except DependencyRuntimeError:
+                    logger.warning("Bundled whisper runtime broken, reinstalling")
+                    self._cleanup_bundled_whisper()
+
+            self._download_file(
+                url,
+                archive_dest,
+                archive_name,
+                expected_size,
+                expected_checksum,
+            )
+            self._cleanup_bundled_whisper()
+            self._extract_whisper_bundle(archive_dest)
+            try:
+                archive_dest.unlink(missing_ok=True)
+            except OSError:
+                logger.debug("Could not remove whisper archive: %s", archive_dest)
+            self.verify_whisper_runtime()
+            return True
 
         # Sprawdź czy plik istnieje i ma poprawny checksum
         if self.is_whisper_installed():
@@ -395,6 +656,7 @@ class DependencyDownloader:
                 dest.unlink()
 
         self._download_file(url, dest, "whisper-cli", expected_size, expected_checksum)
+        self.verify_whisper_runtime()
         return True
 
     def download_ffmpeg(self) -> bool:
@@ -431,11 +693,11 @@ class DependencyDownloader:
         self._download_file(url, dest, "ffmpeg", expected_size, expected_checksum)
         return True
 
-    def download_model(self, model: str = "small") -> bool:
+    def download_model(self, model: str) -> bool:
         """Pobierz model whisper.
 
         Args:
-            model: Nazwa modelu (default: "small")
+            model: Nazwa modelu
 
         Returns:
             True jeśli pobieranie się powiodło
@@ -444,29 +706,33 @@ class DependencyDownloader:
             ValueError: Jeśli nieznany model
             DownloadError: Jeśli pobieranie się nie powiodło
         """
+        canonical_model = self._canonical_model(model)
         url = URLS.get(f"model_{model}")
         if not url:
             raise ValueError(f"Nieznany model: {model}")
 
-        dest = self.models_dir / f"ggml-{model}.bin"
-        expected_size = SIZES.get(f"ggml-{model}.bin")
-        expected_checksum = CHECKSUMS.get(f"ggml-{model}.bin")
+        dest = self.models_dir / f"ggml-{canonical_model}.bin"
+        expected_size = SIZES.get(f"ggml-{canonical_model}.bin")
+        expected_checksum = CHECKSUMS.get(f"ggml-{canonical_model}.bin")
 
         # Sprawdź czy plik istnieje i ma poprawny checksum
         if self.is_model_installed(model):
             if expected_checksum and self.verify_checksum(dest, expected_checksum):
-                logger.info(f"Model {model} już zainstalowany i zweryfikowany")
+                logger.info(
+                    f"Model {model} ({canonical_model}) już zainstalowany i zweryfikowany"
+                )
                 return True
             else:
                 # Plik istnieje ale checksum się nie zgadza - usuń i pobierz ponownie
                 logger.warning(
-                    f"Model {model} istnieje ale checksum się nie zgadza - pobieranie ponownie"
+                    f"Model {model} ({canonical_model}) istnieje ale checksum się nie zgadza - pobieranie ponownie"
                 )
                 dest.unlink()
 
         self._download_file(
-            url, dest, f"model-{model}", expected_size, expected_checksum
+            url, dest, f"model-{canonical_model}", expected_size, expected_checksum
         )
+        self.download_model_encoder(model)
         return True
 
     def download_all(self) -> bool:
@@ -482,19 +748,40 @@ class DependencyDownloader:
             # Sprawdź połączenie sieciowe
             self.check_network()
 
-            # Sprawdź miejsce na dysku (suma wszystkich plików)
-            total_size = sum(SIZES.values())
+            # Sprawdź miejsce na dysku tylko dla brakujących zależności.
+            total_size = 0
+            if not self.is_whisper_installed():
+                total_size += SIZES.get("whisper-cli", 0)
+            if not self.is_ffmpeg_installed():
+                total_size += SIZES.get("ffmpeg-arm64", 0)
+
+            selected_model = self._selected_model()
+            canonical_model = self._canonical_model(selected_model)
+            if not self.is_model_installed(selected_model):
+                total_size += SIZES.get(
+                    f"ggml-{canonical_model}.bin",
+                    MIN_DISK_SPACE_BYTES,
+                )
+            if not self.is_model_encoder_installed(selected_model):
+                total_size += SIZES.get(
+                    f"ggml-{canonical_model}-encoder.mlmodelc.zip", 0
+                )
             self.check_disk_space(total_size)
 
             # Pobierz brakujące zależności
             if not self.is_whisper_installed():
                 self.download_whisper()
+            else:
+                self.verify_whisper_runtime()
 
             if not self.is_ffmpeg_installed():
                 self.download_ffmpeg()
 
-            if not self.is_model_installed():
-                self.download_model()
+            if not self.is_model_installed(selected_model):
+                self.download_model(selected_model)
+            elif not self.is_model_encoder_installed(selected_model):
+                # Model .bin już jest, ale brakuje encodera CoreML
+                self.download_model_encoder(selected_model)
 
             logger.info("✓ Wszystkie zależności zainstalowane")
             return True

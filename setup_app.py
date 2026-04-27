@@ -4,6 +4,8 @@ from setuptools import setup
 import py2app
 from pathlib import Path
 
+APP_VERSION = "2.0.0-alpha.18"
+
 # Entry point - menu bar application
 APP = ['src/menu_app.py']
 
@@ -29,8 +31,8 @@ OPTIONS = {
         'CFBundleName': 'Malinche',
         'CFBundleDisplayName': 'Malinche',
         'CFBundleIdentifier': 'com.malinche.app',
-        'CFBundleVersion': '2.0.0',
-        'CFBundleShortVersionString': '2.0.0',
+        'CFBundleVersion': APP_VERSION,
+        'CFBundleShortVersionString': APP_VERSION,
         'LSUIElement': True,  # Menu bar only, no dock icon
         'LSMinimumSystemVersion': '12.0',  # macOS Monterey+
         'NSRequiresAquaSystemAppearance': False,  # Dark mode support
@@ -47,6 +49,7 @@ OPTIONS = {
         'rumps',
         'mutagen',
         'httpx',
+        'anthropic',
         'dotenv',
         'click',
         'src',  # Include entire src package
@@ -87,7 +90,6 @@ OPTIONS = {
         'tests',  # Test modules
         'pytest',  # Test framework
         'unittest',  # Test framework
-        'anthropic',  # PRO-only dependency
         'distutils',
         'lib2to3',
         'docutils',

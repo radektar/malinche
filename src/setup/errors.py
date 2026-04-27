@@ -25,4 +25,10 @@ class DiskSpaceError(Exception):
     pass
 
 
+class DependencyRuntimeError(DownloadError):
+    """Zależność jest pobrana, ale nie uruchamia się poprawnie."""
+
+    pass
+
+
 

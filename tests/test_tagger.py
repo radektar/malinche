@@ -2,9 +2,12 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from src import tagger as tagger_module
 from src.config import Config
 from src.config.features import FeatureFlags
+from src.summarizer import APIBillingError
 from src.tagger import ClaudeTagger, get_tagger
 
 
@@ -57,11 +60,61 @@ def test_claude_tagger_invalid_json_returns_empty(monkeypatch):
     assert tags == []
 
 
+def test_claude_tagger_raises_api_billing_error(monkeypatch):
+    """Credit balance exhaustion must surface as APIBillingError."""
+
+    class FakeStatusError(Exception):
+        status_code = 400
+        message = "Your credit balance is too low"
+
+        def __str__(self) -> str:
+            return self.message
+
+    class FakeMessages:
+        def create(self, *_, **__):
+            raise FakeStatusError()
+
+    class FakeClient:
+        def __init__(self, *_args, **_kwargs) -> None:
+            self.messages = FakeMessages()
+
+    monkeypatch.setattr(tagger_module, "Anthropic", FakeClient)
+    monkeypatch.setattr(tagger_module.config, "ENABLE_LLM_TAGGING", True)
+
+    tagger = ClaudeTagger(api_key="test", model="claude-test")
+    with pytest.raises(APIBillingError):
+        tagger.generate_tags("Test", "Summary", [])
+
+
 def test_get_tagger_no_license(monkeypatch):
     """Test that get_tagger returns None if license doesn't allow AI tags."""
     with patch('src.tagger.license_manager.get_features') as mock_features:
         mock_features.return_value = FeatureFlags(ai_smart_tags=False)
         assert get_tagger() is None
+
+
+def test_get_tagger_byok_no_key_still_none(monkeypatch):
+    """FREE tier + no API key → no tagger."""
+    monkeypatch.setattr(tagger_module.config, "ENABLE_LLM_TAGGING", True)
+    monkeypatch.setattr(tagger_module.config, "LLM_PROVIDER", "claude")
+    monkeypatch.setattr(tagger_module.config, "LLM_API_KEY", None)
+    with patch("src.tagger.license_manager.get_features") as mock_features:
+        mock_features.return_value = FeatureFlags(ai_smart_tags=False)
+        assert get_tagger() is None
+
+
+@patch("src.tagger.ClaudeTagger", return_value=MagicMock())
+def test_get_tagger_byok_with_claude_key(mock_ct, monkeypatch):
+    """FREE tier but own Claude key → tagger is created (BYOK)."""
+    monkeypatch.setattr(tagger_module.config, "ENABLE_LLM_TAGGING", True)
+    monkeypatch.setattr(tagger_module.config, "LLM_PROVIDER", "claude")
+    monkeypatch.setattr(tagger_module.config, "LLM_API_KEY", "sk-test")
+    monkeypatch.setattr(tagger_module.config, "LLM_MODEL", "claude-3-haiku-20240307")
+    with patch("src.tagger.license_manager.get_features") as mock_features:
+        mock_features.return_value = FeatureFlags(ai_smart_tags=False)
+        assert get_tagger() is not None
+    mock_ct.assert_called_once_with(api_key="sk-test", model="claude-3-haiku-20240307")
+
 
 def test_get_tagger_with_license(monkeypatch):
     """Test that get_tagger returns instance if license and config allow it."""

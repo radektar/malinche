@@ -5,7 +5,7 @@ import time
 import signal
 import threading
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from src.config import config
 from src.logger import logger
@@ -39,11 +39,20 @@ class MalincheTranscriber:
         self.periodic_thread: Optional[threading.Thread] = None
         self.running = False
         self.state = AppState()
+        self._ai_billing_callback: Optional[Callable[[Exception], None]] = None
 
         # Setup signal handlers for graceful shutdown (only in main thread)
         if setup_signals:
             signal.signal(signal.SIGINT, self._signal_handler)
             signal.signal(signal.SIGTERM, self._signal_handler)
+
+    def set_ai_billing_callback(
+        self, callback: Callable[[Exception], None]
+    ) -> None:
+        """Register a callback forwarded to the underlying Transcriber."""
+        self._ai_billing_callback = callback
+        if self.transcriber is not None:
+            self.transcriber.set_ai_billing_callback(callback)
 
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals.
@@ -74,12 +83,9 @@ class MalincheTranscriber:
                 if not self.running:
                     break
 
-                # Only check if recorder is not already being monitored
-                if self.transcriber and not self.transcriber.recorder_monitoring:
-                    recorder = self.transcriber.find_recorder()
-                    if recorder:
-                        logger.debug("Periodic check triggered processing")
-                        self.transcriber.process_recorder()
+                if self.transcriber:
+                    logger.debug("Periodic check triggered processing")
+                    self.transcriber.process_recorder()
 
             except Exception as e:
                 logger.error(f"Error in periodic check: {e}", exc_info=True)
@@ -141,6 +147,8 @@ class MalincheTranscriber:
             self.transcriber = Transcriber(config=config)
             # Inject state updater callback into transcriber
             self.transcriber.set_state_updater(self._update_state)
+            if self._ai_billing_callback is not None:
+                self.transcriber.set_ai_billing_callback(self._ai_billing_callback)
         except Exception as e:
             logger.error(f"Failed to initialize transcriber: {e}", exc_info=True)
             self.state.status = AppStatus.ERROR
@@ -213,7 +221,9 @@ class MalincheTranscriber:
         self,
         status: AppStatus,
         current_file: Optional[str] = None,
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
+        recorder_name: Optional[str] = None,
+        pending_count: Optional[int] = None,
     ) -> None:
         """Update application state (called by Transcriber).
 
@@ -224,6 +234,8 @@ class MalincheTranscriber:
         """
         self.state.status = status
         self.state.current_file = current_file
+        self.state.recorder_name = recorder_name
+        self.state.pending_count = pending_count
         if error_message:
             self.state.error_message = error_message
 

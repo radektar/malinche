@@ -86,7 +86,10 @@ def test_file_monitor_stop_no_observer(mock_callback):
 @patch('src.file_monitor.FSEVENTS_AVAILABLE', True)
 @patch('src.file_monitor.Observer')
 @patch('src.file_monitor.Stream')
-def test_file_monitor_ignores_system_directories(mock_stream, mock_observer, mock_callback):
+@patch('src.file_monitor.find_matching_volumes', return_value=[])
+def test_file_monitor_ignores_system_directories(
+    mock_find, mock_stream, mock_observer, mock_callback
+):
     """Test that system directories like .Spotlight-V100 are ignored."""
     from src.file_monitor import FileMonitor
     import time
@@ -122,7 +125,8 @@ def test_file_monitor_ignores_system_directories(mock_stream, mock_observer, moc
 @patch('src.file_monitor.Stream')
 @patch('src.file_monitor.time.sleep')
 @patch('src.file_monitor.UserSettings')
-def test_file_monitor_triggers_on_valid_path(mock_user_settings, mock_sleep, mock_stream, mock_observer, mock_callback, tmp_path):
+@patch('src.file_monitor.find_matching_volumes', return_value=[])
+def test_file_monitor_triggers_on_valid_path(mock_find, mock_user_settings, mock_sleep, mock_stream, mock_observer, mock_callback, tmp_path):
     """Test that valid recorder paths trigger the callback."""
     from src.file_monitor import FileMonitor
     from src.config.settings import UserSettings
@@ -179,7 +183,10 @@ def test_file_monitor_triggers_on_valid_path(mock_user_settings, mock_sleep, moc
 @patch('src.file_monitor.FSEVENTS_AVAILABLE', True)
 @patch('src.file_monitor.Observer')
 @patch('src.file_monitor.Stream')
-def test_file_monitor_ignores_non_recorder_paths(mock_stream, mock_observer, mock_callback):
+@patch('src.file_monitor.find_matching_volumes', return_value=[])
+def test_file_monitor_ignores_non_recorder_paths(
+    mock_find, mock_stream, mock_observer, mock_callback
+):
     """Test that paths not under recorder volumes are ignored."""
     from src.file_monitor import FileMonitor
     import time
@@ -481,6 +488,133 @@ class TestFileMonitorAudioDetection:
         
         result = monitor._has_audio_files(test_dir)
         assert result is False
+
+
+class TestFileMonitorInitialScan:
+    """Regression tests for initial volume scan at daemon startup.
+
+    Bug: FSEvents only fires on mount/change events, so a recorder that is
+    already mounted before ``FileMonitor.start()`` was never detected. These
+    tests lock in the fix that ``start()`` runs a one-shot scan right after
+    the observer is up.
+    """
+
+    @patch('src.file_monitor.FSEVENTS_AVAILABLE', True)
+    @patch('src.file_monitor.Observer')
+    @patch('src.file_monitor.Stream')
+    @patch('src.file_monitor.find_matching_volumes')
+    def test_start_triggers_callback_when_volume_preexists(
+        self,
+        mock_find,
+        mock_stream,
+        mock_observer,
+        mock_callback,
+        tmp_path,
+    ):
+        """If a matching volume is already mounted, callback runs once."""
+        mock_find.return_value = [tmp_path / "LS-P1"]
+        mock_observer.return_value = MagicMock()
+
+        monitor = FileMonitor(mock_callback)
+        monitor.start()
+
+        mock_callback.assert_called_once()
+
+    @patch('src.file_monitor.FSEVENTS_AVAILABLE', True)
+    @patch('src.file_monitor.Observer')
+    @patch('src.file_monitor.Stream')
+    @patch('src.file_monitor.find_matching_volumes')
+    def test_start_does_not_trigger_when_no_volumes(
+        self,
+        mock_find,
+        mock_stream,
+        mock_observer,
+        mock_callback,
+    ):
+        """When no matching volumes are mounted, callback must not run."""
+        mock_find.return_value = []
+        mock_observer.return_value = MagicMock()
+
+        monitor = FileMonitor(mock_callback)
+        monitor.start()
+
+        mock_callback.assert_not_called()
+
+    @patch('src.file_monitor.FSEVENTS_AVAILABLE', True)
+    @patch('src.file_monitor.Observer')
+    @patch('src.file_monitor.Stream')
+    @patch('src.file_monitor.find_matching_volumes')
+    def test_start_calls_callback_once_regardless_of_volume_count(
+        self,
+        mock_find,
+        mock_stream,
+        mock_observer,
+        mock_callback,
+        tmp_path,
+    ):
+        """Callback is invoked exactly once even with multiple volumes.
+
+        ``Transcriber.process_recorder`` handles iteration internally via
+        ``find_recorders``, so the monitor must not call back per-volume.
+        """
+        mock_find.return_value = [
+            tmp_path / "LS-P1",
+            tmp_path / "SD_CARD",
+            tmp_path / "USB_DRIVE",
+        ]
+        mock_observer.return_value = MagicMock()
+
+        monitor = FileMonitor(mock_callback)
+        monitor.start()
+
+        assert mock_callback.call_count == 1
+
+    @patch('src.file_monitor.FSEVENTS_AVAILABLE', True)
+    @patch('src.file_monitor.Observer')
+    @patch('src.file_monitor.Stream')
+    @patch('src.file_monitor.find_matching_volumes')
+    def test_initial_scan_sets_debounce_timer(
+        self,
+        mock_find,
+        mock_stream,
+        mock_observer,
+        mock_callback,
+        tmp_path,
+    ):
+        """Initial scan must update ``_last_trigger_time`` to debounce
+        any FSEvents that fire right after (mount-triggered churn)."""
+        mock_find.return_value = [tmp_path / "LS-P1"]
+        mock_observer.return_value = MagicMock()
+
+        monitor = FileMonitor(mock_callback)
+        assert monitor._last_trigger_time == 0.0
+
+        monitor.start()
+
+        assert monitor._last_trigger_time > 0.0
+
+    @patch('src.file_monitor.FSEVENTS_AVAILABLE', True)
+    @patch('src.file_monitor.Observer')
+    @patch('src.file_monitor.Stream')
+    @patch('src.file_monitor.find_matching_volumes')
+    def test_initial_scan_swallows_callback_exceptions(
+        self,
+        mock_find,
+        mock_stream,
+        mock_observer,
+        tmp_path,
+    ):
+        """A raising callback must not prevent the monitor from running."""
+        mock_find.return_value = [tmp_path / "LS-P1"]
+        mock_observer.return_value = MagicMock()
+
+        failing_callback = Mock(side_effect=RuntimeError("boom"))
+
+        monitor = FileMonitor(failing_callback)
+        monitor.start()
+
+        assert monitor.is_monitoring is True
+        failing_callback.assert_called_once()
 
 
 

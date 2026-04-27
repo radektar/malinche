@@ -99,6 +99,17 @@ if [ ! -f "dist/Malinche.app/Contents/MacOS/Malinche" ]; then
     exit 1
 fi
 
+# Verify critical Python packages are bundled
+REQUIRED_PKGS=("anthropic" "rumps" "mutagen" "httpx" "click" "dotenv")
+BUNDLE_SITE="dist/Malinche.app/Contents/Resources/lib/python3.12"
+for pkg in "${REQUIRED_PKGS[@]}"; do
+    if [ ! -d "${BUNDLE_SITE}/${pkg}" ]; then
+        echo "❌ Error: required package '${pkg}' not found in bundle"
+        exit 1
+    fi
+done
+echo "✅ All required Python packages verified in bundle"
+
 # Make executable
 chmod +x dist/Malinche.app/Contents/MacOS/Malinche
 
