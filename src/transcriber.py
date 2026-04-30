@@ -906,14 +906,27 @@ class Transcriber:
             logger.debug(f"Reading transcript from: {transcript_path}")
             with open(transcript_path, 'r', encoding='utf-8') as f:
                 transcript_text = f.read()
-            
-            if not transcript_text.strip():
-                logger.warning("Empty transcript, skipping post-processing")
-                return None
-            
-            # Generate summary (if summarizer available and AI not disabled)
+
+            # Pusty transcript = legalny scenariusz (cisza, muzyka bez wokalu).
+            # Generujemy markdown-placeholder z notatką, żeby plik został
+            # zaindeksowany i nie wracał w pętlę retry.
+            empty_transcript = not transcript_text.strip()
+            if empty_transcript:
+                logger.info(
+                    "Pusty transkrypt dla %s — generuję markdown-placeholder",
+                    audio_file.name,
+                )
+                transcript_text = "(Brak rozpoznawalnej mowy w nagraniu)"
+
+            # Generate summary (if summarizer available and AI not disabled).
+            # Pomijamy AI dla pustego transcriptu (nic do podsumowania, oszczędza koszty).
             summary = None
-            if self.summarizer and self._ai_disabled_reason is None:
+            if empty_transcript:
+                summary = {
+                    "title": audio_file.stem.replace("_", " ").title(),
+                    "summary": "(Brak rozpoznawalnej mowy w nagraniu)",
+                }
+            elif self.summarizer and self._ai_disabled_reason is None:
                 try:
                     logger.info("📝 Generating summary...")
                     summary = self.summarizer.generate(transcript_text)
@@ -947,8 +960,11 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
 
             # Generate tags
             tags = ["transcription"]
+            if empty_transcript:
+                tags.append("transcript-empty")
             if (
-                self.config.ENABLE_LLM_TAGGING
+                not empty_transcript
+                and self.config.ENABLE_LLM_TAGGING
                 and self.tagger
                 and self._ai_disabled_reason is None
             ):

@@ -643,11 +643,19 @@ class DependencyDownloader:
             self.verify_whisper_runtime()
             return True
 
-        # Sprawdź czy plik istnieje i ma poprawny checksum
+        # Sprawdź czy plik istnieje, ma poprawny checksum i działa w runtime
         if self.is_whisper_installed():
             if expected_checksum and self.verify_checksum(dest, expected_checksum):
-                logger.info("whisper-cli już zainstalowany i zweryfikowany")
-                return True
+                try:
+                    self.verify_whisper_runtime()
+                    logger.info("whisper-cli już zainstalowany i zweryfikowany")
+                    return True
+                except DependencyRuntimeError as exc:
+                    logger.warning(
+                        "whisper-cli przeszedł checksum, ale runtime nie startuje (%s) — pobieranie ponownie",
+                        exc,
+                    )
+                    dest.unlink(missing_ok=True)
             else:
                 # Plik istnieje ale checksum się nie zgadza - usuń i pobierz ponownie
                 logger.warning(

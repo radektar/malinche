@@ -96,6 +96,12 @@ class MalincheMenuApp(rumps.App):
         )
         self.menu.add(self.reset_memory_item)
 
+        self.repair_whisper_item = rumps.MenuItem(
+            "Napraw whisper-cli...",
+            callback=self._repair_whisper_clicked,
+        )
+        self.menu.add(self.repair_whisper_item)
+
         # Retranscribe submenu
         self.retranscribe_menu = rumps.MenuItem("Retranskrybuj plik...")
         self.menu.add(self.retranscribe_menu)
@@ -244,8 +250,22 @@ class MalincheMenuApp(rumps.App):
         try:
             status = self._download_manager.status()
             if status.ready:
-                logger.info("✓ Wszystkie zależności zainstalowane")
-                return True
+                # Płytkie sprawdzenie OK — teraz głęboka weryfikacja (checksum + runtime).
+                health = self._download_manager.health_check()
+                if health.ok:
+                    logger.info("✓ Wszystkie zależności zainstalowane i zweryfikowane")
+                    return True
+
+                logger.warning(
+                    "Health check NIEUDANY: %s (repair=%s)",
+                    health.reason,
+                    health.needs_whisper_repair,
+                )
+                if health.needs_whisper_repair:
+                    self._prompt_whisper_repair(health.reason or "")
+                else:
+                    self.status_item.title = "Status: Wymagana naprawa zależności"
+                return False
             
             # Brakuje zależności - pokaż komunikat
             logger.warning("Brakuje zależności - wymagane pobranie")
@@ -375,6 +395,106 @@ class MalincheMenuApp(rumps.App):
         )
         if not started:
             self._download_active = True
+
+    def _prompt_whisper_repair(self, reason: str) -> None:
+        """Pokaż dialog naprawy whisper-cli i opcjonalnie ją uruchom."""
+        self.status_item.title = "Status: Wymagana naprawa whisper-cli"
+        self._update_icon(AppStatus.ERROR)
+        response = rumps.alert(
+            title="⚠️ Whisper-cli wymaga naprawy",
+            message=(
+                f"{reason}\n\n"
+                "Pobranie ~3 MB poprawnego pliku zwykle naprawia transkrypcję.\n"
+                "Pobieranie działa w tle - aplikacja pozostanie responsywna."
+            ),
+            ok="Napraw teraz",
+            cancel="Pomiń",
+        )
+        if response == 1:
+            self._run_repair_whisper()
+
+    def _repair_whisper_clicked(self, _) -> None:
+        """Manualne uruchomienie naprawy z menu."""
+        if self._download_active:
+            rumps.alert(
+                title="Pobieranie w toku",
+                message="Poczekaj aż aktualne pobieranie się zakończy.",
+                ok="OK",
+            )
+            return
+        confirm = rumps.alert(
+            title="Naprawa whisper-cli",
+            message=(
+                "Usunie się obecny plik whisper-cli i pobierze ponownie z release.\n"
+                "Pobieranie działa w tle (~3 MB)."
+            ),
+            ok="Napraw",
+            cancel="Anuluj",
+        )
+        if confirm == 1:
+            self._run_repair_whisper()
+
+    def _run_repair_whisper(self) -> None:
+        """Uruchomienie naprawy whisper-cli w tle (wspólna ścieżka)."""
+        if self._download_active:
+            return
+        self._download_active = True
+        self._update_icon(AppStatus.DOWNLOADING)
+        self.status_item.title = "Status: Naprawa whisper-cli..."
+        self._download_window = DownloadWindow(
+            title="Naprawa whisper-cli",
+            detail="Usuwanie i ponowne pobranie whisper-cli...",
+        )
+        self._download_window.show()
+
+        def progress_callback(name: str, progress: float) -> None:
+            percent = int(progress * 100)
+            self.status_item.title = f"Status: Naprawa {name}... {percent}%"
+            if self._download_window is not None:
+                self._download_window.update(
+                    detail=f"Pobieranie: {name}",
+                    progress=progress,
+                )
+
+        def done_callback() -> None:
+            def _on_main() -> None:
+                self._download_active = False
+                if self._download_window is not None:
+                    self._download_window.update(detail="Naprawa zakończona", progress=1.0)
+                    self._download_window.close()
+                logger.info("✓ Whisper-cli naprawiony")
+                rumps.alert(
+                    title="✅ Naprawiono",
+                    message="Whisper-cli pobrany ponownie. Transkrypcja powinna już działać.",
+                    ok="OK",
+                )
+                self.status_item.title = "Status: Gotowe"
+                self._update_icon(AppStatus.IDLE)
+            _run_on_main_thread(_on_main)
+
+        def error_callback(exc: Exception) -> None:
+            def _on_main() -> None:
+                self._download_active = False
+                if self._download_window is not None:
+                    self._download_window.update(detail=f"Błąd: {exc}")
+                logger.error("Naprawa whisper-cli nieudana: %s", exc, exc_info=True)
+                rumps.alert(
+                    title="⚠️ Błąd naprawy",
+                    message=f"Nie udało się pobrać whisper-cli:\n\n{exc}",
+                    ok="OK",
+                )
+                self.status_item.title = "Status: Błąd naprawy"
+                self._update_icon(AppStatus.ERROR)
+            _run_on_main_thread(_on_main)
+
+        started = self._download_manager.repair_whisper_async(
+            on_progress=progress_callback,
+            on_done=done_callback,
+            on_error=error_callback,
+        )
+        if not started:
+            self._download_active = False
+            logger.warning("Naprawa whisper-cli nie wystartowała (download w toku)")
 
 
     def _update_status(self, _):
