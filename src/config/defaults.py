@@ -17,8 +17,12 @@ CONFIG_DIR = Path.home() / "Library" / "Application Support" / "Malinche"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 # Tryby monitorowania
-WATCH_MODES = ["auto", "manual", "specific"]
-DEFAULT_WATCH_MODE = "auto"
+# "auto" zostało usunięte w v2.0.0-beta.2 ze względów bezpieczeństwa —
+# domyślne skanowanie dowolnego dysku z plikami audio prowadziło do
+# nieautoryzowanej transkrypcji. Migracja istniejących userów odbywa się
+# w UserSettings.__post_init__ (auto → manual + onboarding).
+WATCH_MODES = ["manual", "specific"]
+DEFAULT_WATCH_MODE = "manual"
 # Alias used across code/tests
 WATCH_MODE = DEFAULT_WATCH_MODE
 

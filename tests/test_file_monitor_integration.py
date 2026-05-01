@@ -4,14 +4,11 @@ These tests simulate real-world scenarios of volume mounting/unmounting
 without requiring physical USB drives or SD cards. They test the complete
 flow from FSEvents callback through volume detection to callback triggering.
 
-Tests cover scenarios from MANUAL_TESTING_PHASE_1.md:
-- Watch mode "auto" - automatic detection
-- Watch mode "specific" - only watched volumes
-- Watch mode "manual" - no auto-detection
-- Different audio formats
-- Empty volumes
-- System volumes
-- Multiple volumes
+W v2.0.0-beta.2 tryb ``auto`` został usunięty. Klasa testów ``TestVolumeSimulationAutoMode``
+pozostaje pod kątem nazwy ale zachowanie semantyki "USB z audio jest akceptowany"
+realizuje się teraz przez ``manual`` + UUID dodany do whitelist (helper
+``_settings_with_all_trusted``). UUID są generowane deterministycznie po
+nazwie volume w fixturach.
 """
 
 import pytest
@@ -22,6 +19,29 @@ from unittest.mock import Mock, patch, MagicMock
 # Import after mocking to avoid circular import issues
 from src.config.settings import UserSettings
 from src.config.defaults import defaults
+
+
+def _settings_with_all_trusted(volumes_dir: Path) -> UserSettings:
+    """Buduje UserSettings(watch_mode='manual') z wszystkimi volumes z katalogu
+    dodanymi do whitelisty jako trusted (UUID = 'UUID-<name>').
+
+    Używane do reprodukcji starych testów ``auto``: w obu wypadkach każdy
+    volume jest akceptowany — jedyne co się zmieniło to mechanizm autoryzacji.
+    """
+    settings = UserSettings(watch_mode="manual")
+    if volumes_dir.exists():
+        for vol in volumes_dir.iterdir():
+            if vol.is_dir() and vol.name not in defaults.SYSTEM_VOLUMES:
+                settings.add_trusted_volume(f"UUID-{vol.name}", vol.name, "trusted")
+    return settings
+
+
+def _stub_volume_uuid_lookup():
+    """Patch zwracający UUID = 'UUID-<volume_name>' dla danej ścieżki."""
+    return patch(
+        "src.volume_utils.get_volume_uuid",
+        side_effect=lambda volume_path: f"UUID-{volume_path.name}",
+    )
 
 
 @pytest.fixture
@@ -40,12 +60,17 @@ def simulated_volumes_dir(tmp_path):
 
 def _setup_file_monitor_mocks(monkeypatch, simulated_volumes_dir):
     """Helper function to setup mocks for file_monitor module.
-    
+
     Returns:
         tuple: (FileMonitor, file_monitor_module, callback_holder)
         callback_holder is a dict with 'callback' key that will be set when Stream is called
     """
     import sys
+    # Stub UUID detection — bez tego file_monitor robi rzeczywisty diskutil call.
+    monkeypatch.setattr(
+        "src.volume_utils.get_volume_uuid",
+        lambda volume_path: f"UUID-{volume_path.name}",
+    )
     
     # Mock logger/config BEFORE importing file_monitor to avoid circular imports
     mock_logger = MagicMock()
@@ -138,7 +163,7 @@ class TestVolumeSimulationAutoMode:
         
         # Setup UserSettings for auto mode
         with patch.object(file_monitor_module, 'UserSettings') as mock_user_settings:
-            mock_user_settings.load = Mock(return_value=UserSettings(watch_mode="auto"))
+            mock_user_settings.load = Mock(return_value=_settings_with_all_trusted(simulated_volumes_dir))
             
             monitor.start()
             
@@ -153,35 +178,37 @@ class TestVolumeSimulationAutoMode:
             # Callback should have been called
             mock_callback.assert_called_once()
     
-    def test_auto_mode_ignores_empty_usb(
+    def test_unknown_usb_in_manual_mode_is_ignored(
         self, mock_callback, simulated_volumes_dir, monkeypatch
     ):
-        """Test auto mode ignores USB drive without audio files."""
+        """v2.0.0-beta.2: dysk niezatwierdzony (manual + brak whitelist) jest pomijany.
+
+        Wcześniej test ten sprawdzał, że ``auto`` mode pomija USB bez audio.
+        Po usunięciu trybu auto bardziej istotne jest, że *każdy* niezatwierdzony
+        dysk jest pomijany (niezależnie od zawartości audio).
+        """
         FileMonitor, file_monitor_module, callback_holder = _setup_file_monitor_mocks(
             monkeypatch, simulated_volumes_dir
         )
-        
-        # Create empty USB drive
-        empty_usb = simulated_volumes_dir / "EMPTY_USB"
-        empty_usb.mkdir()
-        (empty_usb / "readme.txt").touch()
-        
+
+        unknown_usb = simulated_volumes_dir / "UNKNOWN_USB"
+        unknown_usb.mkdir()
+        (unknown_usb / "audio.mp3").touch()
+
         monitor = FileMonitor(mock_callback)
         monitor._last_trigger_time = 0.0
-        
+
         with patch.object(file_monitor_module, 'UserSettings') as mock_user_settings:
-            mock_user_settings.load = Mock(return_value=UserSettings(watch_mode="auto"))
-            
+            # Manual mode + brak whitelist + brak handlera dialogowego.
+            mock_user_settings.load = Mock(return_value=UserSettings(watch_mode="manual"))
+
             monitor.start()
-            
-            # Get callback from holder (set during monitor.start())
             on_change_callback = callback_holder['callback']
-            
+
             if on_change_callback:
-                on_change_callback(str(empty_usb / "readme.txt"), 0)
+                on_change_callback(str(unknown_usb / "audio.mp3"), 0)
                 time.sleep(0.1)
-            
-            # Callback should NOT have been called
+
             mock_callback.assert_not_called()
     
     def test_auto_mode_detects_multiple_audio_formats(
@@ -212,7 +239,7 @@ class TestVolumeSimulationAutoMode:
         monitor._last_trigger_time = 0.0
         
         with patch.object(file_monitor_module, 'UserSettings') as mock_user_settings:
-            mock_user_settings.load = Mock(return_value=UserSettings(watch_mode="auto"))
+            mock_user_settings.load = Mock(return_value=_settings_with_all_trusted(simulated_volumes_dir))
             
             monitor.start()
             
@@ -350,7 +377,7 @@ class TestVolumeSimulationSystemVolumes:
         monitor._last_trigger_time = 0.0
         
         with patch.object(file_monitor_module, 'UserSettings') as mock_user_settings:
-            mock_user_settings.load = Mock(return_value=UserSettings(watch_mode="auto"))
+            mock_user_settings.load = Mock(return_value=_settings_with_all_trusted(simulated_volumes_dir))
             
             monitor.start()
             
@@ -368,57 +395,53 @@ class TestVolumeSimulationSystemVolumes:
 class TestVolumeSimulationMultipleVolumes:
     """Integration tests for multiple volumes scenarios."""
     
-    def test_multiple_volumes_auto_mode(
+    def test_multiple_volumes_only_trusted_trigger_callback(
         self, mock_callback, simulated_volumes_dir, monkeypatch
     ):
-        """Test auto mode with multiple volumes - only those with audio."""
+        """Tylko volumes z whitelist (decision=trusted) wywołują callback."""
         FileMonitor, file_monitor_module, callback_holder = _setup_file_monitor_mocks(
             monkeypatch, simulated_volumes_dir
         )
-        
-        # Volume 1: Has audio - should be detected
-        volume1 = simulated_volumes_dir / "USB_DRIVE"
+
+        volume1 = simulated_volumes_dir / "USB_DRIVE"  # trusted
         volume1.mkdir()
         (volume1 / "audio.mp3").touch()
-        
-        # Volume 2: No audio - should be ignored
-        volume2 = simulated_volumes_dir / "EMPTY_DRIVE"
+
+        volume2 = simulated_volumes_dir / "EMPTY_DRIVE"  # niezatwierdzony
         volume2.mkdir()
         (volume2 / "readme.txt").touch()
-        
-        # Volume 3: Has audio - should be detected
-        volume3 = simulated_volumes_dir / "SD_CARD"
+
+        volume3 = simulated_volumes_dir / "SD_CARD"  # trusted
         volume3.mkdir()
         (volume3 / "recording.wav").touch()
-        
+
+        # Settings: tylko USB_DRIVE i SD_CARD są trusted.
+        settings = UserSettings(watch_mode="manual")
+        settings.add_trusted_volume("UUID-USB_DRIVE", "USB_DRIVE", "trusted")
+        settings.add_trusted_volume("UUID-SD_CARD", "SD_CARD", "trusted")
+
         monitor = FileMonitor(mock_callback)
         monitor._last_trigger_time = 0.0
-        
+
         with patch.object(file_monitor_module, 'UserSettings') as mock_user_settings:
-            mock_user_settings.load = Mock(return_value=UserSettings(watch_mode="auto"))
-            
+            mock_user_settings.load = Mock(return_value=settings)
+
             monitor.start()
-            
-            # Get callback from holder (set during monitor.start())
             on_change_callback = callback_holder['callback']
-            
-            # Simulate activity on volume with audio
+
             if on_change_callback:
                 on_change_callback(str(volume1 / "audio.mp3"), 0)
                 time.sleep(0.1)
                 mock_callback.assert_called_once()
-                
-                # Reset and test empty volume
+
                 mock_callback.reset_mock()
                 monitor._last_trigger_time = 0.0
-                
+
                 on_change_callback(str(volume2 / "readme.txt"), 0)
                 time.sleep(0.1)
                 mock_callback.assert_not_called()
-                
-                # Reset and test another volume with audio
+
                 monitor._last_trigger_time = 0.0
-                
                 on_change_callback(str(volume3 / "recording.wav"), 0)
                 time.sleep(0.1)
                 mock_callback.assert_called_once()
@@ -444,7 +467,7 @@ class TestVolumeSimulationDebouncing:
         monitor._debounce_seconds = 2.0
         
         with patch.object(file_monitor_module, 'UserSettings') as mock_user_settings:
-            mock_user_settings.load = Mock(return_value=UserSettings(watch_mode="auto"))
+            mock_user_settings.load = Mock(return_value=_settings_with_all_trusted(simulated_volumes_dir))
             
             monitor.start()
             
@@ -488,7 +511,7 @@ class TestVolumeSimulationNestedDirectories:
         monitor._last_trigger_time = 0.0
         
         with patch.object(file_monitor_module, 'UserSettings') as mock_user_settings:
-            mock_user_settings.load = Mock(return_value=UserSettings(watch_mode="auto"))
+            mock_user_settings.load = Mock(return_value=_settings_with_all_trusted(simulated_volumes_dir))
             
             monitor.start()
             
@@ -522,7 +545,7 @@ class TestVolumeSimulationLegacyRecorder:
         monitor._last_trigger_time = 0.0
         
         with patch.object(file_monitor_module, 'UserSettings') as mock_user_settings:
-            mock_user_settings.load = Mock(return_value=UserSettings(watch_mode="auto"))
+            mock_user_settings.load = Mock(return_value=_settings_with_all_trusted(simulated_volumes_dir))
             
             monitor.start()
             

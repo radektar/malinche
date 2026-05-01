@@ -40,6 +40,7 @@ class MalincheTranscriber:
         self.running = False
         self.state = AppState()
         self._ai_billing_callback: Optional[Callable[[Exception], None]] = None
+        self._on_unknown_volume: Optional[Callable] = None
 
         # Setup signal handlers for graceful shutdown (only in main thread)
         if setup_signals:
@@ -53,6 +54,17 @@ class MalincheTranscriber:
         self._ai_billing_callback = callback
         if self.transcriber is not None:
             self.transcriber.set_ai_billing_callback(callback)
+
+    def set_unknown_volume_callback(self, callback: Callable) -> None:
+        """Register dialog handler for unknown volumes (Tak/Nie/Raz).
+
+        Forwarded to ``FileMonitor`` przy następnym ``start()``.
+        Można podać przed lub po ``start()`` — w drugim wypadku monitor
+        sięgnie po nowy callback przy kolejnym evencie.
+        """
+        self._on_unknown_volume = callback
+        if self.monitor is not None:
+            self.monitor.on_unknown_volume = callback
 
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals.
@@ -156,7 +168,10 @@ class MalincheTranscriber:
             raise
 
         # Initialize file monitor
-        self.monitor = FileMonitor(callback=self.transcriber.process_recorder)
+        self.monitor = FileMonitor(
+            callback=self.transcriber.process_recorder,
+            on_unknown_volume=self._on_unknown_volume,
+        )
 
         # Start FSEvents monitor
         try:

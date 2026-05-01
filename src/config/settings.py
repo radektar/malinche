@@ -2,10 +2,48 @@
 
 import json
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
 from src.config.defaults import defaults
+
+
+@dataclass
+class TrustedVolume:
+    """Persistent decision o pojedynczym dysku zewnętrznym.
+
+    Identyfikator (`uuid`) to macOS Volume UUID gdy dostępny,
+    a w przypadku braku — kompozyt zaczynający się od ``fallback:``
+    (patrz ``src.volume_identity.get_volume_uuid``).
+    """
+
+    uuid: str
+    name: str
+    first_seen: str  # ISO-8601 timestamp pierwszego zatwierdzenia
+    decision: str    # "trusted" | "blocked"
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "TrustedVolume":
+        return cls(
+            uuid=str(data.get("uuid", "")),
+            name=str(data.get("name", "")),
+            first_seen=str(data.get("first_seen", "")),
+            decision=str(data.get("decision", "blocked")),
+        )
+
+    def to_dict(self) -> dict:
+        return {
+            "uuid": self.uuid,
+            "name": self.name,
+            "first_seen": self.first_seen,
+            "decision": self.decision,
+        }
+
+
+def _now_iso() -> str:
+    """ISO-8601 UTC timestamp (sekundowa precyzja, sufiks Z)."""
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 @dataclass
@@ -15,6 +53,8 @@ class UserSettings:
     # Źródła nagrań
     watch_mode: str = defaults.WATCH_MODE
     watched_volumes: List[str] = field(default_factory=list)
+    trusted_volumes: List[TrustedVolume] = field(default_factory=list)
+    needs_volume_onboarding: bool = False
 
     # Ścieżki
     output_dir: Path = field(default_factory=lambda: defaults.DEFAULT_OUTPUT_DIR)
@@ -44,6 +84,19 @@ class UserSettings:
             # Path.resolve() may map /tmp → /private/tmp on macOS; tests allow this.
             self.output_dir = Path(self.output_dir).expanduser().resolve()
 
+        # Normalize trusted_volumes (JSON load gives list of dicts).
+        if self.trusted_volumes and isinstance(self.trusted_volumes[0], dict):
+            self.trusted_volumes = [
+                TrustedVolume.from_dict(item) for item in self.trusted_volumes  # type: ignore[arg-type]
+            ]
+
+        # Migracja: tryb "auto" został usunięty w v2.0.0-beta.2. Force "manual"
+        # i ustaw flagę onboardingu — UI wykryje ją i zaproponuje review
+        # podłączonych dysków przy pierwszym starcie po update.
+        if self.watch_mode == "auto":
+            self.watch_mode = "manual"
+            self.needs_volume_onboarding = True
+
     @classmethod
     def load(cls) -> "UserSettings":
         """Wczytaj ustawienia z pliku JSON."""
@@ -69,6 +122,8 @@ class UserSettings:
         return {
             "watch_mode": self.watch_mode,
             "watched_volumes": list(self.watched_volumes),
+            "trusted_volumes": [tv.to_dict() for tv in self.trusted_volumes],
+            "needs_volume_onboarding": self.needs_volume_onboarding,
             "output_dir": str(self.output_dir),
             "language": self.language,
             "whisper_model": self.whisper_model,
@@ -82,6 +137,29 @@ class UserSettings:
             "index_migrated": self.index_migrated,
             "transrec_migrated": self.transrec_migrated,
         }
+
+    def find_trusted_volume(self, uuid: str) -> Optional[TrustedVolume]:
+        """Wyszukaj wpis whitelist po UUID. Zwraca None gdy brak."""
+        for tv in self.trusted_volumes:
+            if tv.uuid == uuid:
+                return tv
+        return None
+
+    def add_trusted_volume(self, uuid: str, name: str, decision: str) -> TrustedVolume:
+        """Doda wpis (lub zaktualizuje nazwę / decyzję istniejącego)."""
+        existing = self.find_trusted_volume(uuid)
+        if existing is not None:
+            existing.name = name
+            existing.decision = decision
+            return existing
+        entry = TrustedVolume(
+            uuid=uuid,
+            name=name,
+            first_seen=_now_iso(),
+            decision=decision,
+        )
+        self.trusted_volumes.append(entry)
+        return entry
 
     @staticmethod
     def config_path() -> Path:

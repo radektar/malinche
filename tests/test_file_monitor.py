@@ -140,9 +140,10 @@ def test_file_monitor_triggers_on_valid_path(mock_find, mock_user_settings, mock
     (ls_p1_volume / "Folder").mkdir()
     (ls_p1_volume / "Folder" / "audio.mp3").touch()
     
-    # Mock UserSettings to return auto mode
+    # Mock UserSettings z trybem manual + zaufanym dyskem (UUID-LS)
     mock_settings = UserSettings()
-    mock_settings.watch_mode = "auto"
+    mock_settings.watch_mode = "manual"
+    mock_settings.add_trusted_volume("UUID-LS", "LS-P1", "trusted")
     mock_user_settings.load.return_value = mock_settings
     
     # Mock Path("/Volumes") to return our test volumes directory
@@ -167,15 +168,17 @@ def test_file_monitor_triggers_on_valid_path(mock_find, mock_user_settings, mock
     
     mock_stream.side_effect = capture_stream
     
-    # Patch Path("/Volumes") in file_monitor module
-    with patch('src.file_monitor.Path', side_effect=mock_path_constructor):
+    # Patch Path("/Volumes") in file_monitor module + UUID lookup w volume_utils
+    # (file_monitor._authorize_volume → should_process_volume → get_volume_uuid)
+    with patch('src.file_monitor.Path', side_effect=mock_path_constructor), \
+         patch('src.volume_utils.get_volume_uuid', return_value="UUID-LS"):
         monitor.start()
-        
+
         # Simulate FSEvents callback with valid audio file path
         if on_change_callback:
             on_change_callback(str(ls_p1_volume / "Folder" / "audio.mp3"), 0)
             time.sleep(0.1)  # Small delay to ensure callback processing
-        
+
         # Callback should have been called
         mock_callback.assert_called_once()
 
@@ -220,104 +223,106 @@ def test_file_monitor_ignores_non_recorder_paths(
 class TestFileMonitorVolumeDetection:
     """Test suite for universal volume detection (v2.0.0)."""
     
-    def test_should_process_volume_auto_mode_with_audio(self, tmp_path):
-        """Test auto mode detects volumes with audio files."""
+    def test_manual_mode_blank_rejects_unknown(self, tmp_path):
+        """v2.0.0-beta.2: tryb manual bez whitelist odrzuca każdy nieznany dysk."""
         monitor = FileMonitor(Mock())
-        
-        # Create temp directory with audio file
+
         test_volume = tmp_path / "USB_DRIVE"
         test_volume.mkdir()
         (test_volume / "audio.mp3").touch()
-        
-        settings = UserSettings()
-        settings.watch_mode = "auto"
-        
-        result = monitor._should_process_volume(test_volume, settings)
-        assert result is True
-    
-    def test_should_process_volume_auto_mode_no_audio(self, tmp_path):
-        """Test auto mode ignores volumes without audio files."""
-        monitor = FileMonitor(Mock())
-        
-        # Create temp directory without audio files
-        test_volume = tmp_path / "EMPTY_DRIVE"
-        test_volume.mkdir()
-        (test_volume / "readme.txt").touch()
-        
-        settings = UserSettings()
-        settings.watch_mode = "auto"
-        
-        result = monitor._should_process_volume(test_volume, settings)
+
+        settings = UserSettings()  # default = manual
+
+        with patch("src.volume_utils.get_volume_uuid", return_value="UUID-USB"):
+            result = monitor._should_process_volume(test_volume, settings)
         assert result is False
+
+    def test_manual_mode_trusted_uuid_accepts(self, tmp_path):
+        """Manual + UUID na whitelist → accept."""
+        monitor = FileMonitor(Mock())
+
+        test_volume = tmp_path / "LS-P1"
+        test_volume.mkdir()
+
+        settings = UserSettings()
+        settings.add_trusted_volume("UUID-LS", "LS-P1", "trusted")
+
+        with patch("src.volume_utils.get_volume_uuid", return_value="UUID-LS"):
+            result = monitor._should_process_volume(test_volume, settings)
+        assert result is True
     
     def test_should_process_volume_specific_mode_in_list(self, tmp_path):
         """Test specific mode processes volumes in watched list."""
         monitor = FileMonitor(Mock())
-        
+
         test_volume = tmp_path / "SD_CARD"
         test_volume.mkdir()
-        
+
         settings = UserSettings()
         settings.watch_mode = "specific"
         settings.watched_volumes = ["SD_CARD", "USB_DRIVE"]
-        
-        result = monitor._should_process_volume(test_volume, settings)
+
+        with patch("src.volume_utils.get_volume_uuid", return_value="UUID-SD"):
+            result = monitor._should_process_volume(test_volume, settings)
         assert result is True
-    
+
     def test_should_process_volume_specific_mode_not_in_list(self, tmp_path):
         """Test specific mode ignores volumes not in watched list."""
         monitor = FileMonitor(Mock())
-        
+
         test_volume = tmp_path / "OTHER_DRIVE"
         test_volume.mkdir()
-        
+
         settings = UserSettings()
         settings.watch_mode = "specific"
         settings.watched_volumes = ["SD_CARD", "USB_DRIVE"]
-        
-        result = monitor._should_process_volume(test_volume, settings)
+
+        with patch("src.volume_utils.get_volume_uuid", return_value="UUID-OTHER"):
+            result = monitor._should_process_volume(test_volume, settings)
         assert result is False
-    
+
     def test_should_process_volume_manual_mode(self, tmp_path):
         """Test manual mode never auto-processes."""
         monitor = FileMonitor(Mock())
-        
+
         test_volume = tmp_path / "ANY_DRIVE"
         test_volume.mkdir()
         (test_volume / "audio.mp3").touch()
-        
+
         settings = UserSettings()
         settings.watch_mode = "manual"
-        
-        result = monitor._should_process_volume(test_volume, settings)
+
+        with patch("src.volume_utils.get_volume_uuid", return_value="UUID-ANY"):
+            result = monitor._should_process_volume(test_volume, settings)
         assert result is False
-    
+
     def test_should_process_volume_ignores_system_volumes(self, tmp_path):
         """Test that system volumes are always ignored."""
         monitor = FileMonitor(Mock())
-        
+
         # Test with system volume name
         test_volume = tmp_path / "Macintosh HD"
         test_volume.mkdir()
         (test_volume / "audio.mp3").touch()  # Even with audio
-        
-        settings = UserSettings()
-        settings.watch_mode = "auto"
-        
-        result = monitor._should_process_volume(test_volume, settings)
+
+        settings = UserSettings()  # default = manual
+
+        with patch("src.volume_utils.get_volume_uuid", return_value="UUID-SYS"):
+            result = monitor._should_process_volume(test_volume, settings)
         assert result is False
-    
+
     def test_should_process_volume_unknown_mode(self, tmp_path, caplog):
         """Test that unknown watch mode defaults to False."""
         monitor = FileMonitor(Mock())
-        
+
         test_volume = tmp_path / "TEST_DRIVE"
         test_volume.mkdir()
-        
+
         settings = UserSettings()
         settings.watch_mode = "invalid_mode"
-        
-        result = monitor._should_process_volume(test_volume, settings)
+
+        with patch("src.volume_utils.get_volume_uuid", return_value="UUID-X"):
+            result = monitor._should_process_volume(test_volume, settings)
         assert result is False
         assert "Unknown watch_mode" in caplog.text
 
