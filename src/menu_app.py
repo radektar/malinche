@@ -24,9 +24,33 @@ try:
 except ImportError:
     _APPHELPER_AVAILABLE = False
 
+try:
+    from AppKit import NSThread
+    _NSTHREAD_AVAILABLE = True
+except ImportError:
+    _NSTHREAD_AVAILABLE = False
+
+
+def _is_main_thread() -> bool:
+    """True gdy obecny wątek to Cocoa main thread."""
+    if _NSTHREAD_AVAILABLE:
+        try:
+            return bool(NSThread.isMainThread())
+        except Exception:
+            return False
+    return False
+
 
 def _run_on_main_thread(func):
-    """Schedule *func* on the main thread; fall back to direct call in tests."""
+    """Schedule *func* on the main thread; fall back to direct call in tests.
+
+    Gdy już jesteśmy na main thread, wywołujemy synchronicznie — schedule
+    przez ``AppHelper.callAfter`` w połączeniu z blokującym ``Event.wait``
+    powodował deadlock (callback czekał na runloop, który stał na wait).
+    """
+    if _is_main_thread():
+        func()
+        return
     if _APPHELPER_AVAILABLE:
         AppHelper.callAfter(func)
     else:
@@ -109,6 +133,12 @@ class MalincheMenuApp(rumps.App):
             callback=self._repair_whisper_clicked,
         )
         self.menu.add(self.repair_whisper_item)
+
+        self.manage_volumes_item = rumps.MenuItem(
+            "Zarządzaj dyskami...",
+            callback=self._manage_volumes_clicked,
+        )
+        self.menu.add(self.manage_volumes_item)
 
         # Retranscribe submenu
         self.retranscribe_menu = rumps.MenuItem("Retranskrybuj plik...")
@@ -287,31 +317,96 @@ class MalincheMenuApp(rumps.App):
             logger.info("Volume onboarding postponed by user")
             return
 
+        # Reuse manualnej ścieżki — ta sama logika.
+        self._review_mounted_volumes(settings)
+
+    def _manage_volumes_clicked(self, _) -> None:
+        """Menu item: zarządzanie listą zaufanych/zablokowanych dysków."""
+        try:
+            settings = UserSettings.load()
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"Nie można załadować ustawień: {exc}")
+            rumps.alert(title="Błąd", message=str(exc), ok="OK")
+            return
+
+        trusted = [tv for tv in settings.trusted_volumes if tv.decision == "trusted"]
+        blocked = [tv for tv in settings.trusted_volumes if tv.decision == "blocked"]
+
+        lines = []
+        if trusted:
+            lines.append("✅ Zaufane (transkrybowane):")
+            for tv in trusted:
+                lines.append(f"   • {tv.name}")
+        if blocked:
+            if lines:
+                lines.append("")
+            lines.append("🚫 Zablokowane (pomijane):")
+            for tv in blocked:
+                lines.append(f"   • {tv.name}")
+        if not lines:
+            lines.append("Brak zatwierdzonych dysków.")
+            lines.append("Podłącz dysk lub wybierz 'Przejrzyj /Volumes' poniżej.")
+
+        message = "\n".join(lines) + "\n\nCo chcesz zrobić?"
+
+        choice = rumps.alert(
+            title="🛡 Zarządzaj dyskami",
+            message=message,
+            ok="Przejrzyj /Volumes",
+            cancel="Zamknij",
+            other="Wyczyść decyzje",
+        )
+
+        if choice == 1:  # Przejrzyj /Volumes
+            self._review_mounted_volumes(settings)
+        elif choice == -1:  # Wyczyść decyzje (other button)
+            confirm = rumps.alert(
+                title="Wyczyścić decyzje?",
+                message=(
+                    "Wszystkie zaufane i zablokowane dyski zostaną usunięte z listy. "
+                    "Przy następnym podłączeniu dysku app zapyta od nowa."
+                ),
+                ok="Wyczyść",
+                cancel="Anuluj",
+            )
+            if confirm == 1:
+                settings.trusted_volumes = []
+                settings.save()
+                rumps.alert(title="Wyczyszczono", message="Lista decyzji jest pusta.", ok="OK")
+
+    def _review_mounted_volumes(self, settings: UserSettings) -> None:
+        """Iteruj po podłączonych /Volumes i pytaj o nieznane dyski.
+
+        Współdzielona ścieżka między onboardingiem a manualnym przeglądem.
+        """
         from pathlib import Path
         from src.config.defaults import defaults as _defaults
         from src.volume_identity import get_volume_uuid
 
         volumes_root = Path("/Volumes")
         if not volumes_root.exists():
-            settings.needs_volume_onboarding = False
-            settings.save()
+            rumps.alert(title="Brak /Volumes", message="Katalog /Volumes nie istnieje.", ok="OK")
             return
 
         try:
             candidates = sorted(volumes_root.iterdir(), key=lambda p: p.name)
         except OSError as error:
-            logger.warning(f"Onboarding: could not list /Volumes: {error}")
+            logger.error(f"Manage volumes: could not list /Volumes: {error}")
+            rumps.alert(title="Błąd", message=str(error), ok="OK")
             return
 
+        skipped_existing = 0
+        skipped_system = 0
         reviewed = 0
         for candidate in candidates:
             if not candidate.is_dir():
                 continue
             if candidate.name in _defaults.SYSTEM_VOLUMES:
+                skipped_system += 1
                 continue
             uuid = get_volume_uuid(candidate)
             if settings.find_trusted_volume(uuid) is not None:
-                # Już zatwierdzony / zablokowany.
+                skipped_existing += 1
                 continue
             decision = self._prompt_unknown_volume(candidate, uuid)
             if decision == DECISION_TRUSTED:
@@ -320,11 +415,17 @@ class MalincheMenuApp(rumps.App):
             elif decision == DECISION_BLOCKED:
                 settings.add_trusted_volume(uuid, candidate.name, "blocked")
                 reviewed += 1
-            # DECISION_ONCE — nic nie zapisuj, pominij.
 
         settings.needs_volume_onboarding = False
         settings.save()
-        logger.info(f"Volume onboarding completed (reviewed={reviewed})")
+
+        summary_lines = [f"Przejrzano dyski w /Volumes:"]
+        summary_lines.append(f"• Zatwierdzono nowych decyzji: {reviewed}")
+        if skipped_existing:
+            summary_lines.append(f"• Pominięto już znane: {skipped_existing}")
+        if skipped_system:
+            summary_lines.append(f"• Pominięto systemowe: {skipped_system}")
+        rumps.alert(title="Zakończono", message="\n".join(summary_lines), ok="OK")
 
     def _check_dependencies(self):
         """Sprawdź czy wszystkie zależności są zainstalowane."""
