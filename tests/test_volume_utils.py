@@ -1,12 +1,14 @@
 """Tests for the shared volume detection utilities.
 
-These tests cover the code path that unifies ``FileMonitor`` and
-``Transcriber`` recorder detection. They protect against the regression
-where ``Transcriber.find_recorder`` ignored volumes in ``auto`` mode
-because it iterated over a hardcoded list of names.
+These tests cover the strict UUID-based whitelist introduced in
+v2.0.0-beta.2. Wcześniej tryb ``auto`` akceptował dowolny volume z plikami
+audio, co prowadziło do niezamierzonego skanowania (np. dysku z muzyką).
+``has_audio_files`` jest zachowane jako utility, ale nie ma już ścieżki
+``watch_mode == "auto"``.
 """
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -27,6 +29,11 @@ def _make_volume(root: Path, name: str, audio_file: str | None = "rec.mp3") -> P
     else:
         (volume / "notes.txt").touch()
     return volume
+
+
+def _stub_uuid(uuid: str):
+    """Patch get_volume_uuid w module volume_utils."""
+    return patch("src.volume_utils.get_volume_uuid", return_value=uuid)
 
 
 def test_has_audio_files_detects_top_level(tmp_path):
@@ -54,59 +61,84 @@ def test_has_audio_files_respects_max_depth(tmp_path):
     deep = tmp_path / "a" / "b" / "c" / "d"
     deep.mkdir(parents=True)
     (deep / "far.mp3").touch()
-    # max_depth=1 means only files up to one directory deep are considered
     assert has_audio_files(tmp_path, max_depth=1) is False
-
-
-def test_should_process_volume_auto_mode_accepts_audio_volume(tmp_path):
-    """Auto mode must accept any non-system volume containing audio."""
-    volume = _make_volume(tmp_path, "IC RECORDER")
-    settings = UserSettings(watch_mode="auto", watched_volumes=[])
-    assert should_process_volume(volume, settings) is True
-
-
-def test_should_process_volume_auto_mode_rejects_empty_volume(tmp_path):
-    """Auto mode must reject volumes without audio."""
-    volume = _make_volume(tmp_path, "EMPTY_STICK", audio_file=None)
-    settings = UserSettings(watch_mode="auto", watched_volumes=[])
-    assert should_process_volume(volume, settings) is False
 
 
 def test_should_process_volume_rejects_system_volume(tmp_path):
     """System volumes like 'Macintosh HD' must always be rejected."""
     volume = _make_volume(tmp_path, "Macintosh HD")
-    settings = UserSettings(watch_mode="auto", watched_volumes=[])
-    assert should_process_volume(volume, settings) is False
+    settings = UserSettings(watch_mode="manual", watched_volumes=[])
+    with _stub_uuid("UUID-MAC"):
+        assert should_process_volume(volume, settings) is False
 
 
-def test_should_process_volume_specific_mode_requires_watchlist(tmp_path):
-    """Specific mode must only accept volumes whose names are watchlisted."""
+def test_should_process_volume_manual_blank_rejects_unknown(tmp_path):
+    """Manual mode bez wpisu w whitelist musi odmówić (czeka na dialog)."""
+    volume = _make_volume(tmp_path, "Foo")
+    settings = UserSettings(watch_mode="manual", watched_volumes=[])
+    with _stub_uuid("UUID-FOO"):
+        assert should_process_volume(volume, settings) is False
+
+
+def test_should_process_volume_uuid_trusted_accepted(tmp_path):
+    """Wpisany w whitelist (decision=trusted) volume jest akceptowany."""
+    volume = _make_volume(tmp_path, "LS-P1")
+    settings = UserSettings(watch_mode="manual", watched_volumes=[])
+    settings.add_trusted_volume("UUID-LS", "LS-P1", "trusted")
+    with _stub_uuid("UUID-LS"):
+        assert should_process_volume(volume, settings) is True
+
+
+def test_should_process_volume_uuid_blocked_rejected(tmp_path):
+    """Wpisany w whitelist (decision=blocked) volume jest pomijany."""
+    volume = _make_volume(tmp_path, "Music SSD")
+    settings = UserSettings(watch_mode="manual", watched_volumes=[])
+    settings.add_trusted_volume("UUID-MUSIC", "Music SSD", "blocked")
+    with _stub_uuid("UUID-MUSIC"):
+        assert should_process_volume(volume, settings) is False
+
+
+def test_should_process_volume_specific_mode_by_name(tmp_path):
+    """Specific mode legacy: akceptuje po nazwie z watched_volumes."""
     volume_ok = _make_volume(tmp_path, "LS-P1")
     volume_other = _make_volume(tmp_path, "RANDOM")
-
     settings = UserSettings(watch_mode="specific", watched_volumes=["LS-P1"])
-    assert should_process_volume(volume_ok, settings) is True
-    assert should_process_volume(volume_other, settings) is False
+
+    with _stub_uuid("UUID-1"):
+        assert should_process_volume(volume_ok, settings) is True
+    with _stub_uuid("UUID-2"):
+        assert should_process_volume(volume_other, settings) is False
 
 
-def test_should_process_volume_manual_mode_never_accepts(tmp_path):
-    """Manual mode must always return False (user-driven detection)."""
+def test_should_process_volume_blocked_uuid_overrides_specific_name(tmp_path):
+    """UUID-blocked ma pierwszeństwo nad name-based specific."""
     volume = _make_volume(tmp_path, "LS-P1")
-    settings = UserSettings(watch_mode="manual", watched_volumes=["LS-P1"])
-    assert should_process_volume(volume, settings) is False
+    settings = UserSettings(watch_mode="specific", watched_volumes=["LS-P1"])
+    settings.add_trusted_volume("UUID-LS", "LS-P1", "blocked")
+    with _stub_uuid("UUID-LS"):
+        assert should_process_volume(volume, settings) is False
 
 
-def test_find_matching_volumes_auto_returns_all_audio_volumes(tmp_path):
-    """Auto mode must return every non-system volume with audio files."""
-    _make_volume(tmp_path, "IC RECORDER")
-    _make_volume(tmp_path, "SD_CARD", audio_file="a.wav")
-    _make_volume(tmp_path, "NoAudio", audio_file=None)
+def test_find_matching_volumes_returns_only_trusted(tmp_path):
+    """Manual mode + jeden trusted volume → tylko on jest matching."""
+    _make_volume(tmp_path, "LS-P1")
+    _make_volume(tmp_path, "Music SSD")
     _make_volume(tmp_path, "Macintosh HD")
 
-    settings = UserSettings(watch_mode="auto", watched_volumes=[])
-    result = find_matching_volumes(settings, volumes_root=tmp_path)
+    settings = UserSettings(watch_mode="manual", watched_volumes=[])
+    settings.add_trusted_volume("UUID-LS", "LS-P1", "trusted")
 
-    assert sorted(v.name for v in result) == ["IC RECORDER", "SD_CARD"]
+    def _uuid_lookup(volume_path: Path) -> str:
+        return {
+            "LS-P1": "UUID-LS",
+            "Music SSD": "UUID-MUSIC",
+            "Macintosh HD": "UUID-MAC",
+        }.get(volume_path.name, "UUID-UNK")
+
+    with patch("src.volume_utils.get_volume_uuid", side_effect=_uuid_lookup):
+        result = find_matching_volumes(settings, volumes_root=tmp_path)
+
+    assert [v.name for v in result] == ["LS-P1"]
 
 
 def test_find_matching_volumes_returns_deterministic_order(tmp_path):
@@ -115,14 +147,15 @@ def test_find_matching_volumes_returns_deterministic_order(tmp_path):
     _make_volume(tmp_path, "ALPHA")
     _make_volume(tmp_path, "MIKE")
 
-    settings = UserSettings(watch_mode="auto", watched_volumes=[])
-    result = find_matching_volumes(settings, volumes_root=tmp_path)
+    settings = UserSettings(watch_mode="specific", watched_volumes=["ZETA", "ALPHA", "MIKE"])
+
+    with _stub_uuid("UUID-X"):
+        result = find_matching_volumes(settings, volumes_root=tmp_path)
 
     assert [v.name for v in result] == ["ALPHA", "MIKE", "ZETA"]
 
 
 def test_find_matching_volumes_missing_root_returns_empty(tmp_path):
-    """When /Volumes does not exist we must return an empty list."""
-    settings = UserSettings(watch_mode="auto", watched_volumes=[])
+    settings = UserSettings(watch_mode="manual", watched_volumes=[])
     missing = tmp_path / "does-not-exist"
     assert find_matching_volumes(settings, volumes_root=missing) == []

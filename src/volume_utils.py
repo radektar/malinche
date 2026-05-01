@@ -11,6 +11,7 @@ from typing import Iterable, List, Optional
 from src.config.defaults import defaults
 from src.config.settings import UserSettings
 from src.logger import logger
+from src.volume_identity import get_volume_uuid
 
 
 def has_audio_files(
@@ -64,34 +65,53 @@ def should_process_volume(
 ) -> bool:
     """Determine whether *volume_path* should be treated as a recorder.
 
-    Honours the three supported ``watch_mode`` values:
+    Strict UUID-based whitelist. Wcześniej zatwierdzona decyzja
+    użytkownika (``trusted`` / ``blocked``) ma pierwszeństwo nad
+    ``watch_mode``. Dla nieznanych dysków:
 
-    * ``auto`` - accept any non-system volume that contains audio files.
-    * ``specific`` - accept only volumes whose name is in
-      ``settings.watched_volumes``.
-    * ``manual`` - never auto-accept.
+    * ``manual`` — odmawia (nadrzędny dialog Tak/Nie/Raz wywoływany
+      przez ``FileMonitor`` poprzez callback ``on_unknown_volume``).
+    * ``specific`` — legacy, akceptuje gdy nazwa volume jest na
+      liście ``settings.watched_volumes``.
 
     Args:
         volume_path: Candidate volume path (e.g. ``/Volumes/MY_SD``).
         settings: Current ``UserSettings`` instance.
-        audio_extensions: Override for audio extensions (mainly for tests).
-        max_depth: Override for scan depth (mainly for tests).
+        audio_extensions: Nieużywane (zostawione dla zgodności wywołań
+            z testami starszej wersji).
+        max_depth: Jak wyżej.
 
     Returns:
         True when the volume should be processed, False otherwise.
     """
+    del audio_extensions, max_depth  # zachowane w sygnaturze dla back-compat
+
     volume_name = volume_path.name
 
     if volume_name in defaults.SYSTEM_VOLUMES:
         return False
 
+    uuid = get_volume_uuid(volume_path)
+    trusted = settings.find_trusted_volume(uuid)
+    if trusted is not None:
+        if trusted.decision == "blocked":
+            logger.debug(f"Skipping blocked volume: {volume_name} (uuid={uuid})")
+            return False
+        if trusted.decision == "trusted":
+            return True
+        # Nieznana decyzja w danych — bezpieczny default to nie-skanuj.
+        logger.warning(
+            f"Unknown decision '{trusted.decision}' for volume {volume_name}; "
+            "treating as untrusted"
+        )
+        return False
+
     match settings.watch_mode:
-        case "auto":
-            return has_audio_files(volume_path, audio_extensions, max_depth)
+        case "manual":
+            # Decyzja podejmowana przez UI (dialog Tak/Nie/Raz). Tu odmawiamy.
+            return False
         case "specific":
             return volume_name in settings.watched_volumes
-        case "manual":
-            return False
         case _:
             logger.warning(f"Unknown watch_mode: {settings.watch_mode}")
             return False

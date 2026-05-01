@@ -32,7 +32,15 @@ def _run_on_main_thread(func):
     else:
         func()
 
+import threading
+
 from src.config import config
+from src.config.settings import UserSettings
+from src.file_monitor import (
+    DECISION_BLOCKED,
+    DECISION_ONCE,
+    DECISION_TRUSTED,
+)
 from src.logger import logger
 from src.app_core import MalincheTranscriber
 from src.app_status import AppStatus
@@ -238,12 +246,85 @@ class MalincheMenuApp(rumps.App):
         """Sprawdź zależności po uruchomieniu aplikacji (z opóźnieniem)."""
         # Stop timer after first call
         timer.stop()
-        
+
         if self._dependencies_checked:
             return
-        
+
         self._dependencies_checked = True
         self._check_dependencies()
+        # Onboarding banner po starcie (nieblokujący, jednorazowy per uruchomienie).
+        self._maybe_run_volume_onboarding()
+
+    def _maybe_run_volume_onboarding(self) -> None:
+        """Pokaż banner migracji + (opcjonalnie) review podłączonych dysków.
+
+        Wykonuje się gdy ``UserSettings.needs_volume_onboarding`` to True
+        (typowo: świeża migracja z trybu ``auto`` → ``manual`` w v2.0.0-beta.2).
+        """
+        try:
+            settings = UserSettings.load()
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"Nie można załadować ustawień dla onboardingu: {exc}")
+            return
+        if not settings.needs_volume_onboarding:
+            return
+
+        choice = rumps.alert(
+            title="🛡 Tryb bezpieczeństwa zaktualizowany",
+            message=(
+                "Od teraz każdy nowy dysk podłączony do komputera musi być "
+                "zatwierdzony zanim Malinche zacznie z niego transkrybować. "
+                "To zapobiega przypadkowemu skanowaniu np. dysków z muzyką.\n\n"
+                "Czy chcesz teraz przejrzeć podłączone dyski i zdecydować, "
+                "które są recorderami?"
+            ),
+            ok="Przejrzyj teraz",
+            cancel="Później",
+        )
+
+        if choice != 1:
+            # Odłożone — flaga zostaje, banner pokaże się przy następnym starcie.
+            logger.info("Volume onboarding postponed by user")
+            return
+
+        from pathlib import Path
+        from src.config.defaults import defaults as _defaults
+        from src.volume_identity import get_volume_uuid
+
+        volumes_root = Path("/Volumes")
+        if not volumes_root.exists():
+            settings.needs_volume_onboarding = False
+            settings.save()
+            return
+
+        try:
+            candidates = sorted(volumes_root.iterdir(), key=lambda p: p.name)
+        except OSError as error:
+            logger.warning(f"Onboarding: could not list /Volumes: {error}")
+            return
+
+        reviewed = 0
+        for candidate in candidates:
+            if not candidate.is_dir():
+                continue
+            if candidate.name in _defaults.SYSTEM_VOLUMES:
+                continue
+            uuid = get_volume_uuid(candidate)
+            if settings.find_trusted_volume(uuid) is not None:
+                # Już zatwierdzony / zablokowany.
+                continue
+            decision = self._prompt_unknown_volume(candidate, uuid)
+            if decision == DECISION_TRUSTED:
+                settings.add_trusted_volume(uuid, candidate.name, "trusted")
+                reviewed += 1
+            elif decision == DECISION_BLOCKED:
+                settings.add_trusted_volume(uuid, candidate.name, "blocked")
+                reviewed += 1
+            # DECISION_ONCE — nic nie zapisuj, pominij.
+
+        settings.needs_volume_onboarding = False
+        settings.save()
+        logger.info(f"Volume onboarding completed (reviewed={reviewed})")
 
     def _check_dependencies(self):
         """Sprawdź czy wszystkie zależności są zainstalowane."""
@@ -495,6 +576,57 @@ class MalincheMenuApp(rumps.App):
         if not started:
             self._download_active = False
             logger.warning("Naprawa whisper-cli nie wystartowała (download w toku)")
+
+    def _prompt_unknown_volume(self, volume_path, uuid: str) -> str:
+        """Synchronicznie zapytaj usera o nieznany dysk: Tak/Nie/Raz.
+
+        Wywoływane z wątku FileMonitora. Dialog rumps musi działać na main
+        thread, więc używamy AppHelper + threading.Event do synchronizacji.
+
+        Returns:
+            Jedną z DECISION_TRUSTED / DECISION_BLOCKED / DECISION_ONCE.
+        """
+        result = {"decision": DECISION_BLOCKED}
+        done = threading.Event()
+        volume_name = volume_path.name if hasattr(volume_path, "name") else str(volume_path)
+
+        def _ask_on_main() -> None:
+            try:
+                response = rumps.alert(
+                    title="🛡 Nowy dysk wykryty",
+                    message=(
+                        f"Czy '{volume_name}' to recorder do transkrypcji?\n\n"
+                        "• Tak — zapamiętaj jako recorder i transkrybuj\n"
+                        "• Nie — zapamiętaj jako niezaufany i zignoruj\n"
+                        "• Tylko raz — transkrybuj teraz, ale nie zapamiętuj"
+                    ),
+                    ok="Tak",
+                    cancel="Nie",
+                    other="Tylko raz",
+                )
+                if response == 1:
+                    result["decision"] = DECISION_TRUSTED
+                elif response == -1:
+                    result["decision"] = DECISION_ONCE
+                else:
+                    result["decision"] = DECISION_BLOCKED
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    f"Dialog _prompt_unknown_volume failed: {exc}",
+                    exc_info=True,
+                )
+                result["decision"] = DECISION_BLOCKED
+            finally:
+                done.set()
+
+        _run_on_main_thread(_ask_on_main)
+        # Czekaj na decyzję; UI się nie zawiesi (rumps.alert na main jest modalny).
+        done.wait(timeout=600)
+        decision = result["decision"]
+        logger.info(
+            f"Volume '{volume_name}' (uuid={uuid}) decision={decision}"
+        )
+        return decision
 
 
     def _update_status(self, _):
@@ -821,6 +953,7 @@ class MalincheMenuApp(rumps.App):
             # Don't setup signal handlers in background thread
             self.transcriber = MalincheTranscriber(setup_signals=False)
             self.transcriber.set_ai_billing_callback(self._notify_billing_error)
+            self.transcriber.set_unknown_volume_callback(self._prompt_unknown_volume)
             self.transcriber.start()
         except Exception as e:
             logger.error(f"Error in daemon thread: {e}", exc_info=True)

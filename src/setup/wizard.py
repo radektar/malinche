@@ -321,28 +321,34 @@ class SetupWizard:
         return "next"
 
     def _show_source_config(self) -> str:
-        """Konfiguracja źródeł nagrań."""
+        """Konfiguracja źródeł nagrań.
+
+        v2.0.0-beta.2: tryb ``auto`` został usunięty. Każdy dysk musi być
+        świadomie zatwierdzony (przez dialog Tak/Nie/Raz przy podpięciu lub
+        legacy ``specific`` z listą nazw).
+        """
         response = rumps.alert(
             title="📁 Źródła nagrań",
             message=(
                 "Skąd pobierać nagrania do transkrypcji?\n\n"
-                "• Automatycznie - wykrywa każdy nowy dysk/kartę SD\n"
-                "  (zalecane dla większości użytkowników)\n\n"
-                "• Określone dyski - tylko wybrane nazwy dysków\n"
-                "  (np. LS-P1, ZOOM-H6)"
+                "• Pytaj przy każdym nowym dysku (zalecane) — "
+                "Malinche zapyta przy pierwszym podłączeniu nowego dysku, "
+                "czy to recorder. Decyzja jest zapamiętywana.\n\n"
+                "• Określone nazwy dysków (zaawansowane) — tylko volumes "
+                "o podanych nazwach (np. LS-P1, ZOOM-H6)."
             ),
-            ok="Automatycznie",
-            cancel="Określone dyski",
+            ok="Pytaj przy nowym dysku",
+            cancel="Określone nazwy dysków",
             other="Anuluj",
         )
 
         if response == -1:  # Anuluj (other button)
             return "cancel"
-        elif response == 1:  # Automatycznie
-            self.settings.watch_mode = "auto"
+        elif response == 1:  # Pytaj — manual + whitelist UUID
+            self.settings.watch_mode = "manual"
             self.settings.watched_volumes = []
-        else:  # Określone dyski
-            # Pytaj o nazwy dysków
+            self.settings.needs_volume_onboarding = False
+        else:  # Określone dyski (legacy specific)
             window = rumps.Window(
                 title="Nazwy dysków",
                 message="Wpisz nazwy dysków oddzielone przecinkami\n(np. LS-P1, ZOOM-H6):",
@@ -359,6 +365,7 @@ class SetupWizard:
             volumes = [v.strip() for v in result.text.split(",") if v.strip()]
             self.settings.watch_mode = "specific"
             self.settings.watched_volumes = volumes
+            self.settings.needs_volume_onboarding = False
 
         return "next"
 

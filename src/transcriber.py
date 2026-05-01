@@ -1328,8 +1328,11 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
                     self.config.LOCAL_RECORDINGS_DIR
                 )
                 if staged_pending:
-                    logger.info(
-                        "📂 No recorder, but %d staged file(s) pending in recordings/",
+                    logger.warning(
+                        "📂 LOCAL_RECORDINGS_DIR scan: %d file(s) pending. "
+                        "Note: this is a manual drop area, not a live recorder source. "
+                        "Files left here from earlier sessions (or moved manually) "
+                        "will be transcribed.",
                         len(staged_pending),
                     )
                     processed_s = 0

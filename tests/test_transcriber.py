@@ -112,14 +112,13 @@ def _make_empty_volume(root: Path, name: str) -> Path:
     return volume
 
 
-def test_find_recorders_auto_mode_detects_any_volume_with_audio(
+def test_find_recorders_manual_mode_detects_trusted_volumes(
     transcriber, tmp_path, monkeypatch
 ):
-    """Regression: auto mode must detect a recorder with an arbitrary name.
+    """v2.0.0-beta.2: Manual + UUID-trusted volumes są wykryte jako recordery.
 
-    Reproduces the bug where a recorder mounted under e.g. "IC RECORDER"
-    was ignored because ``find_recorder`` only looked at a hardcoded list
-    of names (LS-P1 / OLYMPUS / RECORDER).
+    Wcześniejszy test reprodukował bug z hardcoded listą nazw pod ``auto``;
+    po usunięciu trybu auto sprawdzamy ten sam invariant dla strict whitelist.
     """
     volumes_root = tmp_path / "Volumes"
     volumes_root.mkdir()
@@ -127,9 +126,20 @@ def test_find_recorders_auto_mode_detects_any_volume_with_audio(
     _make_volume_with_audio(volumes_root, "SD_CARD", filename="memo.wav")
     _make_empty_volume(volumes_root, "NoAudioStick")
 
-    settings = UserSettings(watch_mode="auto", watched_volumes=[])
+    settings = UserSettings(watch_mode="manual", watched_volumes=[])
+    settings.add_trusted_volume("UUID-IC", "IC RECORDER", "trusted")
+    settings.add_trusted_volume("UUID-SD", "SD_CARD", "trusted")
     monkeypatch.setattr(
         "src.transcriber.UserSettings.load", classmethod(lambda cls: settings)
+    )
+    uuid_map = {
+        "IC RECORDER": "UUID-IC",
+        "SD_CARD": "UUID-SD",
+        "NoAudioStick": "UUID-NOAUDIO",
+    }
+    monkeypatch.setattr(
+        "src.volume_utils.get_volume_uuid",
+        lambda volume_path: uuid_map.get(volume_path.name, "UUID-UNK"),
     )
     monkeypatch.setattr(
         "src.transcriber.find_matching_volumes",
@@ -144,18 +154,29 @@ def test_find_recorders_auto_mode_detects_any_volume_with_audio(
     assert names == ["IC RECORDER", "SD_CARD"]
 
 
-def test_find_recorders_auto_mode_skips_system_volumes(
+def test_find_recorders_skips_system_volumes_even_when_trusted(
     transcriber, tmp_path, monkeypatch
 ):
-    """System volumes must never be treated as recorders even with audio."""
+    """System volumes (Macintosh HD itp.) są zawsze pomijane mimo wpisu w whitelist."""
     volumes_root = tmp_path / "Volumes"
     volumes_root.mkdir()
     _make_volume_with_audio(volumes_root, "Macintosh HD")
     _make_volume_with_audio(volumes_root, "MY_DICTAPHONE")
 
-    settings = UserSettings(watch_mode="auto", watched_volumes=[])
+    settings = UserSettings(watch_mode="manual", watched_volumes=[])
+    # Nawet z błędnym wpisem dla "Macintosh HD" jako trusted —
+    # SYSTEM_VOLUMES check ma pierwszeństwo.
+    settings.add_trusted_volume("UUID-MAC", "Macintosh HD", "trusted")
+    settings.add_trusted_volume("UUID-DICT", "MY_DICTAPHONE", "trusted")
     monkeypatch.setattr(
         "src.transcriber.UserSettings.load", classmethod(lambda cls: settings)
+    )
+    monkeypatch.setattr(
+        "src.volume_utils.get_volume_uuid",
+        lambda volume_path: {
+            "Macintosh HD": "UUID-MAC",
+            "MY_DICTAPHONE": "UUID-DICT",
+        }.get(volume_path.name, "UUID-X"),
     )
     monkeypatch.setattr(
         "src.transcriber.find_matching_volumes",
@@ -169,17 +190,22 @@ def test_find_recorders_auto_mode_skips_system_volumes(
     assert [r.name for r in recorders] == ["MY_DICTAPHONE"]
 
 
-def test_find_recorders_auto_mode_ignores_empty_volume(
+def test_find_recorders_manual_mode_ignores_unknown_volume(
     transcriber, tmp_path, monkeypatch
 ):
-    """Volumes without audio files must not be picked up in auto mode."""
+    """Manual + brak UUID na whitelist → volume nie jest recorderem."""
     volumes_root = tmp_path / "Volumes"
     volumes_root.mkdir()
     _make_empty_volume(volumes_root, "EMPTY_STICK")
+    _make_volume_with_audio(volumes_root, "UNKNOWN_USB")
 
-    settings = UserSettings(watch_mode="auto", watched_volumes=[])
+    settings = UserSettings(watch_mode="manual", watched_volumes=[])
     monkeypatch.setattr(
         "src.transcriber.UserSettings.load", classmethod(lambda cls: settings)
+    )
+    monkeypatch.setattr(
+        "src.volume_utils.get_volume_uuid",
+        lambda volume_path: f"UUID-{volume_path.name}",
     )
     monkeypatch.setattr(
         "src.transcriber.find_matching_volumes",

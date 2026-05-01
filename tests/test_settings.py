@@ -112,7 +112,7 @@ class TestUserSettings:
         """Test that __post_init__ converts string paths to Path objects."""
         # Create settings with string path (simulating JSON load)
         settings_dict = {
-            "watch_mode": "auto",
+            "watch_mode": "manual",
             "watched_volumes": [],
             "output_dir": "/tmp/test",  # String from JSON
             "language": "pl",
@@ -124,7 +124,7 @@ class TestUserSettings:
             "setup_completed": False,
         }
         settings = UserSettings(**settings_dict)
-        
+
         # Should be converted to Path in __post_init__
         assert isinstance(settings.output_dir, Path)
         # Path.resolve() may change /tmp/test to /private/tmp/test on macOS
@@ -143,10 +143,47 @@ class TestUserSettings:
 class TestUserSettingsWatchModes:
     """Test suite for watch mode functionality."""
     
-    def test_auto_mode_default(self):
-        """Test that auto mode is default."""
+    def test_manual_mode_default(self):
+        """v2.0.0-beta.2: domyślny tryb to 'manual' (auto usunięte ze względów bezpieczeństwa)."""
         settings = UserSettings()
-        assert settings.watch_mode == "auto"
+        assert settings.watch_mode == "manual"
+
+    def test_auto_mode_migrates_to_manual_with_onboarding_flag(self):
+        """Legacy 'auto' z poprzednich wersji migruje na 'manual' + ustawia onboarding."""
+        settings = UserSettings(watch_mode="auto")
+        assert settings.watch_mode == "manual"
+        assert settings.needs_volume_onboarding is True
+
+    def test_trusted_volume_add_and_lookup(self):
+        """add_trusted_volume / find_trusted_volume działają end-to-end."""
+        settings = UserSettings()
+        entry = settings.add_trusted_volume("UUID-1", "LS-P1", "trusted")
+        assert entry.uuid == "UUID-1"
+        assert entry.decision == "trusted"
+        found = settings.find_trusted_volume("UUID-1")
+        assert found is entry
+        assert settings.find_trusted_volume("UUID-MISSING") is None
+
+    def test_trusted_volume_add_updates_existing_decision(self):
+        """Druga decyzja na ten sam UUID nadpisuje poprzednią."""
+        settings = UserSettings()
+        settings.add_trusted_volume("UUID-1", "Foo", "trusted")
+        settings.add_trusted_volume("UUID-1", "Foo", "blocked")
+        assert len(settings.trusted_volumes) == 1
+        assert settings.find_trusted_volume("UUID-1").decision == "blocked"
+
+    def test_trusted_volumes_serialize_roundtrip(self):
+        """to_dict / load JSON zachowują listę trusted_volumes."""
+        settings = UserSettings()
+        settings.add_trusted_volume("UUID-A", "LS-P1", "trusted")
+        settings.add_trusted_volume("UUID-B", "Music", "blocked")
+        data = settings.to_dict()
+        assert "trusted_volumes" in data
+        assert len(data["trusted_volumes"]) == 2
+        roundtrip = UserSettings(**data)
+        assert len(roundtrip.trusted_volumes) == 2
+        assert roundtrip.find_trusted_volume("UUID-A").decision == "trusted"
+        assert roundtrip.find_trusted_volume("UUID-B").decision == "blocked"
     
     def test_specific_mode_with_volumes(self):
         """Test specific mode with watched volumes."""
