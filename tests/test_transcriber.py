@@ -1277,3 +1277,138 @@ def test_process_recorder_sets_recorder_pending_when_files_missing(
         status == AppStatus.RECORDER_PENDING and pending == 3
         for status, _name, pending in updates
     )
+
+
+# ---------------------------------------------------------------------------
+# v2.0.0-beta.4 — post-process fixes
+# ---------------------------------------------------------------------------
+
+
+def test_extract_fallback_title_first_sentence(tmp_path):
+    """Pierwsze zdanie do max_chars staje się fallback tytułem."""
+    title = Transcriber._extract_fallback_title(
+        "Projekt Wy w Czas. Druga sprawa zupełnie inna."
+    )
+    assert title == "Projekt Wy w Czas"
+
+
+def test_extract_fallback_title_truncates_long_sentence():
+    """Długie zdanie bez kropki jest skracane do max_chars z elipsą."""
+    text = "A" * 100
+    title = Transcriber._extract_fallback_title(text, max_chars=20)
+    assert title.endswith("…")
+    assert len(title) <= 21  # max_chars + 1 znak ellipsy
+
+
+def test_extract_fallback_title_empty_string_returns_empty():
+    assert Transcriber._extract_fallback_title("") == ""
+
+
+def test_extract_fallback_title_brak_marker_returns_empty():
+    """Marker '(Brak rozpoznawalnej mowy...)' nie jest tytułem."""
+    assert Transcriber._extract_fallback_title("(Brak rozpoznawalnej mowy w nagraniu)") == ""
+
+
+def test_wait_for_output_file_returns_true_immediately(tmp_path):
+    target = tmp_path / "ready.txt"
+    target.write_text("hi")
+    assert Transcriber._wait_for_output_file(target, timeout=0.5) is True
+
+
+def test_wait_for_output_file_returns_false_on_timeout(tmp_path):
+    target = tmp_path / "missing.txt"
+    assert Transcriber._wait_for_output_file(target, timeout=0.2, interval=0.05) is False
+
+
+def test_wait_for_output_file_picks_up_late_arrival(tmp_path):
+    """Symulujemy iCloud lag: plik pojawia się po 200ms."""
+    import threading
+    target = tmp_path / "delayed.txt"
+
+    def create_late():
+        import time as _t
+        _t.sleep(0.2)
+        target.write_text("late")
+
+    threading.Thread(target=create_late, daemon=True).start()
+    # Polling co 50ms przez ~1s — powinno złapać.
+    assert Transcriber._wait_for_output_file(target, timeout=1.0, interval=0.05) is True
+
+
+def test_force_retranscribe_lock_busy_raises(transcriber, tmp_path, monkeypatch):
+    """Gdy auto-process trzyma lock, force_retranscribe rzuca RetranscribeLockBusyError."""
+    from src.transcriber import RetranscribeLockBusyError
+
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"audio")
+
+    # Symulujemy że ProcessLock.acquire zwraca False (busy).
+    monkeypatch.setattr("src.transcriber.ProcessLock.acquire", lambda self: False)
+
+    with pytest.raises(RetranscribeLockBusyError):
+        transcriber.force_retranscribe(audio)
+
+
+def test_reconcile_indexes_unindexed_markdown_and_cleans_txt(transcriber, tmp_path, monkeypatch):
+    """reconcile_existing_markdowns dodaje do vault_index brakujący wpis i usuwa osierocony .txt."""
+    from src import config as config_module
+
+    transcribe_dir = tmp_path / "vault"
+    transcribe_dir.mkdir()
+    monkeypatch.setattr(transcriber.config, "TRANSCRIBE_DIR", transcribe_dir)
+    monkeypatch.setattr(config_module.config, "TRANSCRIBE_DIR", transcribe_dir)
+
+    # Markdown z frontmatter wskazującym na fingerprint i source.
+    md = transcribe_dir / "26-04-30 - Test.md"
+    md.write_text(
+        "---\n"
+        'title: "Test"\n'
+        "date: 2026-04-30\n"
+        "source: test.MP3\n"
+        "fingerprint: sha256:abc123def\n"
+        "source_volume: LS-P1\n"
+        "version: 1\n"
+        "tags: [transcription]\n"
+        "---\n\n"
+        "Treść.\n"
+    )
+
+    # Osierocony TXT z tym samym source.stem.
+    txt = transcribe_dir / "test.txt"
+    txt.write_text("Treść txt")
+
+    assert transcriber.vault_index.lookup("sha256:abc123def") is None
+
+    result = transcriber.reconcile_existing_markdowns()
+
+    assert result["indexed"] == 1
+    assert result["txt_cleaned"] == 1
+    assert not txt.exists()
+    entry = transcriber.vault_index.lookup("sha256:abc123def")
+    assert entry is not None
+    assert entry.markdown_path == md.name
+
+
+def test_reconcile_idempotent_when_already_indexed(transcriber, tmp_path, monkeypatch):
+    """Drugie wywołanie reconcile dla tego samego stanu nie robi nic."""
+    from src import config as config_module
+
+    transcribe_dir = tmp_path / "vault"
+    transcribe_dir.mkdir()
+    monkeypatch.setattr(transcriber.config, "TRANSCRIBE_DIR", transcribe_dir)
+    monkeypatch.setattr(config_module.config, "TRANSCRIBE_DIR", transcribe_dir)
+
+    md = transcribe_dir / "marker.md"
+    md.write_text(
+        "---\n"
+        'title: "X"\n'
+        "source: x.MP3\n"
+        "fingerprint: sha256:xxx\n"
+        "version: 1\n"
+        "---\n\n"
+        "X.\n"
+    )
+
+    transcriber.reconcile_existing_markdowns()
+    second = transcriber.reconcile_existing_markdowns()
+    assert second == {"indexed": 0, "txt_cleaned": 0}

@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -56,6 +57,14 @@ def send_notification(title: str, message: str, subtitle: str = "") -> None:
         )
     except Exception as e:
         logger.debug(f"Failed to send notification: {e}")
+
+
+class RetranscribeLockBusyError(RuntimeError):
+    """Wskazuje że ``force_retranscribe`` nie mógł acquire lock-a.
+
+    Inny proces (typowo automatic ``process_recorder``) trzyma lock —
+    UI łapie ten exception i pokazuje alert "Auto transkrypcja w toku".
+    """
 
 
 class ProcessLock:
@@ -739,7 +748,58 @@ class Transcriber:
             "tensor API disabled",
         )
         return any(marker in stderr for marker in retry_markers)
-    
+
+    @staticmethod
+    def _extract_fallback_title(transcript: str, max_chars: int = 60) -> str:
+        """Wyciągnij sensowny tytuł fallback z pierwszych słów transkryptu.
+
+        Używane gdy AI summarizer nie jest dostępny (brak klucza, brak
+        kredytów, błąd sieci). Lepsze niż "260430 0173" dla człowieka.
+
+        Args:
+            transcript: Treść transkryptu (po-whisperowa).
+            max_chars: Maksymalna długość zwracanego tytułu.
+
+        Returns:
+            Pierwsze zdanie skrócone do ``max_chars``, lub pusty string
+            gdy transkrypt jest pusty / sam ``(Brak rozpoznawalnej mowy)``.
+        """
+        text = (transcript or "").strip()
+        if not text or text.startswith("(Brak"):
+            return ""
+        # Pierwsze zdanie (rozdzielone . ! ? lub nową linią).
+        first = re.split(r"[.!?\n]", text, maxsplit=1)[0].strip()
+        if not first:
+            return ""
+        if len(first) <= max_chars:
+            return first
+        truncated = first[:max_chars].rsplit(" ", 1)[0]
+        if not truncated:
+            truncated = first[:max_chars]
+        return truncated.rstrip() + "…"
+
+    @staticmethod
+    def _wait_for_output_file(
+        path: Path,
+        timeout: float = 10.0,
+        interval: float = 0.5,
+    ) -> bool:
+        """Czekaj aż plik stanie się widoczny w filesystem (iCloud lag fix).
+
+        whisper-cli zapisuje TXT do TRANSCRIBE_DIR — gdy ten katalog leży
+        w iCloud Drive (np. ~/Library/Mobile Documents/iCloud~md~obsidian/...),
+        File Provider chwilowo zwraca False z ``Path.exists()`` mimo że
+        plik fizycznie istnieje. Polling przez kilka sekund eliminuje
+        ten race-condition. Lokalne katalogi: pierwsza iteracja zwraca
+        natychmiast (no-op).
+        """
+        deadline = time.time() + max(timeout, 0.0)
+        while time.time() < deadline:
+            if path.exists():
+                return True
+            time.sleep(max(interval, 0.05))
+        return path.exists()
+
     def _run_macwhisper(self, audio_file: Path) -> Optional[Path]:
         """Run whisper.cpp transcription and return path to TXT file.
         
@@ -816,12 +876,17 @@ class Transcriber:
                 self._update_state(AppStatus.ERROR, audio_file.name, error_msg)
                 return None
             
-            logger.debug("✓ whisper.cpp process completed, verifying output file...")
-            
-            # Verify output file was created
-            logger.debug(f"Checking for output file: {output_file}")
-            if output_file.exists():
-                logger.debug(f"✓ Transcription TXT created: {output_file}")
+            logger.info(
+                "✓ whisper.cpp process completed (rc=0): %s",
+                audio_file.name,
+            )
+
+            # Verify output file was created. iCloud-synced TRANSCRIBE_DIR
+            # może opóźnić widoczność świeżo zapisanego pliku przez File
+            # Provider — retry pollem przez kilka sekund pokrywa ten lag.
+            logger.info(f"Checking for output file: {output_file}")
+            if output_file.exists() or self._wait_for_output_file(output_file):
+                logger.info(f"✓ Transcription TXT verified: {output_file.name}")
                 return output_file
             else:
                 logger.warning(
@@ -942,11 +1007,17 @@ class Transcriber:
             # Fallback summary if summarizer unavailable
             if not summary:
                 logger.debug("Using fallback summary")
+                fallback_title = self._extract_fallback_title(transcript_text)
+                if not fallback_title:
+                    fallback_title = audio_file.stem.replace("_", " ").title()
                 summary = {
-                    "title": audio_file.stem.replace("_", " ").title(),
+                    "title": fallback_title,
                     "summary": """## Podsumowanie
 
-Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claude (ANTHROPIC_API_KEY).
+Brak podsumowania AI. Możliwe przyczyny:
+- klucz Claude API (ANTHROPIC_API_KEY) nie jest skonfigurowany
+- konto Anthropic nie ma kredytów (https://console.anthropic.com/settings/billing)
+- przejściowy błąd sieci
 
 ## Lista działań (To-do)
 
@@ -1068,6 +1139,103 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
 
         return None
 
+    def reconcile_existing_markdowns(self) -> Dict[str, int]:
+        """Scan TRANSCRIBE_DIR i zsync vault_index z plikami na dysku.
+
+        Wykrywa markdowny które:
+        * istnieją na dysku ALE ich fingerprint nie jest w vault_index
+          → dodaje wpis (poprzednie wersje pomijały indexing w gałęzi
+          "TXT already exists" w transcribe_file).
+        * mają osierocony plik ``<source.stem>.txt`` w TRANSCRIBE_DIR
+          (DELETE_TEMP_TXT default True ale wcześniej pomijane przy
+          recovery) → usuwa go.
+
+        Wywoływane jednorazowo przy starcie daemona. Idempotentne.
+
+        Returns:
+            Dict z licznikami: ``{"indexed": N, "txt_cleaned": M}``.
+        """
+        result = {"indexed": 0, "txt_cleaned": 0}
+        transcribe_dir = self.config.TRANSCRIBE_DIR
+
+        if not transcribe_dir.exists():
+            return result
+
+        try:
+            md_files = list(transcribe_dir.glob("*.md"))
+        except OSError as error:
+            logger.debug("Reconciliation: could not list %s: %s", transcribe_dir, error)
+            return result
+
+        for md_path in md_files:
+            try:
+                fm = read_frontmatter(md_path)
+            except Exception as error:  # noqa: BLE001
+                logger.debug("Reconciliation: skipping %s: %s", md_path.name, error)
+                continue
+
+            fingerprint = fm.get("fingerprint", "").strip()
+            source = fm.get("source", "").strip()
+            if not fingerprint or not source:
+                continue
+
+            if not self.vault_index.lookup(fingerprint):
+                try:
+                    version = int(fm.get("version", "1") or "1")
+                except ValueError:
+                    version = 1
+                self.vault_index.add(
+                    fingerprint,
+                    IndexEntry(
+                        fingerprint=fingerprint,
+                        source_filename=source,
+                        source_volume=fm.get("source_volume", ""),
+                        markdown_path=md_path.name,
+                        versions=[
+                            {
+                                "version": version,
+                                "transcribed_at": fm.get("recording_date", ""),
+                                "hostname": fm.get("transcribed_on", ""),
+                                "model": fm.get("model", ""),
+                                "language": fm.get("language", ""),
+                                "markdown_path": md_path.name,
+                            }
+                        ],
+                    ),
+                )
+                result["indexed"] += 1
+
+            # Cleanup osieroconego TXT (jeśli source ma rozszerzenie audio,
+            # to .txt powinien się nazywać <stem>.txt).
+            try:
+                source_stem = Path(source).stem
+            except (TypeError, ValueError):
+                continue
+            if not source_stem:
+                continue
+            txt_path = transcribe_dir / f"{source_stem}.txt"
+            if txt_path.exists():
+                try:
+                    txt_path.unlink()
+                    result["txt_cleaned"] += 1
+                    logger.debug("Reconciliation: removed leftover %s", txt_path.name)
+                except OSError as error:
+                    logger.debug(
+                        "Reconciliation: could not remove %s: %s",
+                        txt_path.name,
+                        error,
+                    )
+
+        if result["indexed"] or result["txt_cleaned"]:
+            logger.info(
+                "Reconciliation: indexed %d markdown(s), cleaned %d leftover .txt file(s)",
+                result["indexed"],
+                result["txt_cleaned"],
+            )
+        else:
+            logger.debug("Reconciliation: nothing to do (vault_index in sync)")
+        return result
+
     def _cache_fingerprint_for_existing_markdown(
         self, audio_file: Path, markdown_path: Path, fingerprint: str
     ) -> None:
@@ -1163,7 +1331,9 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
             logger.warning(
                 "Cannot acquire lock - another transcription in progress"
             )
-            return False
+            raise RetranscribeLockBusyError(
+                "Auto transkrypcja w toku — spróbuj ponownie za chwilę."
+            )
         
         try:
             # Remove existing transcription files
@@ -1232,6 +1402,13 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
             success = md_path is not None
             if success:
                 logger.info("✓ Complete: %s", audio_file.name)
+                self._index_completed_transcription(
+                    audio_file=audio_file,
+                    fingerprint=fingerprint,
+                    md_path=md_path,
+                    existing_entry=existing_entry,
+                    version=1,
+                )
             else:
                 logger.warning(
                     "⚠️  TXT exists but post-processing failed: %s",
@@ -1275,29 +1452,52 @@ Brak podsumowania. Podsumowanie można wygenerować po skonfigurowaniu API Claud
             logger.warning(f"⚠️  Transcription complete but post-processing failed: {audio_file.name}")
         
         if success and md_path is not None:
-            version_info = {
-                "version": version,
-                "transcribed_at": self.vault_index.current_iso_timestamp(),
-                "hostname": get_hostname(),
-                "model": self.config.WHISPER_MODEL,
-                "language": self.config.WHISPER_LANGUAGE,
-                "markdown_path": md_path.name,
-            }
-            if existing_entry:
-                self.vault_index.add_version(fingerprint, version_info)
-            else:
-                self.vault_index.add(
-                    fingerprint,
-                    IndexEntry(
-                        fingerprint=fingerprint,
-                        source_filename=audio_file.name,
-                        source_volume=audio_file.parent.name,
-                        markdown_path=md_path.name,
-                        versions=[version_info],
-                    ),
-                )
+            self._index_completed_transcription(
+                audio_file=audio_file,
+                fingerprint=fingerprint,
+                md_path=md_path,
+                existing_entry=existing_entry,
+                version=version,
+            )
 
         return success
+
+    def _index_completed_transcription(
+        self,
+        audio_file: Path,
+        fingerprint: str,
+        md_path: Path,
+        existing_entry: Optional[IndexEntry],
+        version: int = 1,
+    ) -> None:
+        """Zarejestruj sukces transkrypcji w vault_index.
+
+        Wcześniej tylko ścieżka po nowym whisper-runie indexowała wpis;
+        ścieżka "TXT already exists → postprocess only" pomijała indexowanie,
+        co powodowało pętlę pending dla tych samych plików (find_pending nie
+        widział fingerprintu, więc whisper był uruchamiany ponownie).
+        """
+        version_info = {
+            "version": version,
+            "transcribed_at": self.vault_index.current_iso_timestamp(),
+            "hostname": get_hostname(),
+            "model": self.config.WHISPER_MODEL,
+            "language": self.config.WHISPER_LANGUAGE,
+            "markdown_path": md_path.name,
+        }
+        if existing_entry:
+            self.vault_index.add_version(fingerprint, version_info)
+        else:
+            self.vault_index.add(
+                fingerprint,
+                IndexEntry(
+                    fingerprint=fingerprint,
+                    source_filename=audio_file.name,
+                    source_volume=audio_file.parent.name,
+                    markdown_path=md_path.name,
+                    versions=[version_info],
+                ),
+            )
     
     def process_recorder(self) -> None:
         """Main workflow: detect recorder, find new files, transcribe.
