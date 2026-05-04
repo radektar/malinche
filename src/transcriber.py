@@ -781,24 +781,35 @@ class Transcriber:
     @staticmethod
     def _wait_for_output_file(
         path: Path,
-        timeout: float = 10.0,
+        timeout: float = 60.0,
         interval: float = 0.5,
     ) -> bool:
-        """Czekaj aż plik stanie się widoczny w filesystem (iCloud lag fix).
+        """Czekaj aż plik będzie widoczny w filesystem i ma rozmiar > 0.
 
         whisper-cli zapisuje TXT do TRANSCRIBE_DIR — gdy ten katalog leży
         w iCloud Drive (np. ~/Library/Mobile Documents/iCloud~md~obsidian/...),
         File Provider chwilowo zwraca False z ``Path.exists()`` mimo że
-        plik fizycznie istnieje. Polling przez kilka sekund eliminuje
-        ten race-condition. Lokalne katalogi: pierwsza iteracja zwraca
-        natychmiast (no-op).
+        plik fizycznie istnieje. Empirycznie obserwowane lag-i sięgają
+        kilkudziesięciu sekund. Polling do 60s pokrywa większość przypadków.
+
+        Sprawdzamy też że plik ma >0 bajtów — żeby nie wracać True dla
+        placeholder który CloudKit utworzył przed dosynchronizowaniem
+        właściwej zawartości.
+
+        Lokalne katalogi: pierwsza iteracja zwraca natychmiast (no-op).
         """
         deadline = time.time() + max(timeout, 0.0)
         while time.time() < deadline:
-            if path.exists():
-                return True
+            try:
+                if path.exists() and path.stat().st_size > 0:
+                    return True
+            except OSError:
+                pass
             time.sleep(max(interval, 0.05))
-        return path.exists()
+        try:
+            return path.exists() and path.stat().st_size > 0
+        except OSError:
+            return False
 
     def _run_macwhisper(self, audio_file: Path) -> Optional[Path]:
         """Run whisper.cpp transcription and return path to TXT file.
@@ -1140,22 +1151,28 @@ Brak podsumowania AI. Możliwe przyczyny:
         return None
 
     def reconcile_existing_markdowns(self) -> Dict[str, int]:
-        """Scan TRANSCRIBE_DIR i zsync vault_index z plikami na dysku.
+        """Synchronizuj vault_index z plikami w TRANSCRIBE_DIR.
 
-        Wykrywa markdowny które:
-        * istnieją na dysku ALE ich fingerprint nie jest w vault_index
-          → dodaje wpis (poprzednie wersje pomijały indexing w gałęzi
-          "TXT already exists" w transcribe_file).
-        * mają osierocony plik ``<source.stem>.txt`` w TRANSCRIBE_DIR
-          (DELETE_TEMP_TXT default True ale wcześniej pomijane przy
-          recovery) → usuwa go.
+        Cztery scenariusze:
+        * MD na dysku, brak fingerprintu w vault_index → dodaj wpis.
+        * MD na dysku, MD-towarzyszący ``<source.stem>.txt`` → usuń .txt
+          (DELETE_TEMP_TXT default True; cleanup zaległych).
+        * Wpis w vault_index, ale jego ``markdown_path`` nie istnieje na
+          dysku (orphan po manualnym/force_retranscribe usunięciu MD) →
+          usuń wpis, żeby przy kolejnym scan plik audio mógł być
+          przetranskrybowany ponownie.
+        * .txt na dysku bez sąsiadującego MD → potraktuj jako "TXT bez
+          markdown" i wypchnij plik MP3 na listę pending; postprocess
+          wygeneruje brakujący markdown w `transcribe_file` ścieżką
+          "TXT-already-exists" (bez ponownego whispera).
 
-        Wywoływane jednorazowo przy starcie daemona. Idempotentne.
+        Idempotentne: kolejne wywołanie nie robi nic gdy stan jest spójny.
 
         Returns:
-            Dict z licznikami: ``{"indexed": N, "txt_cleaned": M}``.
+            Dict z licznikami:
+            ``{"indexed": N, "orphan_cleaned": K, "txt_cleaned": M, "txt_recovered": R}``.
         """
-        result = {"indexed": 0, "txt_cleaned": 0}
+        result = {"indexed": 0, "orphan_cleaned": 0, "txt_cleaned": 0, "txt_recovered": 0}
         transcribe_dir = self.config.TRANSCRIBE_DIR
 
         if not transcribe_dir.exists():
@@ -1167,6 +1184,8 @@ Brak podsumowania AI. Możliwe przyczyny:
             logger.debug("Reconciliation: could not list %s: %s", transcribe_dir, error)
             return result
 
+        # ---- Etap A: MD na dysku — uzupełnij vault_index, sprzątnij osierocone .txt ----
+        md_sources: set[str] = set()  # filenames of audio for which MD exists
         for md_path in md_files:
             try:
                 fm = read_frontmatter(md_path)
@@ -1178,6 +1197,7 @@ Brak podsumowania AI. Możliwe przyczyny:
             source = fm.get("source", "").strip()
             if not fingerprint or not source:
                 continue
+            md_sources.add(source)
 
             if not self.vault_index.lookup(fingerprint):
                 try:
@@ -1205,8 +1225,7 @@ Brak podsumowania AI. Możliwe przyczyny:
                 )
                 result["indexed"] += 1
 
-            # Cleanup osieroconego TXT (jeśli source ma rozszerzenie audio,
-            # to .txt powinien się nazywać <stem>.txt).
+            # Cleanup osieroconego TXT towarzyszącego MD.
             try:
                 source_stem = Path(source).stem
             except (TypeError, ValueError):
@@ -1226,11 +1245,55 @@ Brak podsumowania AI. Możliwe przyczyny:
                         error,
                     )
 
-        if result["indexed"] or result["txt_cleaned"]:
+        # ---- Etap B: orphan vault_index entries (MD usunięty z dysku) ----
+        try:
+            existing_md_names = {md.name for md in md_files}
+            entries_snapshot = dict(self.vault_index._data.get("entries", {}))
+        except Exception:  # noqa: BLE001
+            entries_snapshot = {}
+        for fp, row in entries_snapshot.items():
+            md_name = (row or {}).get("markdown_path") or ""
+            if not md_name:
+                continue
+            if md_name in existing_md_names:
+                continue
+            # markdown_path wskazuje na plik którego nie ma na dysku.
+            try:
+                if self.vault_index.remove(fp):
+                    result["orphan_cleaned"] += 1
+                    logger.debug(
+                        "Reconciliation: removed orphan vault_index entry for %s (md=%s missing)",
+                        fp[:24],
+                        md_name,
+                    )
+            except Exception as error:  # noqa: BLE001
+                logger.debug(
+                    "Reconciliation: could not remove orphan %s: %s", fp, error
+                )
+
+        # ---- Etap C: TXT bez MD na dysku — kandydat do recovery postprocess ----
+        # Aplikacja sama wykryje to przy kolejnym `process_recorder` (TXT-exists
+        # path w transcribe_file), ale liczymy tutaj dla loga.
+        try:
+            txt_files = list(transcribe_dir.glob("*.txt"))
+        except OSError:
+            txt_files = []
+        for txt_path in txt_files:
+            stem = txt_path.stem
+            # Czy istnieje MD wskazujący na ten audio? Heurystyka: source field
+            # ma rozszerzenie, więc szukamy `stem.MP3`, `stem.WAV`, itd.
+            possible_sources = {f"{stem}.{ext}" for ext in ("MP3", "WAV", "M4A", "mp3", "wav", "m4a")}
+            if md_sources & possible_sources:
+                continue  # MD już istnieje, .txt zostanie sprzątnięty w etapie A
+            result["txt_recovered"] += 1
+
+        if any(result.values()):
             logger.info(
-                "Reconciliation: indexed %d markdown(s), cleaned %d leftover .txt file(s)",
+                "Reconciliation: indexed=%d, orphan_cleaned=%d, txt_cleaned=%d, txt_recovered=%d",
                 result["indexed"],
+                result["orphan_cleaned"],
                 result["txt_cleaned"],
+                result["txt_recovered"],
             )
         else:
             logger.debug("Reconciliation: nothing to do (vault_index in sync)")
@@ -1342,9 +1405,31 @@ Brak podsumowania AI. Możliwe przyczyny:
                 f"Removed {len(removed['removed_md'])} MD, "
                 f"{len(removed['removed_txt'])} TXT files"
             )
-            
+
+            # Również wyczyść vault_index — bez tego transcribe_file widzi
+            # stary fingerprint i może przyjąć go za "Already transcribed"
+            # (ścieżka FREE) albo wersjonować nową transkrypcję jako v2 mimo że
+            # user explicite poprosił o nadpisanie.
+            try:
+                fingerprint = compute_fingerprint(audio_file)
+                if self.vault_index.lookup(fingerprint):
+                    self.vault_index.remove(fingerprint)
+                    logger.info(
+                        "Removed vault_index entry for fingerprint %s",
+                        fingerprint,
+                    )
+                # Plus session blacklist — fingerprint mógł tam wpaść z
+                # poprzedniej nieudanej próby; bez czyszczenia kolejny scan
+                # by go pominął.
+                self._session_failed_fingerprints.discard(fingerprint)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Could not clean vault_index entry before retranscribe: %s",
+                    exc,
+                )
+
             self._update_state(AppStatus.TRANSCRIBING, audio_file.name)
-            
+
             success = self.transcribe_file(audio_file)
             
             if success:
