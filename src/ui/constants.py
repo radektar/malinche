@@ -1,7 +1,7 @@
 """UI constants - easy to replace during redesign."""
 
 # Application metadata
-APP_VERSION = "2.0.0-beta.6"
+APP_VERSION = "2.0.0-beta.7"
 APP_NAME = "Malinche"
 APP_AUTHOR = "Malinche Team"
 APP_WEBSITE = "https://malinche.app"

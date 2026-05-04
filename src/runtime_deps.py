@@ -49,6 +49,8 @@ def _pip_install(spec: str, target: Path) -> bool:
             cmd,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=180.0,
             check=False,
         )

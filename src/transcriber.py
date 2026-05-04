@@ -718,11 +718,18 @@ class Transcriber:
             f"timeout={self.config.TRANSCRIPTION_TIMEOUT}s"
         )
         
+        # encoding="utf-8" + errors="replace" są krytyczne: w py2app environment
+        # locale.getpreferredencoding() to często ASCII, a whisper-cli pisze
+        # do stderr (i ewentualnie stdout) ścieżki / komunikaty zawierające
+        # polskie znaki / nazwy plików z UTF-8. Bez tego subprocess._translate_newlines
+        # rzucał UnicodeDecodeError przy próbie zdekodowania `0xc3` (UTF-8 lead byte).
         return subprocess.run(
             whisper_cmd,
             capture_output=True,
             timeout=self.config.TRANSCRIPTION_TIMEOUT,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             env=env,
         )
 
@@ -1184,8 +1191,11 @@ Brak podsumowania AI. Możliwe przyczyny:
             logger.debug("Reconciliation: could not list %s: %s", transcribe_dir, error)
             return result
 
-        # ---- Etap A: MD na dysku — uzupełnij vault_index, sprzątnij osierocone .txt ----
-        md_sources: set[str] = set()  # filenames of audio for which MD exists
+        # ---- Etap A: MD na dysku — buduj mapy fingerprint → md_path i source → ----
+        # Czytamy frontmatter każdego MD raz; zbieramy fingerprinty żeby
+        # zarówno (a) uzupełnić vault_index oraz (b) wykryć orphan wpisy.
+        md_fingerprints: set[str] = set()
+        md_sources: set[str] = set()
         for md_path in md_files:
             try:
                 fm = read_frontmatter(md_path)
@@ -1197,6 +1207,7 @@ Brak podsumowania AI. Możliwe przyczyny:
             source = fm.get("source", "").strip()
             if not fingerprint or not source:
                 continue
+            md_fingerprints.add(fingerprint)
             md_sources.add(source)
 
             if not self.vault_index.lookup(fingerprint):
@@ -1245,26 +1256,24 @@ Brak podsumowania AI. Możliwe przyczyny:
                         error,
                     )
 
-        # ---- Etap B: orphan vault_index entries (MD usunięty z dysku) ----
+        # ---- Etap B: orphan vault_index entries — TYLKO gdy żaden MD na dysku
+        # nie zawiera tego fingerprintu w frontmatterze. Stary check po nazwie
+        # pliku (markdown_path) niesłusznie kasował poprawne wpisy gdzie nazwa
+        # MD na dysku zmieniła się (np. po zmianie tytułu po retranscribe). ----
         try:
-            existing_md_names = {md.name for md in md_files}
             entries_snapshot = dict(self.vault_index._data.get("entries", {}))
         except Exception:  # noqa: BLE001
             entries_snapshot = {}
-        for fp, row in entries_snapshot.items():
-            md_name = (row or {}).get("markdown_path") or ""
-            if not md_name:
-                continue
-            if md_name in existing_md_names:
-                continue
-            # markdown_path wskazuje na plik którego nie ma na dysku.
+        for fp in entries_snapshot.keys():
+            if fp in md_fingerprints:
+                continue  # mamy MD z tym fingerprintem — wpis jest legalny
+            # Brak MD z matching fingerprint: faktyczny orphan.
             try:
                 if self.vault_index.remove(fp):
                     result["orphan_cleaned"] += 1
                     logger.debug(
-                        "Reconciliation: removed orphan vault_index entry for %s (md=%s missing)",
+                        "Reconciliation: removed orphan vault_index entry for %s (no MD has this fingerprint)",
                         fp[:24],
-                        md_name,
                     )
             except Exception as error:  # noqa: BLE001
                 logger.debug(

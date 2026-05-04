@@ -942,16 +942,10 @@ def test_run_whisper_transcription_disables_metal_for_cpu(
 
     captured = {}
 
-    def fake_run(
-        cmd,
-        capture_output,
-        timeout,
-        text,
-        env=None,
-    ):
-        captured["env"] = env
+    def fake_run(*args, **kwargs):
+        captured["env"] = kwargs.get("env")
         return subprocess.CompletedProcess(
-            args=cmd,
+            args=args,
             returncode=0,
             stdout="",
             stderr="",
@@ -1514,3 +1508,99 @@ def test_wait_for_output_file_requires_nonempty(tmp_path):
     assert Transcriber._wait_for_output_file(target, timeout=0.2, interval=0.05) is False
     target.write_text("some content")
     assert Transcriber._wait_for_output_file(target, timeout=0.5, interval=0.05) is True
+
+
+# ---------------------------------------------------------------------------
+# v2.0.0-beta.7 — encoding regression guards
+# ---------------------------------------------------------------------------
+
+
+def test_run_whisper_transcription_uses_utf8_encoding(transcriber, tmp_path, monkeypatch):
+    """Regression: subprocess.run musi mieć encoding='utf-8' i errors='replace'.
+
+    W py2app środowisku locale.getpreferredencoding() to często ASCII, co
+    powoduje UnicodeDecodeError gdy whisper-cli pisze do stderr polski tekst
+    (`0xc3` = UTF-8 lead byte). Bez `encoding='utf-8'` cała transkrypcja
+    failuje na ostatnim kroku mimo że TXT poprawnie powstał.
+    """
+    captured = {}
+
+    def fake_run(*args, **kwargs):
+        captured["kwargs"] = kwargs
+        # Zwracamy zamockowaną CompletedProcess.
+        from subprocess import CompletedProcess
+        return CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("src.transcriber.subprocess.run", fake_run)
+
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"audio")
+    transcriber.config.WHISPER_CPP_PATH = tmp_path / "whisper-cli"
+    transcriber.config.WHISPER_CPP_MODELS_DIR = tmp_path
+    transcriber.config.TRANSCRIBE_DIR = tmp_path
+    transcriber.config.WHISPER_MODEL = "small"
+    transcriber.config.WHISPER_LANGUAGE = "pl"
+
+    transcriber._run_whisper_transcription(audio, use_coreml=True)
+
+    assert captured["kwargs"].get("text") is True
+    assert captured["kwargs"].get("encoding") == "utf-8", (
+        "subprocess.run musi mieć encoding='utf-8' aby py2app environment "
+        "z ASCII locale nie wywracał się na polskich znakach w whisper stderr."
+    )
+    assert captured["kwargs"].get("errors") == "replace", (
+        "errors='replace' chroni przed bytes które nie są walid UTF-8 "
+        "(np. corrupted output)."
+    )
+
+
+def test_subprocess_with_text_true_must_have_encoding_utf8():
+    """Audyt całego src/: każdy subprocess.run/Popen z text=True musi mieć encoding='utf-8'.
+
+    Ten test zabezpiecza przed regresją typu: deweloper dodaje subprocess.run
+    z text=True do nowej funkcji, zapomina o encoding, w py2app crashuje
+    na pierwszym ne-ASCII bajcie. Skanuje cały src/ i wymaga, by każdy
+    text=True/universal_newlines=True miał też encoding='utf-8'.
+    """
+    import re
+    from pathlib import Path
+
+    src_dir = Path(__file__).resolve().parent.parent / "src"
+    pattern = re.compile(
+        r"subprocess\.(run|Popen|check_output|check_call|call)\((.*?)\)",
+        re.DOTALL,
+    )
+
+    offenders = []
+    for py_file in src_dir.rglob("*.py"):
+        text = py_file.read_text(encoding="utf-8")
+        for match in pattern.finditer(text):
+            block = match.group(0)
+            has_text = "text=True" in block or "universal_newlines=True" in block
+            has_encoding = "encoding=" in block
+            if has_text and not has_encoding:
+                offenders.append(
+                    f"{py_file.relative_to(src_dir.parent)}: {block[:120]}..."
+                )
+
+    assert not offenders, (
+        "subprocess.run(...) z text=True ale BEZ encoding='utf-8' "
+        "spowoduje UnicodeDecodeError w py2app (ASCII locale). "
+        "Dodaj encoding='utf-8', errors='replace':\n  "
+        + "\n  ".join(offenders)
+    )
+
+
+def test_filehandler_uses_utf8_encoding():
+    """Regression: setup_logger musi tworzyć FileHandler z encoding='utf-8'.
+
+    W py2app emoji w log strings (🎙️/🔄/✓/⚠️) silently gubiły linie
+    przez UnicodeEncodeError (ASCII locale).
+    """
+    import inspect
+    from src.logger import setup_logger
+    source = inspect.getsource(setup_logger)
+    assert 'encoding="utf-8"' in source or "encoding='utf-8'" in source, (
+        "setup_logger.FileHandler musi używać encoding='utf-8' "
+        "żeby emoji w logach nie gubiły linii w py2app environment."
+    )
