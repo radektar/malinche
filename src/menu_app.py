@@ -69,7 +69,7 @@ from src.logger import logger
 from src.app_core import MalincheTranscriber
 from src.app_status import AppStatus
 from src.state_manager import reset_state
-from src.transcriber import send_notification
+from src.transcriber import RetranscribeLockBusyError, send_notification
 from src.setup.downloader import DependencyDownloader
 from src.setup.dependency_manager import DependencyManager
 from src.setup.errors import NetworkError, DiskSpaceError, DownloadError
@@ -959,7 +959,7 @@ class MalincheMenuApp(rumps.App):
             try:
                 if self.transcriber and self.transcriber.transcriber:
                     success = self.transcriber.transcriber.force_retranscribe(audio_path)
-                    
+
                     if success:
                         send_notification(
                             title="Malinche",
@@ -972,6 +972,22 @@ class MalincheMenuApp(rumps.App):
                             subtitle="Retranskrypcja nieudana",
                             message=f"Sprawdź logi: {audio_path.name}"
                         )
+            except RetranscribeLockBusyError:
+                logger.info(
+                    "Retranscribe lock-busy for %s — informing user",
+                    audio_path.name,
+                )
+                def _on_main_lock_busy() -> None:
+                    rumps.alert(
+                        title="⏳ Auto transkrypcja w toku",
+                        message=(
+                            "Aplikacja właśnie przetwarza inny plik z dyktafonu.\n\n"
+                            "Spróbuj ponownie za kilka minut, gdy automatyczna "
+                            "transkrypcja się zakończy."
+                        ),
+                        ok="OK",
+                    )
+                _run_on_main_thread(_on_main_lock_busy)
             except Exception as e:
                 logger.error(f"Retranscribe error: {e}", exc_info=True)
                 send_notification(

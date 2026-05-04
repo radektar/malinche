@@ -167,6 +167,14 @@ class MalincheTranscriber:
             self.state.error_message = f"Błąd inicjalizacji: {e}"
             raise
 
+        # Reconcile vault_index z markdownami na dysku — naprawia stan po
+        # wcześniejszych runach, w których ścieżka "TXT-already-exists"
+        # tworzyła markdown bez wpisu w vault_index (powodując pętlę pending).
+        try:
+            self.transcriber.reconcile_existing_markdowns()
+        except Exception as error:  # noqa: BLE001
+            logger.warning("Reconciliation failed at startup: %s", error)
+
         # Initialize file monitor
         self.monitor = FileMonitor(
             callback=self.transcriber.process_recorder,
