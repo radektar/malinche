@@ -79,6 +79,20 @@ class VaultIndex:
             }
             self._save()
 
+    def remove(self, fingerprint: str) -> bool:
+        """Usuń wpis indeksu.
+
+        Returns:
+            True jeśli wpis istniał i został usunięty, False jeśli nie był obecny.
+        """
+        with self._locked_reload():
+            entries = self._data.setdefault("entries", {})
+            if fingerprint not in entries:
+                return False
+            del entries[fingerprint]
+            self._save()
+            return True
+
     def add_version(self, fingerprint: str, version_info: Dict[str, Any]) -> None:
         """Append version info to an existing fingerprint."""
         with self._locked_reload():

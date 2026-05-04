@@ -47,7 +47,12 @@ def setup_logger(
     # File handler
     if log_to_file:
         try:
-            file_handler = logging.FileHandler(config.LOG_FILE)
+            # encoding='utf-8' jest KRYTYCZNE: w py2app domyślny preferred
+            # encoding to często ASCII, co powodowało, że logi zawierające
+            # emoji (🎙️/🔄/✓/⚠️) rzucały UnicodeEncodeError i były ciche
+            # gubione. Bez tego whole transcription path był niewidoczny
+            # w pliku malinche.log mimo prawidłowego wykonania.
+            file_handler = logging.FileHandler(config.LOG_FILE, encoding="utf-8")
             file_handler.setLevel(level)
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)

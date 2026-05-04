@@ -1383,6 +1383,10 @@ def test_reconcile_indexes_unindexed_markdown_and_cleans_txt(transcriber, tmp_pa
 
     assert result["indexed"] == 1
     assert result["txt_cleaned"] == 1
+    # orphan_cleaned może być >0 z powodu wcześniejszych testów które zostawiły
+    # wpisy w vault_index (test isolation issue z fixturą). Sprawdzamy tylko
+    # że konkretne pliki zostały zindeksowane / sprzątnięte.
+    assert result["txt_recovered"] == 0
     assert not txt.exists()
     entry = transcriber.vault_index.lookup("sha256:abc123def")
     assert entry is not None
@@ -1411,4 +1415,102 @@ def test_reconcile_idempotent_when_already_indexed(transcriber, tmp_path, monkey
 
     transcriber.reconcile_existing_markdowns()
     second = transcriber.reconcile_existing_markdowns()
-    assert second == {"indexed": 0, "txt_cleaned": 0}
+    assert second == {
+        "indexed": 0,
+        "orphan_cleaned": 0,
+        "txt_cleaned": 0,
+        "txt_recovered": 0,
+    }
+
+
+def test_reconcile_removes_orphan_vault_index_entry(transcriber, tmp_path, monkeypatch):
+    """Wpis w vault_index wskazujący na nieistniejący MD jest usuwany."""
+    from src import config as config_module
+    from src.vault_index import IndexEntry
+
+    transcribe_dir = tmp_path / "vault"
+    transcribe_dir.mkdir()
+    monkeypatch.setattr(transcriber.config, "TRANSCRIBE_DIR", transcribe_dir)
+    monkeypatch.setattr(config_module.config, "TRANSCRIBE_DIR", transcribe_dir)
+
+    transcriber.vault_index.add(
+        "sha256:orphan",
+        IndexEntry(
+            fingerprint="sha256:orphan",
+            source_filename="orphan.MP3",
+            source_volume="LS-P1",
+            markdown_path="this-md-does-not-exist.md",
+            versions=[{"version": 1, "markdown_path": "this-md-does-not-exist.md"}],
+        ),
+    )
+    assert transcriber.vault_index.lookup("sha256:orphan") is not None
+
+    result = transcriber.reconcile_existing_markdowns()
+
+    assert result["orphan_cleaned"] >= 1
+    assert transcriber.vault_index.lookup("sha256:orphan") is None
+
+
+def test_reconcile_counts_orphan_txt_for_recovery(transcriber, tmp_path, monkeypatch):
+    """Plik .txt bez sąsiadującego MD jest liczony jako kandydat do recovery."""
+    from src import config as config_module
+
+    transcribe_dir = tmp_path / "vault"
+    transcribe_dir.mkdir()
+    monkeypatch.setattr(transcriber.config, "TRANSCRIBE_DIR", transcribe_dir)
+    monkeypatch.setattr(config_module.config, "TRANSCRIBE_DIR", transcribe_dir)
+
+    (transcribe_dir / "260430_0173.txt").write_text("Treść transkryptu po polsku.")
+
+    result = transcriber.reconcile_existing_markdowns()
+
+    assert result["txt_recovered"] == 1
+    # Plik .txt zostaje — będzie podjęty przez transcribe_file ścieżką "TXT exists".
+    assert (transcribe_dir / "260430_0173.txt").exists()
+
+
+def test_force_retranscribe_clears_vault_index_entry(transcriber, tmp_path, monkeypatch):
+    """force_retranscribe usuwa wpis z vault_index przed transcribe_file."""
+    from src import config as config_module
+    from src.vault_index import IndexEntry
+
+    transcribe_dir = tmp_path / "vault"
+    transcribe_dir.mkdir()
+    monkeypatch.setattr(transcriber.config, "TRANSCRIBE_DIR", transcribe_dir)
+    monkeypatch.setattr(config_module.config, "TRANSCRIBE_DIR", transcribe_dir)
+
+    audio = tmp_path / "test.mp3"
+    audio.write_bytes(b"audio")
+
+    # Symuluj istniejący wpis (po wcześniejszej transkrypcji).
+    from src.fingerprint import compute_fingerprint
+    fp = compute_fingerprint(audio)
+    transcriber.vault_index.add(
+        fp,
+        IndexEntry(
+            fingerprint=fp,
+            source_filename="test.mp3",
+            source_volume="staging",
+            markdown_path="old.md",
+            versions=[{"version": 1, "markdown_path": "old.md"}],
+        ),
+    )
+
+    # Mock transcribe_file żeby nie odpalać whispera.
+    monkeypatch.setattr(transcriber, "transcribe_file", lambda f: True)
+    # Mock _update_state (wymagane przez state_updater = None).
+    monkeypatch.setattr(transcriber, "_update_state", lambda *a, **kw: None)
+
+    transcriber.force_retranscribe(audio)
+
+    # Po force_retranscribe wpis powinien zniknąć (transcribe_file mock nie dodaje).
+    assert transcriber.vault_index.lookup(fp) is None
+
+
+def test_wait_for_output_file_requires_nonempty(tmp_path):
+    """Pusty plik (size==0) NIE liczy się jako gotowy."""
+    target = tmp_path / "empty.txt"
+    target.write_text("")  # size=0
+    assert Transcriber._wait_for_output_file(target, timeout=0.2, interval=0.05) is False
+    target.write_text("some content")
+    assert Transcriber._wait_for_output_file(target, timeout=0.5, interval=0.05) is True
