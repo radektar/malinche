@@ -69,14 +69,14 @@ class TestAppState:
         state = AppState()
         state.status = AppStatus.IDLE
         status_str = state.get_status_string()
-        assert "Oczekiwanie" in status_str
+        assert "Waiting" in status_str
 
     def test_get_status_string_scanning(self):
         """Test status string for SCANNING."""
         state = AppState()
         state.status = AppStatus.SCANNING
         status_str = state.get_status_string()
-        assert "Skanowanie" in status_str
+        assert "Scanning" in status_str
 
     def test_get_status_string_transcribing(self):
         """Test status string for TRANSCRIBING."""
@@ -84,7 +84,7 @@ class TestAppState:
         state.status = AppStatus.TRANSCRIBING
         state.current_file = "test.mp3"
         status_str = state.get_status_string()
-        assert "Przetwarzam" in status_str
+        assert "Processing" in status_str
         assert "test.mp3" in status_str
 
     def test_get_status_string_error(self):
@@ -93,6 +93,6 @@ class TestAppState:
         state.status = AppStatus.ERROR
         state.error_message = "Test error message"
         status_str = state.get_status_string()
-        assert "Błąd" in status_str
+        assert "Error" in status_str
         assert "Test error message" in status_str
 

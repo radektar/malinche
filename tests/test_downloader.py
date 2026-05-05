@@ -60,7 +60,7 @@ class TestDependencyDownloader:
 
         monkeypatch.setattr(socket, "create_connection", mock_connection)
 
-        with pytest.raises(NetworkError, match="Brak połączenia"):
+        with pytest.raises(NetworkError, match="No internet"):
             downloader.check_network()
 
     def test_check_disk_space_ok(self, downloader, monkeypatch):
@@ -80,7 +80,7 @@ class TestDependencyDownloader:
         mock_usage.free = 100_000_000  # 100MB (< 500MB wymagane)
         monkeypatch.setattr(shutil, "disk_usage", lambda path: mock_usage)
 
-        with pytest.raises(DiskSpaceError, match="Brak miejsca"):
+        with pytest.raises(DiskSpaceError, match="Not enough disk space"):
             downloader.check_disk_space()
 
     def test_verify_checksum_valid(self, downloader, tmp_path):

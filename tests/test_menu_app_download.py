@@ -42,6 +42,6 @@ def test_download_dependencies_starts_async_manager(monkeypatch):
     MalincheMenuApp._download_dependencies(app)
 
     assert started["value"] is True
-    assert "Pobieranie" in app.status_item.title
+    assert "Downloading" in app.status_item.title
     assert app._download_active is True
 

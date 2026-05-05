@@ -104,27 +104,27 @@ class AppState:
         """
         with self._lock:
             if self._status == AppStatus.IDLE:
-                return "Oczekiwanie na recorder..."
+                return "Waiting for recorder…"
             elif self._status == AppStatus.SCANNING:
-                return "Skanowanie recordera..."
+                return "Scanning recorder…"
             elif self._status == AppStatus.TRANSCRIBING:
                 if self._current_file:
-                    return f"Przetwarzam: {self._current_file}"
-                return "Przetwarzanie..."
+                    return f"Processing: {self._current_file}"
+                return "Processing…"
             elif self._status == AppStatus.DOWNLOADING:
-                return "Pobieranie zależności..."
+                return "Downloading dependencies…"
             elif self._status == AppStatus.MIGRATING:
-                return "Migracja indeksu..."
+                return "Migrating index…"
             elif self._status == AppStatus.RECORDER_IDLE:
                 recorder_name = self._recorder_name or "Recorder"
-                return f"Recorder: {recorder_name} (zsynchronizowany)"
+                return f"Recorder: {recorder_name} (synced)"
             elif self._status == AppStatus.RECORDER_PENDING:
                 recorder_name = self._recorder_name or "Recorder"
                 pending_count = self._pending_count or 0
-                return f"Recorder: {recorder_name} ({pending_count} do transkrypcji)"
+                return f"Recorder: {recorder_name} ({pending_count} to transcribe)"
             elif self._status == AppStatus.ERROR:
                 if self._error_message:
-                    return f"Błąd: {self._error_message}"
-                return "Błąd"
-            return "Nieznany status"
+                    return f"Error: {self._error_message}"
+                return "Error"
+            return "Unknown status"
 

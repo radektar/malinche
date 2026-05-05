@@ -13,43 +13,40 @@ def show_pro_activation():
         tier_name = "PRO Individual" if tier == FeatureTier.PRO else "PRO Organization"
         rumps.alert(
             title="✅ Malinche PRO",
-            message=f"Masz już aktywną subskrypcję {tier_name}!"
+            message=f"You already have an active {tier_name} subscription!",
         )
         return
 
-    # Show upgrade prompt
     response = rumps.alert(
         title="🚀 Malinche PRO",
         message=(
-            "Odblokuj pełne możliwości Malinche:\n\n"
-            "⭐ AI Podsumowania i tytuły\n"
-            "⭐ Inteligentne tagi Obsidian\n"
-            "⭐ Diaryzacja (kto mówi kiedy)\n"
-            "⭐ Współdzielona wiedza (PRO Org)\n\n"
-            "Subskrypcja PRO Individual już od $9/mies."
+            "Unlock the full Malinche feature set:\n\n"
+            "⭐ AI summaries and titles\n"
+            "⭐ Smart Obsidian tags\n"
+            "⭐ Diarization (who spoke when)\n"
+            "⭐ Shared knowledge (PRO Org)\n\n"
+            "PRO Individual subscription from $9/month."
         ),
-        ok="Kup PRO",
-        cancel="Mam już klucz"
+        ok="Buy PRO",
+        cancel="I already have a key",
     )
 
     if response == 1:
-        # Open purchase page
         webbrowser.open("https://transrec.app/pro")
     elif response == 0:
-        # Show key input
         key_response = rumps.Window(
-            title="Aktywacja PRO",
-            message="Wklej klucz licencyjny:",
-            ok="Aktywuj",
-            cancel="Anuluj",
-            dimensions=(300, 24)
+            title="PRO activation",
+            message="Paste your license key:",
+            ok="Activate",
+            cancel="Cancel",
+            dimensions=(300, 24),
         ).run()
 
         if key_response.clicked == 1 and key_response.text:
             success, message = license_manager.activate_license(key_response.text.strip())
             rumps.alert(
-                title="✅ Sukces" if success else "❌ Błąd",
-                message=message
+                title="✅ Success" if success else "❌ Error",
+                message=message,
             )
 
 
@@ -61,14 +58,14 @@ def show_pro_status():
     else:
         limits = license_manager.get_usage_limits()
         tier_name = "PRO Individual" if tier == FeatureTier.PRO else "PRO Organization"
-        
-        message = f"Aktywna subskrypcja: {tier_name}\n"
+
+        message = f"Active subscription: {tier_name}\n"
         if not limits.get("unlimited"):
-            message += f"Pozostało minut: {limits.get('minutes_monthly', 0)} / miesiąc"
+            message += f"Minutes remaining: {limits.get('minutes_monthly', 0)} / month"
         else:
-            message += "Nielimitowane przetwarzanie"
-            
+            message += "Unlimited processing"
+
         rumps.alert(
-            title="💎 Status Malinche PRO",
-            message=message
+            title="💎 Malinche PRO status",
+            message=message,
         )

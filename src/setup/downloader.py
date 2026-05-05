@@ -69,11 +69,11 @@ class DependencyDownloader:
             NetworkError: Jeśli brak połączenia
         """
         try:
-            # Próba połączenia z Google DNS
+            # Try connecting to Google DNS
             socket.create_connection(("8.8.8.8", 53), timeout=3)
             return True
         except OSError:
-            raise NetworkError("Brak połączenia z internetem")
+            raise NetworkError("No internet connection")
 
     def check_disk_space(self, required_bytes: int = MIN_DISK_SPACE_BYTES) -> bool:
         """Sprawdź czy jest wystarczająco miejsca na dysku.
@@ -92,9 +92,9 @@ class DependencyDownloader:
 
         if free_bytes < required_bytes:
             raise DiskSpaceError(
-                f"Brak miejsca na dysku. "
-                f"Dostępne: {free_bytes / 1_000_000:.1f}MB, "
-                f"Wymagane: {required_bytes / 1_000_000:.1f}MB"
+                f"Not enough disk space. "
+                f"Available: {free_bytes / 1_000_000:.1f}MB, "
+                f"Required: {required_bytes / 1_000_000:.1f}MB"
             )
 
         return True
@@ -367,7 +367,7 @@ class DependencyDownloader:
         """Ensure whisper-cli can start and link runtime dependencies."""
         binary = self.bin_dir / "whisper-cli"
         if not binary.exists():
-            raise DependencyRuntimeError("whisper-cli nie istnieje")
+            raise DependencyRuntimeError("whisper-cli does not exist")
 
         try:
             result = subprocess.run(
@@ -378,7 +378,7 @@ class DependencyDownloader:
             )
         except (OSError, subprocess.TimeoutExpired) as error:
             raise DependencyRuntimeError(
-                f"Nie można uruchomić whisper-cli: {error}"
+                f"Cannot launch whisper-cli: {error}"
             ) from error
 
         if result.returncode == 0:
@@ -388,7 +388,7 @@ class DependencyDownloader:
         stdout = result.stdout.decode("utf-8", errors="replace").strip()
         details = stderr or stdout or f"exit code {result.returncode}"
         raise DependencyRuntimeError(
-            f"whisper-cli zainstalowany ale nie startuje: {details}"
+            f"whisper-cli installed but cannot start: {details}"
         )
 
     def _cleanup_bundled_whisper(self) -> None:
@@ -409,7 +409,7 @@ class DependencyDownloader:
                 member_path = Path(member.name)
                 if member_path.is_absolute() or ".." in member_path.parts:
                     raise DownloadError(
-                        f"Niebezpieczna ścieżka w archiwum whisper: {member.name}"
+                        f"Unsafe path in whisper archive: {member.name}"
                     )
             try:
                 tar.extractall(self.bin_dir, filter="data")
@@ -547,39 +547,39 @@ class DependencyDownloader:
                     # Serwer niedostępny, retry z backoff
                     wait_time = 2 ** (attempt - 1)
                     logger.warning(
-                        f"Serwer niedostępny ({e.response.status_code}), "
-                        f"retry za {wait_time}s..."
+                        f"Server unavailable ({e.response.status_code}), "
+                        f"retry in {wait_time}s…"
                     )
                     time.sleep(wait_time)
                     continue
                 raise DownloadError(
-                    f"Błąd HTTP {e.response.status_code}: {e.response.reason_phrase}"
+                    f"HTTP error {e.response.status_code}: {e.response.reason_phrase}"
                 )
 
             except (httpx.NetworkError, httpx.ConnectError) as e:
                 if attempt < MAX_RETRIES:
                     wait_time = 2 ** (attempt - 1)
                     logger.warning(
-                        f"Błąd połączenia, retry za {wait_time}s..."
+                        f"Connection error, retry in {wait_time}s…"
                     )
                     time.sleep(wait_time)
                     continue
-                raise NetworkError(f"Błąd połączenia: {e}")
+                raise NetworkError(f"Connection error: {e}")
 
             except (httpx.TimeoutException, TimeoutError):
                 if attempt < MAX_RETRIES:
                     logger.warning(f"Timeout, retry {attempt + 1}/{MAX_RETRIES}")
                     continue
-                raise DownloadError(f"Timeout podczas pobierania {name}")
+                raise DownloadError(f"Timeout while downloading {name}")
 
             except Exception as e:
-                logger.error(f"Nieoczekiwany błąd podczas pobierania {name}: {e}")
+                logger.error(f"Unexpected error while downloading {name}: {e}")
                 if attempt < MAX_RETRIES:
                     continue
-                raise DownloadError(f"Błąd podczas pobierania {name}: {e}")
+                raise DownloadError(f"Error while downloading {name}: {e}")
 
         raise DownloadError(
-            f"Nie udało się pobrać {name} po {MAX_RETRIES} próbach"
+            f"Failed to download {name} after {MAX_RETRIES} attempts"
         )
 
     def download_whisper(self) -> bool:
