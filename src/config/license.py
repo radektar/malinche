@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
-import httpx
 
 from src.config.features import FeatureFlags, FeatureTier
 

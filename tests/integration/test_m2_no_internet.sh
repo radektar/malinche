@@ -1,6 +1,9 @@
 #!/bin/bash
 # TEST M2: Brak internetu - skrypt pomocniczy
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/../.."
+
 echo "============================================================"
 echo "TEST M2: Brak internetu"
 echo "============================================================"

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 import rumps
 
-from src.ui.constants import TEXTS, APP_NAME, APP_VERSION, APP_WEBSITE, APP_GITHUB
+from src.ui.constants import TEXTS, APP_NAME
 
 
 def choose_folder_dialog(title: Optional[str] = None, message: Optional[str] = None) -> Optional[str]:

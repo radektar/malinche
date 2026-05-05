@@ -1,10 +1,8 @@
 """Core application orchestrator for Malinche."""
 
-import os
 import time
 import signal
 import threading
-from pathlib import Path
 from typing import Callable, Optional
 
 from src.config import config

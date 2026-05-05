@@ -50,29 +50,20 @@ bash scripts/install_whisper_cpp.sh
 python -m src.menu_app
 ```
 
-## 📂 Struktura Projektu
+## 📂 Project Structure
 
 ```
-transrec/
-├── src/                      # Kod źródłowy
-│   ├── main.py              # Entry point (CLI)
-│   ├── menu_app.py          # Menu bar application (GUI)
-│   ├── app_core.py          # Core daemon logic
-│   ├── config.py            # Konfiguracja
-│   ├── file_monitor.py      # FSEvents monitoring
-│   ├── transcriber.py       # Logika transkrypcji
-│   ├── markdown_generator.py # Generowanie plików MD
-│   ├── summarizer.py        # AI podsumowania (PRO)
-│   └── tagger.py            # Auto-tagging (PRO)
-├── tests/                    # Testy
-├── Docs/                     # Dokumentacja
-│   ├── PUBLIC-DISTRIBUTION-PLAN.md  # Plan v2.0.0
-│   ├── ARCHITECTURE.md      # Architektura systemu
-│   ├── API.md               # Dokumentacja API
-│   └── ...
-├── scripts/                  # Skrypty pomocnicze
-├── requirements.txt          # Dependencies
-└── README.md                 # Ten plik
+src/                    source code (menu bar app, transcription, AI summary, UI)
+tests/                  automated tests — run with: pytest
+tests/integration/      E2E shell + Python integration scripts (require recorder)
+scripts/                asset generators (icon, DMG background) + release pipeline
+assets/                 icons, DMG background, menu bar template PNGs
+Docs/                   architecture, beta plans, public distribution plan
+Docs/testing-archive/   historical manual test checklists (alpha → milestones)
+Docs/test-reports/      milestone test reports (M1, M2, M5)
+Docs/archive/           legacy notes (Obsidian setup, migration summary)
+setup_app.py            py2app entry — produces Malinche.app + DMG
+Makefile                `make release` orchestrates build_release.sh
 ```
 
 ## 📝 Użycie

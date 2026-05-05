@@ -335,7 +335,7 @@ class DependencyDownloader:
         if whisper_checksum:
             if not self.verify_checksum(whisper_path, whisper_checksum):
                 logger.warning(
-                    f"Checksum whisper-cli się nie zgadza - plik może być uszkodzony"
+                    "Checksum whisper-cli się nie zgadza - plik może być uszkodzony"
                 )
                 return False
         
@@ -343,7 +343,7 @@ class DependencyDownloader:
         if ffmpeg_checksum:
             if not self.verify_checksum(ffmpeg_path, ffmpeg_checksum):
                 logger.warning(
-                    f"Checksum ffmpeg się nie zgadza - plik może być uszkodzony"
+                    "Checksum ffmpeg się nie zgadza - plik może być uszkodzony"
                 )
                 return False
         
@@ -351,7 +351,7 @@ class DependencyDownloader:
         if model_checksum:
             if not self.verify_checksum(model_path, model_checksum):
                 logger.warning(
-                    f"Checksum modelu się nie zgadza - plik może być uszkodzony"
+                    "Checksum modelu się nie zgadza - plik może być uszkodzony"
                 )
                 return False
         
@@ -460,7 +460,7 @@ class DependencyDownloader:
                     return
                 else:
                     # Uszkodzony, usuń i zacznij od nowa
-                    logger.warning(f"Uszkodzony plik tymczasowy, usuwam")
+                    logger.warning("Uszkodzony plik tymczasowy, usuwam")
                     temp_path.unlink()
                     resume_from = 0
 

@@ -1,13 +1,12 @@
 """Transcription engine for Malinche."""
 
-import json
 import os
 import re
 import shutil
 import subprocess
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, Dict, Iterator, List, Optional
 

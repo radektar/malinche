@@ -7,7 +7,6 @@ from typing import Dict, List, Optional
 
 try:
     from mutagen import File as MutagenFile
-    from mutagen.mp3 import MP3
     from mutagen.id3 import ID3NoHeaderError
     MUTAGEN_AVAILABLE = True
 except ImportError:
