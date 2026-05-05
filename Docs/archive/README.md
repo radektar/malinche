@@ -1,26 +1,15 @@
-# 📦 Archiwum Dokumentacji
+# Archive
 
-Ten folder zawiera starą dokumentację, która nie jest już aktywnie używana w projekcie v2.0.0.
+Historical files preserved for reference — not current documentation.
 
-## Zawartość
+| File | Reason archived |
+|------|-----------------|
+| `INSTALLATION-GUIDE` | Replaced by First-Run Wizard in v2.0.0 |
+| `olympus-setup-cursor.md` | Duplicate with outdated paths |
+| `CURSOR-WORKFLOW.md` | Moved to `.cursor/rules/` |
+| `migration-summary.md` | v1.3.0 migration history (whisper.cpp) |
+| `project-summary.md` | Old project status — superseded |
+| `obsidian-setup.md` | Planned for PRO features in v2.1.0 |
 
-| Plik | Powód archiwizacji |
-|------|-------------------|
-| `INSTALLATION-GUIDE` | Zastąpiony przez First-Run Wizard w v2.0.0 |
-| `olympus-setup-cursor.md` | Duplikacja z innymi docs, nieaktualne ścieżki |
-| `CURSOR-WORKFLOW.md` | Przeniesione do `.cursor/rules/` |
-
-## Aktywna dokumentacja
-
-Aktualna dokumentacja znajduje się w:
-- `Docs/PUBLIC-DISTRIBUTION-PLAN.md` - Główny plan v2.0.0
-- `Docs/ARCHITECTURE.md` - Architektura systemu
-- `Docs/API.md` - Dokumentacja API
-- `Docs/FULL_DISK_ACCESS_SETUP.md` - Instrukcja FDA
-- `Docs/TESTING-GUIDE.md` - Przewodnik testowania
-- `Docs/DEVELOPMENT.md` - Przewodnik deweloperski
-
-## Uwaga
-
-Te pliki są zachowane dla referencji historycznej. Nie używaj ich jako aktualnej dokumentacji.
+Current documentation is in the `Docs/` root (ARCHITECTURE.md, DEVELOPMENT.md, etc.).
 

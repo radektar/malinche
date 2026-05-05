@@ -2,9 +2,8 @@
 
 import sys
 import threading
-import subprocess
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional, List
 
 from src.bootstrap import ensure_ready
@@ -70,14 +69,13 @@ from src.app_core import MalincheTranscriber
 from src.app_status import AppStatus
 from src.state_manager import reset_state
 from src.transcriber import RetranscribeLockBusyError, send_notification
-from src.setup.downloader import DependencyDownloader
 from src.setup.dependency_manager import DependencyManager
 from src.setup.errors import NetworkError, DiskSpaceError, DownloadError
 from src.setup import SetupWizard
 from src.ui.dialogs import choose_date_dialog, show_about_dialog
 from src.ui.constants import TEXTS
 from src.ui.settings_window import show_settings_window
-from src.ui.pro_activation import show_pro_activation, show_pro_status
+from src.ui.pro_activation import show_pro_status
 from src.ui.download_window import DownloadWindow
 from src.config.license import license_manager
 from src.config.features import FeatureTier

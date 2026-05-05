@@ -3,8 +3,6 @@
 import logging
 import logging.handlers
 import sys
-from pathlib import Path
-from typing import Optional
 
 # Import config from config package
 # Using normal import now that config is properly structured

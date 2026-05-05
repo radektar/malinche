@@ -4,6 +4,8 @@
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+
 from src.setup.downloader import DependencyDownloader
 from src.setup.errors import NetworkError, DiskSpaceError, DownloadError
 from src.logger import logger

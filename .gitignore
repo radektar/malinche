@@ -46,6 +46,9 @@ logs/
 .coverage
 htmlcov/
 .tox/
+coverage.json
+test_output*.txt
+COMMIT_MESSAGE.txt
 
 # MyPy
 .mypy_cache/

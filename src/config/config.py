@@ -1,6 +1,5 @@
 """Configuration module for Malinche (backward compatible wrapper)."""
 
-import os
 import shutil
 from pathlib import Path
 from dataclasses import dataclass

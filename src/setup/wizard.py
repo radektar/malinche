@@ -1,7 +1,6 @@
 """First-run setup wizard."""
 
 import rumps
-import threading
 from enum import Enum, auto
 from pathlib import Path
 from typing import Optional

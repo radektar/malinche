@@ -6,7 +6,6 @@ from src.config.features import FeatureTier
 
 def show_pro_activation():
     """Show PRO activation dialog."""
-    features = license_manager.get_features()
     tier = license_manager.get_current_tier()
 
     if tier != FeatureTier.FREE:
