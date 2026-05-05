@@ -152,7 +152,7 @@ except ImportError:
 def _build_general_tab(view, state, delegate) -> None:
     from AppKit import NSButton, NSRect, NSTextField
 
-    label = NSTextField.alloc().initWithFrame_(NSRect((20, 280), (160, 20)))
+    label = NSTextField.alloc().initWithFrame_(NSRect((20, 256), (160, 20)))
     label.setStringValue_("Output folder:")
     label.setBezeled_(False)
     label.setDrawsBackground_(False)
@@ -160,7 +160,7 @@ def _build_general_tab(view, state, delegate) -> None:
     label.setSelectable_(False)
     view.addSubview_(label)
 
-    value = NSTextField.alloc().initWithFrame_(NSRect((180, 280), (400, 20)))
+    value = NSTextField.alloc().initWithFrame_(NSRect((180, 256), (400, 20)))
     value.setStringValue_(_truncate_path(state["selected_folder"]))
     value.setBezeled_(False)
     value.setDrawsBackground_(False)
@@ -169,7 +169,7 @@ def _build_general_tab(view, state, delegate) -> None:
     view.addSubview_(value)
     state["folder_value_field"] = value
 
-    pick_btn = NSButton.alloc().initWithFrame_(NSRect((180, 240), (200, 28)))
+    pick_btn = NSButton.alloc().initWithFrame_(NSRect((180, 216), (200, 28)))
     pick_btn.setTitle_("Choose folder…")
     pick_btn.setBezelStyle_(1)
     pick_btn.setTarget_(delegate)
@@ -194,7 +194,7 @@ def _build_transcription_tab(view, state) -> None:
     language_codes = state["language_codes"]
     model_codes = state["model_codes"]
 
-    lang_label = NSTextField.alloc().initWithFrame_(NSRect((20, 290), (160, 20)))
+    lang_label = NSTextField.alloc().initWithFrame_(NSRect((20, 260), (160, 20)))
     lang_label.setStringValue_("Audio language:")
     lang_label.setBezeled_(False)
     lang_label.setDrawsBackground_(False)
@@ -202,14 +202,14 @@ def _build_transcription_tab(view, state) -> None:
     lang_label.setSelectable_(False)
     view.addSubview_(lang_label)
 
-    lang_popup = NSPopUpButton.alloc().initWithFrame_(NSRect((180, 286), (400, 26)))
+    lang_popup = NSPopUpButton.alloc().initWithFrame_(NSRect((180, 256), (400, 26)))
     for code, name in SUPPORTED_LANGUAGES.items():
         lang_popup.addItemWithTitle_(f"{name} ({code})")
     lang_popup.selectItemAtIndex_(language_codes.index(state["selected_language"]))
     view.addSubview_(lang_popup)
     state["language_popup"] = lang_popup
 
-    model_label = NSTextField.alloc().initWithFrame_(NSRect((20, 246), (160, 20)))
+    model_label = NSTextField.alloc().initWithFrame_(NSRect((20, 216), (160, 20)))
     model_label.setStringValue_("Whisper model:")
     model_label.setBezeled_(False)
     model_label.setDrawsBackground_(False)
@@ -217,14 +217,14 @@ def _build_transcription_tab(view, state) -> None:
     model_label.setSelectable_(False)
     view.addSubview_(model_label)
 
-    model_popup = NSPopUpButton.alloc().initWithFrame_(NSRect((180, 242), (400, 26)))
+    model_popup = NSPopUpButton.alloc().initWithFrame_(NSRect((180, 212), (400, 26)))
     for code, name in SUPPORTED_MODELS.items():
         model_popup.addItemWithTitle_(f"{code.upper()}: {name}")
     model_popup.selectItemAtIndex_(model_codes.index(state["selected_model"]))
     view.addSubview_(model_popup)
     state["model_popup"] = model_popup
 
-    key_label = NSTextField.alloc().initWithFrame_(NSRect((20, 200), (160, 20)))
+    key_label = NSTextField.alloc().initWithFrame_(NSRect((20, 170), (160, 20)))
     key_label.setStringValue_("Claude API key:")
     key_label.setBezeled_(False)
     key_label.setDrawsBackground_(False)
@@ -232,7 +232,7 @@ def _build_transcription_tab(view, state) -> None:
     key_label.setSelectable_(False)
     view.addSubview_(key_label)
 
-    key_field = NSSecureTextField.alloc().initWithFrame_(NSRect((180, 196), (400, 26)))
+    key_field = NSSecureTextField.alloc().initWithFrame_(NSRect((180, 166), (400, 26)))
     key_field.setStringValue_(_mask_api_key(state["original_api_key"]))
     key_field.setPlaceholderString_(
         "sk-ant-… (leave unchanged to keep current; clear to remove)"
@@ -240,7 +240,7 @@ def _build_transcription_tab(view, state) -> None:
     view.addSubview_(key_field)
     state["api_key_field"] = key_field
 
-    hint = NSTextField.alloc().initWithFrame_(NSRect((20, 130), (560, 56)))
+    hint = NSTextField.alloc().initWithFrame_(NSRect((20, 100), (560, 56)))
     hint.setStringValue_(
         "Get a key at console.anthropic.com → Settings → API keys.\n"
         "Without a key, Malinche falls back to filename-based titles and skips "
@@ -256,7 +256,7 @@ def _build_transcription_tab(view, state) -> None:
 def _build_disks_tab(view, settings, state, callbacks, delegate) -> None:
     from AppKit import NSButton, NSRect, NSScrollView, NSTextField, NSTextView
 
-    header = NSTextField.alloc().initWithFrame_(NSRect((20, 304), (560, 20)))
+    header = NSTextField.alloc().initWithFrame_(NSRect((20, 268), (560, 20)))
     header.setStringValue_("Trusted disks (from previous prompts):")
     header.setBezeled_(False)
     header.setDrawsBackground_(False)
@@ -271,11 +271,11 @@ def _build_disks_tab(view, settings, state, callbacks, delegate) -> None:
         else "  (no remembered disks yet — connect a recorder to be prompted)"
     )
 
-    scroll = NSScrollView.alloc().initWithFrame_(NSRect((20, 96), (560, 200)))
+    scroll = NSScrollView.alloc().initWithFrame_(NSRect((20, 96), (560, 164)))
     scroll.setHasVerticalScroller_(True)
     scroll.setBorderType_(2)
 
-    body = NSTextView.alloc().initWithFrame_(NSRect((0, 0), (544, 200)))
+    body = NSTextView.alloc().initWithFrame_(NSRect((0, 0), (544, 164)))
     body.setEditable_(False)
     body.setRichText_(False)
     body.setString_(body_lines)
@@ -283,7 +283,7 @@ def _build_disks_tab(view, settings, state, callbacks, delegate) -> None:
     view.addSubview_(scroll)
     state["disks_textview"] = body
 
-    review_btn = NSButton.alloc().initWithFrame_(NSRect((20, 56), (200, _BUTTON_H)))
+    review_btn = NSButton.alloc().initWithFrame_(NSRect((20, 52), (200, _BUTTON_H)))
     review_btn.setTitle_("Review mounted disks…")
     review_btn.setBezelStyle_(1)
     if "review_volumes" in callbacks:
@@ -293,7 +293,7 @@ def _build_disks_tab(view, settings, state, callbacks, delegate) -> None:
         review_btn.setEnabled_(False)
     view.addSubview_(review_btn)
 
-    forget_btn = NSButton.alloc().initWithFrame_(NSRect((232, 56), (160, _BUTTON_H)))
+    forget_btn = NSButton.alloc().initWithFrame_(NSRect((232, 52), (160, _BUTTON_H)))
     forget_btn.setTitle_("Forget all")
     forget_btn.setBezelStyle_(1)
     if "forget_all_volumes" in callbacks:
@@ -303,7 +303,7 @@ def _build_disks_tab(view, settings, state, callbacks, delegate) -> None:
         forget_btn.setEnabled_(False)
     view.addSubview_(forget_btn)
 
-    note = NSTextField.alloc().initWithFrame_(NSRect((20, 16), (560, 32)))
+    note = NSTextField.alloc().initWithFrame_(NSRect((20, 14), (560, 32)))
     note.setStringValue_(
         "Forgetting a disk will prompt you again the next time it is connected."
     )
@@ -330,7 +330,10 @@ def _build_maintenance_tab(view, state, callbacks, delegate) -> None:
         "show_about":     "showAboutClicked:",
     }
 
-    y = 296
+    # NSTabView reserves ~30px at the top for the tab strip. Start the first
+    # button safely below that, then space rows by 44px so all 4 rows + the
+    # warning footer fit comfortably inside the tab content area.
+    y = 256
     for title, key, hint_text in rows:
         btn = NSButton.alloc().initWithFrame_(NSRect((20, y), (220, _BUTTON_H)))
         btn.setTitle_(title)
@@ -350,7 +353,7 @@ def _build_maintenance_tab(view, state, callbacks, delegate) -> None:
         hint.setSelectable_(False)
         view.addSubview_(hint)
 
-        y -= 48
+        y -= 44
 
     try:
         from src.ui import theme

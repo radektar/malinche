@@ -239,7 +239,7 @@ class LogViewerWindow:
 
         # Scrollable text view (newest-first content)
         scroll = NSScrollView.alloc().initWithFrame_(
-            NSRect((16, 16, 728, 428))
+            NSRect((16, 16), (728, 428))
         )
         scroll.setHasVerticalScroller_(True)
         scroll.setHasHorizontalScroller_(False)
@@ -247,7 +247,7 @@ class LogViewerWindow:
         scroll.setBorderType_(2)  # NSBezelBorder
 
         self._text_view = NSTextView.alloc().initWithFrame_(
-            NSRect((0, 0, 712, 428))
+            NSRect((0, 0), (712, 428))
         )
         self._text_view.setEditable_(False)
         self._text_view.setRichText_(True)
