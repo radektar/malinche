@@ -1,6 +1,7 @@
 """Logging configuration for Malinche."""
 
 import logging
+import logging.handlers
 import sys
 from pathlib import Path
 from typing import Optional
@@ -8,6 +9,10 @@ from typing import Optional
 # Import config from config package
 # Using normal import now that config is properly structured
 from src.config import config
+
+
+_LOG_MAX_BYTES = 5 * 1024 * 1024  # 5 MB per file
+_LOG_BACKUP_COUNT = 5  # keep up to 5 rotated files (~25 MB total ceiling)
 
 
 def setup_logger(
@@ -44,7 +49,7 @@ def setup_logger(
         datefmt='%Y-%m-%d %H:%M:%S'
     )
     
-    # File handler
+    # File handler (rotating to cap disk usage at ~25 MB)
     if log_to_file:
         try:
             # encoding='utf-8' jest KRYTYCZNE: w py2app domyślny preferred
@@ -52,7 +57,12 @@ def setup_logger(
             # emoji (🎙️/🔄/✓/⚠️) rzucały UnicodeEncodeError i były ciche
             # gubione. Bez tego whole transcription path był niewidoczny
             # w pliku malinche.log mimo prawidłowego wykonania.
-            file_handler = logging.FileHandler(config.LOG_FILE, encoding="utf-8")
+            file_handler = logging.handlers.RotatingFileHandler(
+                config.LOG_FILE,
+                maxBytes=_LOG_MAX_BYTES,
+                backupCount=_LOG_BACKUP_COUNT,
+                encoding="utf-8",
+            )
             file_handler.setLevel(level)
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)

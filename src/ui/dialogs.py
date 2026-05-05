@@ -25,7 +25,7 @@ def choose_folder_dialog(title: Optional[str] = None, message: Optional[str] = N
         panel.setCanChooseDirectories_(True)
         panel.setAllowsMultipleSelection_(False)
         panel.setTitle_(title or TEXTS["folder_picker_title"])
-        panel.setPrompt_("Wybierz")
+        panel.setPrompt_("Choose")
         
         if panel.runModal() == 1:  # NSModalResponseOK
             url = panel.URLs()[0]
@@ -70,26 +70,22 @@ def choose_date_dialog(default_days: int = 7) -> Optional[datetime]:
         # Show input dialog
         default_date = (datetime.now() - timedelta(days=default_days)).strftime("%Y-%m-%d")
         window = rumps.Window(
-            title="Wpisz datę",
+            title="Enter date",
             message=TEXTS["reset_memory_custom_input"],
             default_text=default_date,
             ok="OK",
-            cancel="Anuluj",
+            cancel="Cancel",
             dimensions=(200, 24),
         )
         result = window.run()
-        
+
         if result.clicked == 0:  # Cancel
             return None
-        
+
         try:
             return datetime.strptime(result.text.strip(), "%Y-%m-%d")
         except ValueError:
-            rumps.alert(
-                "Błąd",
-                TEXTS["reset_memory_invalid_date"],
-                ok="OK"
-            )
+            rumps.alert("Error", TEXTS["reset_memory_invalid_date"], ok="OK")
             return None
     
     return None
@@ -98,7 +94,7 @@ def choose_date_dialog(default_days: int = 7) -> Optional[datetime]:
 def show_about_dialog() -> None:
     """Show About dialog with app information."""
     rumps.alert(
-        title=f"O {APP_NAME}",
+        title=f"About {APP_NAME}",
         message=TEXTS["about_message"],
         ok="OK",
     )

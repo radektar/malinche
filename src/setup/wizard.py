@@ -19,7 +19,7 @@ from src.vault_index import is_icloud_synced
 
 
 class WizardStep(Enum):
-    """Kroki wizarda konfiguracji."""
+    """Wizard steps for first-run configuration."""
 
     WELCOME = auto()
     DOWNLOAD = auto()
@@ -44,7 +44,7 @@ class SetupWizard:
     ]
 
     def __init__(self):
-        """Inicjalizacja wizarda."""
+        """Initialize the wizard."""
         self.current_step_index = 0
         self.settings = UserSettings.load()
         self.downloader = DependencyDownloader(
@@ -90,7 +90,7 @@ class SetupWizard:
 
     @staticmethod
     def needs_setup() -> bool:
-        """Sprawdź czy wizard jest potrzebny."""
+        """Check whether the wizard should run."""
         settings = UserSettings.load()
         if not settings.setup_completed:
             return True
@@ -103,52 +103,46 @@ class SetupWizard:
 
     @property
     def current_step(self) -> WizardStep:
-        """Zwróć aktualny krok wizarda."""
+        """Current wizard step."""
         return self.STEPS_ORDER[self.current_step_index]
 
     def run(self) -> bool:
-        """Uruchom wizard. Zwraca True jeśli ukończony pomyślnie."""
-        logger.info("Uruchamianie Setup Wizard")
-        
+        """Run the wizard. Returns True if completed successfully."""
+        logger.info("Starting Setup Wizard")
+
         self._wizard_completed = False
-        
-        # Uruchom pierwszy krok - wizard działa synchronicznie
-        # Każdy krok blokuje do zakończenia (włącznie z pobieraniem)
         self._process_wizard_step()
-        
+
         return self._wizard_completed
 
     def _process_wizard_step(self):
-        """Przetwórz aktualny krok wizarda."""
+        """Process the current wizard step."""
         self._persist_stage()
         if self.current_step == WizardStep.FINISH:
-            # Finalizacja
             self._show_finish()
             self.settings.setup_completed = True
             self.settings.setup_version = APP_VERSION
             self.settings.setup_stage = WizardStep.FINISH.name.lower()
             self.settings.save()
-            logger.info("Setup Wizard zakończony pomyślnie")
+            logger.info("Setup Wizard finished successfully")
             self._wizard_completed = True
             return
-        
+
         result = self._run_current_step()
 
         if result == "cancel":
-            logger.info("Wizard anulowany przez użytkownika")
+            logger.info("Wizard cancelled by user")
             self._wizard_completed = False
             return
         elif result == "back" and self.current_step_index > 0:
             self.current_step_index -= 1
-            # Kontynuuj natychmiast (synchronicznie)
             self._process_wizard_step()
         elif result == "next":
             self.current_step_index += 1
-            # Kontynuuj natychmiast (synchronicznie)
             self._process_wizard_step()
 
     def _run_current_step(self) -> str:
-        """Wykonaj aktualny krok."""
+        """Dispatch the current step to its handler."""
         step_handlers = {
             WizardStep.WELCOME: self._show_welcome,
             WizardStep.DOWNLOAD: self._show_download,
@@ -163,59 +157,59 @@ class SetupWizard:
         return "next"
 
     def _on_progress(self, name: str, progress: float):
-        """Callback postępu pobierania - wywoływany z wątku pobierania."""
+        """Download progress callback (runs on the download worker thread)."""
         self._download_status = f"{name}: {int(progress * 100)}%"
-        logger.debug(f"Pobieranie: {self._download_status}")
+        logger.debug(f"Downloading: {self._download_status}")
 
         if self._download_window is not None:
             self._download_window.update(
-                detail=f"Pobieranie: {name}",
+                detail=f"Downloading: {name}",
                 progress=progress,
             )
 
-        # Wyślij notyfikację co 25% postępu
+        # Quarter-progress notifications
         percent = int(progress * 100)
         if percent in {25, 50, 75, 100}:
             rumps.notification(
-                title="Malinche - Pobieranie",
+                title="Malinche — Downloading",
                 subtitle=f"{name}",
-                message=f"Postęp: {percent}%"
+                message=f"Progress: {percent}%",
             )
 
     def _show_welcome(self) -> str:
-        """Ekran powitalny."""
+        """Welcome screen."""
         response = rumps.alert(
-            title="🎙️ Witaj w Malinche!",
+            title="🎙️ Welcome to Malinche!",
             message=(
-                "Malinche automatycznie transkrybuje nagrania "
-                "z Twojego dyktafonu lub karty SD.\n\n"
-                "Przeprowadzimy Cię przez szybką konfigurację.\n\n"
-                "Zajmie to około 3-5 minut."
+                "Malinche automatically transcribes recordings from your "
+                "voice recorder or SD card.\n\n"
+                "We'll walk you through a quick setup.\n\n"
+                "It takes about 3-5 minutes."
             ),
-            ok="Rozpocznij →",
-            cancel="Anuluj",
+            ok="Get started →",
+            cancel="Cancel",
         )
         return "next" if response == 1 else "cancel"
 
     def _show_download(self) -> str:
-        """Pobieranie zależności dla wybranego modelu."""
+        """Download dependencies for the selected model."""
         status = self.dependency_manager.status()
         if status.ready:
-            logger.info("Zależności już zainstalowane - pomijam krok")
+            logger.info("Dependencies already installed — skipping step")
             return "next"
 
         model = self.settings.whisper_model
         total_mb = status.total_missing_size / 1_000_000
         response = rumps.alert(
-            title="📥 Pobieranie silnika transkrypcji",
+            title="📥 Download transcription engine",
             message=(
-                f"Wybrany model: {model}\n"
-                f"Brakujące dane do pobrania: ~{total_mb:.0f} MB\n\n"
-                "Czy pobrać teraz? Możesz wrócić i zmienić model."
+                f"Selected model: {model}\n"
+                f"Missing data to download: ~{total_mb:.0f} MB\n\n"
+                "Download now? You can go back and pick a different model."
             ),
-            ok="Pobierz teraz",
-            cancel="Zmień model",
-            other="Anuluj",
+            ok="Download now",
+            cancel="Change model",
+            other="Cancel",
         )
 
         if response == 0:
@@ -226,56 +220,56 @@ class SetupWizard:
         self._download_in_progress = True
         self._download_complete = False
         self._download_error = None
-        self._download_status = "Rozpoczynanie..."
+        self._download_status = "Starting…"
 
         self._download_window = DownloadWindow(
-            title="Pobieranie zależności",
+            title="Downloading dependencies",
             detail=f"Model: {model}",
         )
         self._download_window.show()
         self._download_in_background()
 
-        # Pobieranie kontynuuje się w tle. Wizard idzie dalej od razu -
-        # użytkownik widzi postęp w `DownloadWindow`, które zamknie się
-        # samo po sukcesie (lub pozostanie z komunikatem błędu).
+        # Download continues in the background. Wizard advances right away;
+        # the user sees progress in the DownloadWindow, which closes itself
+        # on success (or stays open with an error message).
         return "next"
 
     def _download_in_background(self):
         """Start asynchronous download and update wizard flags from callbacks."""
-        logger.info("Rozpoczęto pobieranie zależności w tle")
+        logger.info("Background dependency download started")
 
         def _done() -> None:
             self._download_complete = True
             self._download_in_progress = False
             if self._download_window is not None:
                 self._download_window.update(
-                    detail="✓ Pobrano pomyślnie", progress=1.0
+                    detail="✓ Download complete", progress=1.0
                 )
                 self._download_window.close_after(1.2)
             try:
                 rumps.notification(
                     title="Malinche",
-                    subtitle="Pobieranie zakończone",
-                    message="Silnik transkrypcji jest gotowy.",
+                    subtitle="Download complete",
+                    message="The transcription engine is ready.",
                 )
             except Exception:
                 pass
-            logger.info("✓ Pobieranie zakończone pomyślnie")
+            logger.info("✓ Download finished successfully")
 
         def _error(exc: Exception) -> None:
             self._download_error = exc
             self._download_in_progress = False
             if self._download_window is not None:
-                self._download_window.update(detail=f"❌ Błąd: {exc}")
+                self._download_window.update(detail=f"❌ Error: {exc}")
             try:
                 rumps.notification(
                     title="Malinche",
-                    subtitle="Pobieranie nie powiodło się",
+                    subtitle="Download failed",
                     message=str(exc),
                 )
             except Exception:
                 pass
-            logger.error(f"Błąd podczas pobierania: {exc}", exc_info=True)
+            logger.error(f"Download error: {exc}", exc_info=True)
 
         started = self.dependency_manager.download_async(
             on_progress=self._on_progress,
@@ -286,80 +280,80 @@ class SetupWizard:
             self._download_in_progress = True
 
     def _show_permissions(self) -> str:
-        """Instrukcje Full Disk Access - skip jeśli już nadane."""
+        """Full Disk Access instructions — skipped if already granted."""
         if check_full_disk_access():
-            logger.info("FDA już nadane - pomijam krok")
+            logger.info("FDA already granted — skipping step")
             return "next"
 
         response = rumps.alert(
-            title="🔐 Uprawnienia dostępu do dysków",
+            title="🔐 Disk access permissions",
             message=(
-                "Aby automatycznie wykrywać dyktafon, Malinche "
-                "potrzebuje uprawnień 'Full Disk Access'.\n\n"
-                "Instrukcja:\n"
-                "1. Kliknij 'Otwórz Ustawienia'\n"
-                "2. Odblokuj kłódkę 🔒 (hasło administratora)\n"
-                "3. Znajdź 'Malinche' i zaznacz ☑\n"
-                "4. Wróć do tej aplikacji\n\n"
-                "Możesz też pominąć ten krok i wybierać pliki ręcznie."
+                "To detect a recorder automatically, Malinche needs "
+                "'Full Disk Access' permission.\n\n"
+                "Steps:\n"
+                "1. Click 'Open Settings'\n"
+                "2. Unlock the lock 🔒 (admin password)\n"
+                "3. Find 'Malinche' and check ☑\n"
+                "4. Return to this app\n\n"
+                "You can also skip this step and pick files manually."
             ),
-            ok="Otwórz Ustawienia",
-            cancel="Pomiń",
-            other="Anuluj",
+            ok="Open Settings",
+            cancel="Skip",
+            other="Cancel",
         )
 
-        if response == -1:  # Anuluj (other button)
+        if response == -1:  # Cancel (other button)
             return "cancel"
-        elif response == 1:  # Otwórz Ustawienia
+        elif response == 1:  # Open Settings
             open_fda_preferences()
             rumps.alert(
-                title="Gotowe?",
-                message="Kliknij OK gdy nadasz uprawnienia w Ustawieniach Systemowych.",
+                title="Done?",
+                message="Click OK once you've granted the permission in System Settings.",
                 ok="OK",
             )
 
         return "next"
 
     def _show_source_config(self) -> str:
-        """Konfiguracja źródeł nagrań.
+        """Recording source configuration.
 
-        v2.0.0-beta.2: tryb ``auto`` został usunięty. Każdy dysk musi być
-        świadomie zatwierdzony (przez dialog Tak/Nie/Raz przy podpięciu lub
-        legacy ``specific`` z listą nazw).
+        v2.0.0-beta.2: 'auto' mode was removed. Every disk must be
+        explicitly approved (via the Yes/No/Once dialog when connected,
+        or legacy 'specific' with a list of disk names).
         """
         response = rumps.alert(
-            title="📁 Źródła nagrań",
+            title="📁 Recording sources",
             message=(
-                "Skąd pobierać nagrania do transkrypcji?\n\n"
-                "• Pytaj przy każdym nowym dysku (zalecane) — "
-                "Malinche zapyta przy pierwszym podłączeniu nowego dysku, "
-                "czy to recorder. Decyzja jest zapamiętywana.\n\n"
-                "• Określone nazwy dysków (zaawansowane) — tylko volumes "
-                "o podanych nazwach (np. LS-P1, ZOOM-H6)."
+                "Where should Malinche pull recordings from?\n\n"
+                "• Ask for every new disk (recommended) — Malinche asks "
+                "the first time a new disk is connected whether it's a "
+                "recorder. The decision is remembered.\n\n"
+                "• Specific disk names (advanced) — only volumes with the "
+                "names you provide (e.g. LS-P1, ZOOM-H6)."
             ),
-            ok="Pytaj przy nowym dysku",
-            cancel="Określone nazwy dysków",
-            other="Anuluj",
+            ok="Ask on new disk",
+            cancel="Specific disk names",
+            other="Cancel",
         )
 
-        if response == -1:  # Anuluj (other button)
+        if response == -1:  # Cancel (other button)
             return "cancel"
-        elif response == 1:  # Pytaj — manual + whitelist UUID
+        elif response == 1:  # Ask — manual + UUID whitelist
             self.settings.watch_mode = "manual"
             self.settings.watched_volumes = []
             self.settings.needs_volume_onboarding = False
-        else:  # Określone dyski (legacy specific)
+        else:  # Specific disks (legacy specific)
             window = rumps.Window(
-                title="Nazwy dysków",
-                message="Wpisz nazwy dysków oddzielone przecinkami\n(np. LS-P1, ZOOM-H6):",
+                title="Disk names",
+                message="Enter disk names separated by commas\n(e.g. LS-P1, ZOOM-H6):",
                 default_text="LS-P1",
                 ok="OK",
-                cancel="Wstecz",
+                cancel="Back",
                 dimensions=(300, 24),
             )
             result = window.run()
 
-            if result.clicked == 0:  # Cancel/Wstecz
+            if result.clicked == 0:  # Cancel/Back
                 return "back"
 
             volumes = [v.strip() for v in result.text.split(",") if v.strip()]
@@ -402,14 +396,14 @@ class SetupWizard:
                 alert = NSAlert.alloc().init()
                 alert.setMessageText_(TEXTS["wizard_basic_title"])
                 alert.setInformativeText_(TEXTS["wizard_basic_message"])
-                alert.addButtonWithTitle_("Dalej")
-                alert.addButtonWithTitle_("Wstecz")
-                alert.addButtonWithTitle_("Anuluj")
+                alert.addButtonWithTitle_("Next")
+                alert.addButtonWithTitle_("Back")
+                alert.addButtonWithTitle_("Cancel")
 
                 accessory = NSView.alloc().initWithFrame_(NSRect((0, 0), (460, 170)))
 
                 folder_label = NSTextField.alloc().initWithFrame_(NSRect((0, 140), (130, 20)))
-                folder_label.setStringValue_("Folder docelowy:")
+                folder_label.setStringValue_("Output folder:")
                 folder_label.setBezeled_(False)
                 folder_label.setDrawsBackground_(False)
                 folder_label.setEditable_(False)
@@ -432,13 +426,13 @@ class SetupWizard:
                 pick_button = make_folder_picker_button(
                     NSRect((130, 108), (200, 28)),
                     target=picker_target,
-                    title="Wybierz folder...",
+                    title="Choose folder…",
                 )
                 if pick_button is not None:
                     accessory.addSubview_(pick_button)
 
                 language_label = NSTextField.alloc().initWithFrame_(NSRect((0, 68), (130, 20)))
-                language_label.setStringValue_("Język:")
+                language_label.setStringValue_("Language:")
                 language_label.setBezeled_(False)
                 language_label.setDrawsBackground_(False)
                 language_label.setEditable_(False)
@@ -475,10 +469,10 @@ class SetupWizard:
                     picked = select_folder_with_warning(
                         choose_folder_dialog,
                         warn_non_icloud=lambda _p: rumps.alert(
-                            title="Folder poza iCloud",
+                            title="Folder outside iCloud",
                             message=(
-                                "Wybrany folder nie jest w iCloud. "
-                                "Multi-device dedup będzie lokalny dla tego Maca."
+                                "The selected folder is not inside iCloud. "
+                                "Multi-device dedup will be local to this Mac."
                             ),
                             ok="OK",
                         ),
@@ -513,148 +507,142 @@ class SetupWizard:
             return self._show_language()
 
     def _show_output_config(self) -> str:
-        """Konfiguracja folderu docelowego."""
-        # Używamy rumps.alert z trzema przyciskami: ok, cancel, other
-        # ok = Wybierz folder, cancel = Użyj domyślnego, other = Wstecz
-        # Dodamy opcję "Anuluj" w drugim dialogu jeśli użytkownik wybierze folder
+        """Output folder configuration (legacy fallback)."""
+        # Three-button rumps.alert: ok = pick folder, cancel = use default,
+        # other = back. We add a Cancel option in the secondary dialog if the
+        # user opens the picker but cancels it.
         response = rumps.alert(
             title=TEXTS["folder_picker_title"],
             message=(
                 f"{TEXTS['folder_picker_message']}\n\n"
-                f"Aktualnie: {self.settings.output_dir}"
+                f"Current: {self.settings.output_dir}"
             ),
             ok=TEXTS["folder_picker_select"],
             cancel=TEXTS["folder_picker_default"],
             other=TEXTS["folder_picker_back"],
         )
-        
-        if response == -1:  # other = Wstecz (w rumps -1 to other)
+
+        if response == -1:  # other = Back (rumps -1 is "other")
             return "back"
-        elif response == 0:  # Użyj domyślnego
+        elif response == 0:  # Use default
             return "next"
-        # else response == 1: Wybierz folder
-        
-        # Wybierz folder przez NSOpenPanel
+        # else response == 1: Choose folder
+
         folder_path = choose_folder_dialog()
         if folder_path:
             self.settings.output_dir = folder_path
             return "next"
         else:
-            # User cancelled folder picker - zapytaj czy chce użyć domyślnego czy anulować
             response2 = rumps.alert(
                 title=TEXTS["folder_picker_title"],
-                message="Anulowano wybór folderu. Co chcesz zrobić?",
-                ok="Użyj domyślnego",
-                cancel="Anuluj konfigurację",
-                other="Wstecz",
+                message="Folder selection cancelled. What would you like to do?",
+                ok="Use default",
+                cancel="Cancel setup",
+                other="Back",
             )
-            
-            if response2 == -1:  # Wstecz
+
+            if response2 == -1:
                 return "back"
-            elif response2 == 0:  # Anuluj konfigurację
+            elif response2 == 0:
                 return "cancel"
-            else:  # Użyj domyślnego
+            else:
                 return "next"
 
     def _show_language(self) -> str:
-        """Konfiguracja języka transkrypcji z dropdown."""
+        """Audio-language configuration (legacy fallback)."""
         try:
             from AppKit import NSAlert, NSPopUpButton, NSRect
-            
+
             alert = NSAlert.alloc().init()
-            alert.setMessageText_("🗣️ Język transkrypcji")
+            alert.setMessageText_("🗣️ Transcription language")
             alert.setInformativeText_(
-                "Wybierz domyślny język dla wszystkich nagrań.\n\n"
-                "Możesz zmienić to później w Ustawieniach."
+                "Choose the default language for all recordings.\n\n"
+                "You can change this later in Settings."
             )
-            
-            # Utwórz dropdown
+
             popup = NSPopUpButton.alloc().initWithFrame_(NSRect((0, 0), (250, 24)))
             for code, name in SUPPORTED_LANGUAGES.items():
                 popup.addItemWithTitle_(f"{name} ({code})")
-            
-            # Ustaw aktualną wartość
+
             lang_codes = list(SUPPORTED_LANGUAGES.keys())
             if self.settings.language in lang_codes:
                 current_idx = lang_codes.index(self.settings.language)
                 popup.selectItemAtIndex_(current_idx)
-            
-            # Dodaj do alertu
+
             alert.setAccessoryView_(popup)
             alert.addButtonWithTitle_("OK")
-            alert.addButtonWithTitle_("Wstecz")
-            alert.addButtonWithTitle_("Anuluj")
-            
+            alert.addButtonWithTitle_("Back")
+            alert.addButtonWithTitle_("Cancel")
+
             response = alert.runModal()
-            # NSAlert button responses: 1000=OK, 1001=Wstecz, 1002=Anuluj
-            if response == 1000:  # OK
+            # NSAlert button responses: 1000=OK, 1001=Back, 1002=Cancel
+            if response == 1000:
                 selected_idx = popup.indexOfSelectedItem()
                 selected_code = lang_codes[selected_idx]
                 self.settings.language = selected_code
                 return "next"
-            elif response == 1001:  # Wstecz
+            elif response == 1001:
                 return "back"
-            else:  # Anuluj (1002)
+            else:
                 return "cancel"
         except ImportError:
-            # Fallback do starej metody jeśli AppKit nie dostępny
             logger.warning("AppKit not available, using text input fallback")
             lang_options = "\n".join(
                 [f"• {code}: {name}" for code, name in SUPPORTED_LANGUAGES.items()]
             )
-            
+
             window = rumps.Window(
-                title="🗣️ Język transkrypcji",
+                title="🗣️ Transcription language",
                 message=(
-                    f"W jakim języku są Twoje nagrania?\n\n"
-                    f"Dostępne opcje:\n{lang_options}\n\n"
-                    f"Wpisz kod języka:"
+                    f"What language are your recordings in?\n\n"
+                    f"Available options:\n{lang_options}\n\n"
+                    f"Type the language code:"
                 ),
                 default_text=self.settings.language,
                 ok="OK",
-                cancel="Wstecz",
+                cancel="Back",
                 dimensions=(200, 24),
             )
             result = window.run()
-            
+
             if result.clicked == 0:
                 return "back"
-            
+
             lang = result.text.strip().lower()
             if lang in SUPPORTED_LANGUAGES:
                 self.settings.language = lang
-            
+
             return "next"
 
     def _show_ai_config(self) -> str:
-        """Konfiguracja AI podsumowań (opcjonalne)."""
+        """AI summary configuration (optional)."""
         response = rumps.alert(
-            title="🤖 AI Podsumowania (opcjonalne)",
+            title="🤖 AI summaries (optional)",
             message=(
-                "Malinche może generować inteligentne podsumowania "
-                "i tytuły używając Claude AI.\n\n"
-                "Wymaga to klucza API z anthropic.com\n"
-                "(koszt ~$0.01-0.05 za transkrypcję)\n\n"
-                "Możesz to skonfigurować później w Ustawieniach."
+                "Malinche can generate intelligent summaries and titles "
+                "using Claude AI.\n\n"
+                "This requires an API key from anthropic.com\n"
+                "(cost ~$0.01-0.05 per transcription)\n\n"
+                "You can configure this later in Settings."
             ),
-            ok="Pomiń",
-            cancel="Skonfiguruj API",
-            other="Anuluj",
+            ok="Skip",
+            cancel="Configure API",
+            other="Cancel",
         )
 
-        if response == -1:  # Anuluj (other button)
+        if response == -1:  # Cancel (other button)
             return "cancel"
-        elif response == 1:  # Pomiń
+        elif response == 1:  # Skip
             self.settings.enable_ai_summaries = False
             return "next"
 
-        # Konfiguracja API key
+        # Configure API key
         window = rumps.Window(
-            title="Klucz API Claude",
-            message="Wklej klucz API z anthropic.com:",
+            title="Claude API key",
+            message="Paste the API key from anthropic.com:",
             default_text="",
-            ok="Zapisz",
-            cancel="Pomiń",
+            ok="Save",
+            cancel="Skip",
             dimensions=(350, 24),
         )
         result = window.run()
@@ -668,18 +656,16 @@ class SetupWizard:
         return "next"
 
     def _show_finish(self) -> str:
-        """Ekran zakończenia."""
+        """Finish screen."""
         rumps.alert(
-            title="✅ Malinche jest gotowy!",
+            title="✅ Malinche is ready!",
             message=(
-                "Konfiguracja zakończona.\n\n"
-                "Podłącz dyktafon lub kartę SD, a Malinche "
-                "automatycznie przetworzy Twoje nagrania.\n\n"
-                "Ikona 🎙️ pojawi się w pasku menu (góra ekranu).\n\n"
-                "Miłego transkrybowania!"
+                "Setup complete.\n\n"
+                "Connect your voice recorder or SD card and Malinche "
+                "will process your recordings automatically.\n\n"
+                "The 🎙️ icon appears in the menu bar (top of the screen).\n\n"
+                "Happy transcribing!"
             ),
-            ok="🎉 Rozpocznij!",
+            ok="🎉 Get started!",
         )
         return "next"
-
-

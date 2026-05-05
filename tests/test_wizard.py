@@ -147,10 +147,10 @@ class TestSetupWizard:
         assert result == "next"
         for call in alert_calls:
             title = call.get("title", "")
-            assert "Pobieranie trwa w tle" not in title, (
+            assert "Download running in background" not in title, (
                 f"Unexpected status modal after download start: {title}"
             )
-            assert "Pobrano" not in title, (
+            assert "Downloaded" not in title, (
                 f"Unexpected success modal after download start: {title}"
             )
         fake_window.show.assert_called_once()
@@ -186,7 +186,7 @@ class TestSetupWizard:
 
         fake_window.close_after.assert_called_once()
         fake_window.update.assert_any_call(
-            detail="✓ Pobrano pomyślnie", progress=1.0
+            detail="✓ Download complete", progress=1.0
         )
 
     def test_download_error_keeps_window_open_and_notifies(self, monkeypatch):
@@ -224,9 +224,9 @@ class TestSetupWizard:
         captured["on_error"](RuntimeError("boom"))
 
         fake_window.close_after.assert_not_called()
-        fake_window.update.assert_any_call(detail="❌ Błąd: boom")
+        fake_window.update.assert_any_call(detail="❌ Error: boom")
         assert any(
-            "Pobieranie nie powiodło się" in (n.get("subtitle") or "")
+            "Download failed" in (n.get("subtitle") or "")
             for n in notifications
         ), "Error notification should be sent"
 
