@@ -1,4 +1,4 @@
-"""Setup configuration for py2app to build Transrec.app bundle."""
+"""Setup configuration for py2app to build Malinche.app bundle."""
 
 from setuptools import setup
 import py2app

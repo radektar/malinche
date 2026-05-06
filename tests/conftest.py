@@ -39,7 +39,7 @@ import pytest
 _REAL_HOME = Path(pwd.getpwuid(os.getuid()).pw_dir)
 
 # Fake HOME used for the whole session.
-_FAKE_HOME = Path(tempfile.mkdtemp(prefix="transrec-test-home-"))
+_FAKE_HOME = Path(tempfile.mkdtemp(prefix="malinche-test-home-"))
 (_FAKE_HOME / "Library" / "Logs").mkdir(parents=True, exist_ok=True)
 (_FAKE_HOME / "Library" / "Application Support" / "Malinche").mkdir(
     parents=True, exist_ok=True
