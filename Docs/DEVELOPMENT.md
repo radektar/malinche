@@ -1,21 +1,21 @@
 # Development Guide
 
-> **Wersja:** v2.0.0 (w przygotowaniu)
+> **Version:** v2.0.0-beta.8 (development)
 >
-> **Powiązane dokumenty:**
-> - [README.md](../README.md) - Przegląd projektu
-> - [ARCHITECTURE.md](ARCHITECTURE.md) - Architektura systemu
-> - [API.md](API.md) - Dokumentacja API modułów
-> - [TESTING-GUIDE.md](TESTING-GUIDE.md) - Przewodnik testowania
-> - [PUBLIC-DISTRIBUTION-PLAN.md](PUBLIC-DISTRIBUTION-PLAN.md) - Plan dystrybucji
+> **Related documents:**
+> - [README.md](../README.md) — project overview
+> - [ARCHITECTURE.md](ARCHITECTURE.md) — system architecture
+> - [API.md](API.md) — module API reference
+> - [TESTING-GUIDE.md](TESTING-GUIDE.md) — testing guide
+> - [PUBLIC-DISTRIBUTION-PLAN.md](PUBLIC-DISTRIBUTION-PLAN.md) — distribution plan
 
-## 🚀 Quick Start
+## Quick start
 
-### 1. Clone and Setup
+### 1. Clone and set up
 
 ```bash
-git clone https://github.com/yourusername/transrec.git
-cd transrec
+git clone https://github.com/radektar/malinche.git
+cd malinche
 python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
@@ -23,13 +23,7 @@ pip install -r requirements.txt
 pip install -r requirements-dev.txt
 ```
 
-### 2. Install whisper.cpp
-
-```bash
-bash scripts/install_whisper_cpp.sh
-```
-
-### 3. Run Locally
+### 2. Run locally
 
 ```bash
 # Menu bar app (recommended)
@@ -39,128 +33,113 @@ python -m src.menu_app
 python -m src.main
 ```
 
-### 4. Run Tests
+The first-run wizard downloads whisper-cli, ffmpeg, and the chosen Whisper model on launch — no separate setup script.
+
+### 3. Run tests
 
 ```bash
 pytest tests/ -v
 ```
 
-## 📁 Project Structure
+## Project structure
 
 ```
-transrec/
-├── src/
-│   ├── __init__.py           # Package definition
-│   ├── config.py             # Configuration management
-│   ├── logger.py             # Logging setup
-│   ├── file_monitor.py       # FSEvents monitoring
-│   ├── transcriber.py        # Transcription engine
-│   ├── markdown_generator.py # MD file generation
-│   ├── state_manager.py      # State persistence
-│   ├── menu_app.py           # Menu bar application
-│   ├── app_core.py           # Core daemon logic
-│   ├── summarizer.py         # AI summaries (PRO)
-│   └── tagger.py             # Auto-tagging (PRO)
-├── tests/
-│   ├── test_config.py
-│   ├── test_transcriber.py
-│   ├── test_file_monitor.py
-│   ├── test_state_manager.py
-│   └── ...
-├── Docs/
-│   ├── ARCHITECTURE.md       # System architecture
-│   ├── API.md                # API documentation
-│   ├── DEVELOPMENT.md        # This file
-│   └── ...
-├── scripts/
-│   ├── install_whisper_cpp.sh
-│   └── ...
-├── .cursor/rules/            # Cursor IDE rules
-├── requirements.txt          # Production dependencies
-├── requirements-dev.txt      # Development dependencies
-└── README.md                 # Project overview
+src/                    application source
+├── menu_app.py         # Menu bar entry point
+├── main.py             # CLI entry point
+├── app_core.py         # Coordinator
+├── bootstrap.py        # First-run + legacy migration
+├── transcriber.py      # Whisper.cpp orchestration
+├── file_monitor.py     # FSEvents
+├── state_manager.py    # On-disk state
+├── markdown_generator.py
+├── vault_index.py      # Multi-device dedup index
+├── fingerprint.py      # Audio fingerprinting
+├── config/             # Settings, defaults, license, features
+├── setup/              # Wizard, dependency manager, downloader
+└── ui/                 # Settings window, log viewer, dialogs, theme
+
+tests/                  # Pytest unit tests
+tests/integration/      # E2E shell + Python integration scripts (require a recorder)
+scripts/                # Asset generators + release helpers
+assets/                 # Icons, DMG background, menu bar template PNGs
+Docs/                   # Architecture, API, plans, guides
+Docs/archive/           # Frozen historical notes (Polish)
+Docs/testing-archive/   # Frozen manual test checklists (Polish)
+Docs/test-reports/      # Frozen milestone test reports (Polish)
+setup_app.py            # py2app entry — produces Malinche.app + DMG
+Makefile                # `make release` orchestrates build_release.sh
+pyproject.toml          # ruff + pytest + black config
+requirements*.txt       # Production / dev dependencies
 ```
 
-## 🔧 Development Workflow
+## Development workflow
 
-### Git Flow
+### Branches
 
-Projekt używa Git Flow. Szczegóły w `.cursor/rules/git-workflow.mdc`.
+- `main` — production (only released tags merge here)
+- `feature/*` / `chore/*` / `refactor/*` — work branches, opened against `main` via PR
+
+There is no `develop` branch — the project uses a trunk-based flow with PRs targeting `main`.
 
 ```bash
-# Nowa funkcja
-git checkout develop
-git pull origin develop
-git checkout -b feature/nazwa-funkcji
-
-# Po zakończeniu
-git checkout develop
-git merge feature/nazwa-funkcji
-git push origin develop
+git checkout main
+git pull origin main
+git checkout -b feature/short-description
+# work + commit
+git push -u origin feature/short-description
+gh pr create --base main
 ```
 
-### Commit Messages
+### Commit messages
 
-Format: `v2.0.0: Opis zmiany`
+Use a conventional-commits style prefix when scope helps reviewers. Examples from this repo:
 
-```bash
-git commit -m "v2.0.0: Add universal volume detection"
-git commit -m "v2.0.0: Fix FSEvents callback race condition"
+```
+v2.0.0-beta.8: UI cleanup, EN localization, settings tabs
+chore(repo): clean root, archive test docs, remove dead code, add ruff
+refactor(config): rename transrec_migrated → legacy_migrated with backward-compat
+docs(root): translate README, QUICKSTART, BACKLOG to English
 ```
 
-### Code Quality
+If the commit covers a versioned milestone, end the message with `[tests: pass]` once the suite is green.
 
-#### Formatting
-
-```bash
-# Format code with Black
-black src/
-
-# Sort imports
-isort src/
-```
-
-#### Linting
+### Code quality
 
 ```bash
-# Check code style
-flake8 src/
+# Lint (ruff is the only linter we run in CI)
+ruff check src/
 
-# Type checking
-mypy src/
-```
+# Auto-fix unused imports / f-string warnings
+ruff check --fix src/
 
-#### Testing
-
-```bash
-# Run all tests
+# Run all tests (374 unit tests, ~18 minutes; integration tests skipped without a recorder)
 pytest tests/ -v
 
-# Run with coverage
+# Coverage report
 pytest tests/ --cov=src --cov-report=html
-
-# Run specific test file
-pytest tests/test_transcriber.py -v
-
-# Open coverage report
 open htmlcov/index.html
 ```
 
-## 🧪 Testing Strategy
+Configuration lives in `pyproject.toml` (`[tool.ruff]` and `[tool.pytest.ini_options]`).
 
-### Unit Tests
+## Testing strategy
 
-Każdy moduł ma odpowiadające testy:
+### Unit tests
 
-- `test_config.py` - Configuration validation
-- `test_transcriber.py` - Core transcription logic
-- `test_file_monitor.py` - FSEvents monitoring
-- `test_state_manager.py` - State persistence
-- `test_markdown_generator.py` - MD generation
+Each module under `src/` has a corresponding `tests/test_<module>.py`. Notable ones:
 
-### Test Fixtures
+- `test_config.py` — configuration validation
+- `test_transcriber.py` — transcription logic
+- `test_file_monitor.py` — FSEvents handling
+- `test_state_manager.py` — state persistence
+- `test_bootstrap.py` — first-run + legacy migration
+- `test_log_viewer.py` — log parser & filters
+- `test_wizard.py` — first-run wizard flow
 
-Common fixtures w `tests/conftest.py`:
+### Fixtures
+
+Common fixtures live in `tests/conftest.py`. The most important one is **HOME isolation**: at module load, `conftest.py` redirects `Path.home()` to a temp directory (prefix `malinche-test-home-`) so tests never write to the developer's real `~/Library/Application Support/Malinche/`.
 
 ```python
 @pytest.fixture
@@ -170,11 +149,6 @@ def mock_volume(tmp_path):
     volume.mkdir()
     (volume / "recording.mp3").touch()
     return volume
-
-@pytest.fixture
-def transcriber():
-    """Transcriber instance with mocked dependencies."""
-    return Transcriber()
 ```
 
 ### Mocking
@@ -182,285 +156,159 @@ def transcriber():
 ```python
 from unittest.mock import Mock, patch
 
-@patch('src.transcriber.subprocess.run')
+@patch("src.transcriber.subprocess.run")
 def test_transcribe(mock_run):
     mock_run.return_value.returncode = 0
-    # Test code here
+    # ...
 ```
 
-Szczegóły: **[TESTING-GUIDE.md](TESTING-GUIDE.md)**
+For details see **[TESTING-GUIDE.md](TESTING-GUIDE.md)**.
 
-## 📋 Staging Workflow
+## Staging workflow
 
-### Overview
+For stability, the transcriber stages files locally before processing:
 
-System używa **staging workflow** dla stabilności:
+1. **Discovery** — scan the external volume
+2. **Staging** — copy to `~/Library/Application Support/Malinche/recordings/`
+3. **Transcription** — process the local copy
+4. **State update** — only update state when all files succeeded
 
-1. **File Discovery**: Skanuj dysk zewnętrzny
-2. **Staging**: Kopiuj do `~/.transrec/recordings/`
-3. **Transcription**: Przetwarzaj lokalną kopię
-4. **State Update**: Aktualizuj stan tylko jeśli wszystko succeeded
+Benefits:
+- Stability — transcription continues even after the volume is unmounted
+- Data safety — original files are untouched
+- Error recovery — failed files stay in the queue
 
-### Benefits
-
-- **Stability**: Transkrypcja kontynuuje nawet gdy dysk odmontowany
-- **Data Safety**: Oryginalne pliki nietknięte
-- **Error Recovery**: Failed files pozostają w kolejce
-
-### Testing Staging
-
+Test:
 ```bash
 pytest tests/test_transcriber.py::test_stage_audio_file_success -v
 ```
 
-## 🔄 Development Cycle
+## Debugging
 
-### 1. Create Feature Branch
-
-```bash
-git checkout develop
-git checkout -b feature/faza-X-nazwa
-```
-
-### 2. Write Tests (TDD)
-
-```python
-# tests/test_new_feature.py
-def test_new_feature():
-    result = new_feature()
-    assert result == expected
-```
-
-### 3. Implement Feature
-
-```python
-# src/new_module.py
-def new_feature():
-    # Implementation
-    return result
-```
-
-### 4. Run Tests
-
-```bash
-pytest tests/test_new_feature.py -v
-```
-
-### 5. Format and Lint
-
-```bash
-black src/
-isort src/
-flake8 src/
-mypy src/
-```
-
-### 6. Commit
-
-```bash
-git add -A
-git commit -m "v2.0.0: Add new feature"
-```
-
-### 7. Merge to develop
-
-```bash
-git checkout develop
-git merge feature/faza-X-nazwa
-git push origin develop
-```
-
-## 🐛 Debugging
-
-### VS Code / Cursor
-
-1. Set breakpoints
-2. Press F5 or use Debug panel
-3. Select configuration
-4. Step through code
-
-### Logging
+### Logs
 
 ```bash
 # Watch application logs
-tail -f ~/Library/Logs/transrec.log
+tail -f ~/Library/Application\ Support/Malinche/logs/malinche.log
 
-# Watch with grep
-tail -f ~/Library/Logs/transrec.log | grep -i error
+# Filter for errors
+tail -f ~/Library/Application\ Support/Malinche/logs/malinche.log | grep -i error
 ```
 
-### Common Issues
+You can also open the native log viewer from the menu bar: **Open logs**. It shows newest-first, supports level filter and live tail.
 
-#### FSEvents Not Working
+### Common issues
 
+**FSEvents not working**
 ```bash
-# Check if FSEvents is installed
 pip list | grep MacFSEvents
-
-# Verify /Volumes is accessible
 ls -la /Volumes
 ```
 
-#### whisper.cpp Not Found
+**whisper.cpp not found** — open Settings → Maintenance → "Re-download dependencies".
 
+**Import errors** — confirm the virtualenv is activated:
 ```bash
-# Reinstall
-bash scripts/install_whisper_cpp.sh
-
-# Verify path
-ls -la ~/whisper.cpp/main
-```
-
-#### Import Errors
-
-```bash
-# Ensure venv is activated
 source venv/bin/activate
-
-# Reinstall dependencies
 pip install -r requirements.txt
 ```
 
-## 📚 Code Style Guide
+## Code style
 
-### Python Standards
+### Python
 
-- Follow PEP 8
-- Use type hints for all functions
-- Maximum line length: 88 characters (Black default)
-- Use docstrings (Google style)
-
-### Example Function
-
-```python
-from pathlib import Path
-from typing import Optional
-
-def find_audio_files(directory: Path, since: datetime) -> list[Path]:
-    """Find audio files modified after given datetime.
-    
-    Args:
-        directory: Directory to search in
-        since: Only return files modified after this time
-        
-    Returns:
-        List of audio file paths sorted by modification time
-        
-    Raises:
-        ValueError: If directory doesn't exist
-    """
-    if not directory.exists():
-        raise ValueError(f"Directory not found: {directory}")
-    
-    return sorted(
-        [f for f in directory.rglob("*") if f.suffix in AUDIO_EXTENSIONS],
-        key=lambda f: f.stat().st_mtime
-    )
-```
+- Follow PEP 8 (line length 100 in `pyproject.toml` `[tool.ruff]`)
+- Use type hints for public functions
+- Docstrings: short single-line for non-obvious functions; module docstring at top of file
+- No comments narrating WHAT — only WHY when non-obvious
 
 ### Logging
 
-Always use logger, never print():
+Always use the project logger, never `print()`:
 
 ```python
 from src.logger import logger
 
-# Good
-logger.info("Processing file")
-logger.error(f"Failed: {error}")
-
-# Bad
-print("Processing file")
+logger.info("Processing file %s", path)
+logger.error("Failed: %s", error)
 ```
 
-### Error Handling
+### Error handling
+
+Validate at boundaries (user input, external APIs). Don't catch generic `Exception` unless you re-raise after logging.
 
 ```python
 try:
     result = risky_operation()
-except SpecificError as e:
-    logger.error(f"Operation failed: {e}")
+except SpecificError as exc:
+    logger.error("Operation failed: %s", exc)
     return None
-except Exception as e:
-    logger.error(f"Unexpected error: {e}", exc_info=True)
-    raise
 ```
 
-## 🔐 Security
+## Security
 
 - No credentials in code
-- API keys via environment variables only
-- State file is local only
+- API keys via environment variables (`ANTHROPIC_API_KEY`) or the Settings window
+- State file lives in `~/Library/Application Support/Malinche/`, never synced to cloud
 - whisper.cpp runs locally
-- PRO features use secure backend API
+- PRO license verification cached locally for 7 days when offline
 
-## 🚀 Performance Tips
+## Performance notes
 
-### FSEvents vs Polling
+- FSEvents is preferred to polling — zero CPU when idle
+- Transcription is sequential (one file at a time)
+- The state file prevents reprocessing
+- Default transcription timeout: 1 hour
 
-FSEvents is much more efficient:
-- Zero CPU when idle
-- Instant notification on changes
-- No battery impact
-
-### Transcription
-
-- Set appropriate timeout (default 1 hour)
-- Process files sequentially
-- Use state file to avoid re-processing
-
-## 📊 Monitoring
-
-### Health Checks
+## Health checks
 
 ```bash
-# Is app running?
-pgrep -f "menu_app"
+# Is the app running?
+pgrep -f menu_app
 
 # Recent activity?
-tail -20 ~/Library/Logs/transrec.log
+tail -20 ~/Library/Application\ Support/Malinche/logs/malinche.log
 
-# State file status?
-cat ~/.transrec_state.json | python -m json.tool
+# State file?
+cat ~/Library/Application\ Support/Malinche/state.json | python -m json.tool
 ```
 
-## 🤝 Contributing
-
-### Pull Request Process
+## Contributing
 
 1. Fork the repository
-2. Create feature branch from `develop`
-3. Write tests for new features
-4. Ensure all tests pass
-5. Update documentation
-6. Submit PR to `develop`
+2. Create a feature branch off `main`
+3. Write tests alongside the change
+4. Run `ruff check src/` and `pytest tests/`
+5. Open a PR against `main` with a clear description and the test status
 
-### Commit Message Format
+### Commit message format
 
 ```
-v2.0.0: <subject>
+<type>(<scope>): <subject>
 ```
 
 Examples:
 ```
-v2.0.0: Add universal volume detection
-v2.0.0: Fix race condition in FSEvents callback
-v2.0.0: Update API documentation
+feat(transcriber): add Metal failure auto-detection
+fix(file_monitor): handle FSEvents reordering during mount
+docs(api): clarify license cache behavior
 ```
 
-## 📞 Getting Help
+For larger milestone commits, the legacy `vX.Y.Z-tag: subject [tests: pass]` form is also accepted.
 
-- Check [ARCHITECTURE.md](ARCHITECTURE.md) for system design
-- Check [API.md](API.md) for module documentation
-- Check [README.md](../README.md) for usage guide
-- Check logs for errors
-- Open an issue on GitHub
+## Getting help
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) — system design
+- [API.md](API.md) — module documentation
+- [README.md](../README.md) — feature overview
+- App logs at `~/Library/Application Support/Malinche/logs/malinche.log`
+- Open an issue at <https://github.com/radektar/malinche/issues>
 
 ---
 
-> **Powiązane dokumenty:**
-> - [README.md](../README.md) - Przegląd projektu
-> - [ARCHITECTURE.md](ARCHITECTURE.md) - Architektura systemu
-> - [API.md](API.md) - Dokumentacja API modułów
-> - [TESTING-GUIDE.md](TESTING-GUIDE.md) - Przewodnik testowania
-> - [PUBLIC-DISTRIBUTION-PLAN.md](PUBLIC-DISTRIBUTION-PLAN.md) - Plan dystrybucji v2.0.0
+> **Related documents:**
+> - [README.md](../README.md) — project overview
+> - [ARCHITECTURE.md](ARCHITECTURE.md) — system architecture
+> - [API.md](API.md) — module API reference
+> - [TESTING-GUIDE.md](TESTING-GUIDE.md) — testing guide
+> - [PUBLIC-DISTRIBUTION-PLAN.md](PUBLIC-DISTRIBUTION-PLAN.md) — v2.0.0 distribution plan
