@@ -55,7 +55,6 @@ def _run_on_main_thread(func):
     else:
         func()
 
-import threading
 
 from src.config import config
 from src.config.settings import UserSettings
