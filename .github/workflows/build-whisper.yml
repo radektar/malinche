@@ -89,7 +89,7 @@ jobs:
 
           rpaths="$(otool -l bundled/whisper-cli | awk '/LC_RPATH/{getline; getline; print $2}')"
           while IFS= read -r old_path; do
-            if [[ "$old_path" == *"/Users/runner/work/transrec/transrec/whisper.cpp/"* ]]; then
+            if [[ "$old_path" == *"/Users/runner/work/malinche/malinche/whisper.cpp/"* ]]; then
               install_name_tool -delete_rpath "$old_path" bundled/whisper-cli
             fi
           done <<< "$rpaths"
@@ -178,7 +178,7 @@ jobs:
           tag_name: deps-v1.1.0
           name: Dependencies v1.1.0
           body: |
-            Pre-built binaries for Transrec v2.0.0
+            Pre-built binaries for Malinche v2.0.0
 
             - whisper-cli-static: static whisper.cpp build with Core ML support
             - whisper-bundled-arm64.tar.gz: shared whisper-cli + dylibs with @loader_path
