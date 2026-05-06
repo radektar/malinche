@@ -163,7 +163,7 @@ def ensure_ready() -> UserSettings:
     # Fast path: config exists and migration flag set — skip legacy scan.
     if paths["new_config_file"].exists():
         fast_settings = UserSettings.load()
-        if getattr(fast_settings, "transrec_migrated", False):
+        if getattr(fast_settings, "legacy_migrated", False):
             ensure_importable("anthropic")
             if fast_settings.setup_version != APP_VERSION:
                 fast_settings.setup_version = APP_VERSION
@@ -220,7 +220,7 @@ def ensure_ready() -> UserSettings:
     ensure_importable("anthropic")
 
     settings = UserSettings.load()
-    settings.transrec_migrated = True
+    settings.legacy_migrated = True
     settings.setup_version = APP_VERSION
     settings.save()
 
