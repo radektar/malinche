@@ -5,6 +5,16 @@ All notable changes to Malinche will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- GitHub repository renamed from `radektar/transrec` to `radektar/malinche`. Old URLs auto-redirect; explicit references in `src/setup/checksums.py` and `.github/workflows/build-whisper.yml` updated to the new path.
+- Migration flag `transrec_migrated` renamed to `legacy_migrated` in `src/config/settings.py`. `UserSettings.load()` reads the old key name as a backward-compat alias and rewrites it on next save, so existing alpha users are unaffected.
+- Active English documentation rewrite: `README.md`, `QUICKSTART.md`, `BACKLOG.md`, and `Docs/*.md` (architecture, development, API, plans, guides) translated from Polish to English. Historical archives in `Docs/archive/`, `Docs/testing-archive/`, `Docs/test-reports/`, and pre-Unreleased entries below remain in Polish.
+
+### Notes
+- Per-version notes from v2.0.0-alpha.x onward remain in Polish for historical fidelity. New release entries from this point forward will be written in English.
+
 ## [2.0.0-alpha.18] - 2026-04-24
 
 ### Fixed
