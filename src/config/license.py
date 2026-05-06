@@ -16,7 +16,7 @@ from src.config.features import FeatureFlags, FeatureTier
 class LicenseManager:
     """Manages license verification and feature access."""
 
-    LICENSE_API = "https://api.transrec.app/v1/license"
+    LICENSE_API = "https://api.malinche.app/v1/license"
     CACHE_VALIDITY_DAYS = 7
 
     def __init__(self):

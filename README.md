@@ -1,56 +1,53 @@
 # Malinche
 
-> **Wersja:** v1.10.0 (development) → v2.0.0 (w przygotowaniu)
+> **Version:** v2.0.0-beta.8 (development) → v2.0.0 (in preparation)
 
-Automatyczny system transkrypcji plików audio z dowolnego dyktafonu lub karty SD na macOS.
+Automatic audio transcription system for any USB recorder or SD card on macOS.
 
-## 🎯 Funkcje
+## Features
 
 ### FREE (v2.0.0)
-- **Automatyczna detekcja** - wykrywa podłączenie dowolnego dysku zewnętrznego z plikami audio
-- **Inteligentne skanowanie** - znajduje tylko nowe pliki audio od ostatniej synchronizacji
-- **Automatyczna transkrypcja** - używa whisper.cpp z Core ML dla maksymalnej wydajności
-- **Markdown Output** - transkrypcje zapisywane jako pliki `.md` z YAML frontmatter
-- **Menu bar app** - natywna aplikacja macOS z interfejsem w pasku menu
-- **Settings UI** - graficzne okno ustawień
+- **Auto-detection** — recognizes any external volume containing audio files
+- **Smart scanning** — finds only new audio files since the last sync
+- **Automatic transcription** — uses whisper.cpp with Core ML for maximum performance
+- **Markdown output** — transcripts saved as `.md` files with YAML frontmatter
+- **Menu bar app** — native macOS app with menu bar interface
+- **Settings UI** — graphical configuration window
 
-### PRO (v2.1.0 - planowane)
-- 🔒 **AI Podsumowania** - automatyczne generowanie podsumowań używając Claude API
-- 🔒 **Auto-tagging** - inteligentne tagowanie transkrypcji
-- 🔒 **Auto-title** - nazwy plików generowane z podsumowania
-- 🔒 **Cloud sync** - synchronizacja z Obsidian/iCloud
+### PRO (v2.1.0 — planned)
+- 🔒 **AI summaries** — automatic summary generation via Claude API
+- 🔒 **Auto-tagging** — intelligent transcript tagging
+- 🔒 **Auto-title** — file names generated from summary
+- 🔒 **Cloud sync** — synchronization with Obsidian/iCloud
 
-## 📋 Wymagania
+## Requirements
 
-- macOS 12+ (Apple Silicon zalecane dla Core ML)
+- macOS 12+ (Apple Silicon recommended for Core ML)
 - Python 3.12+
-- ffmpeg (instalowany automatycznie)
-- whisper.cpp (instalowany automatycznie przy pierwszym uruchomieniu)
+- ffmpeg (installed automatically)
+- whisper.cpp (installed automatically on first launch)
 
-## 🚀 Szybki Start
+## Quick Start
 
-Szczegółowa instrukcja: **[QUICKSTART.md](QUICKSTART.md)**
+For full instructions see **[QUICKSTART.md](QUICKSTART.md)**.
 
 ```bash
-# 1. Sklonuj repozytorium
-git clone https://github.com/yourusername/transrec.git
-cd transrec
+# 1. Clone the repository
+git clone https://github.com/radektar/malinche.git
+cd malinche
 
-# 2. Utwórz virtual environment
+# 2. Create a virtual environment
 python3 -m venv venv
 source venv/bin/activate
 
-# 3. Zainstaluj zależności
+# 3. Install dependencies
 pip install -r requirements.txt
 
-# 4. Zainstaluj whisper.cpp
-bash scripts/install_whisper_cpp.sh
-
-# 5. Uruchom aplikację
+# 4. Run the app (whisper.cpp + ffmpeg are downloaded by the first-run wizard)
 python -m src.menu_app
 ```
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 src/                    source code (menu bar app, transcription, AI summary, UI)
@@ -66,116 +63,116 @@ setup_app.py            py2app entry — produces Malinche.app + DMG
 Makefile                `make release` orchestrates build_release.sh
 ```
 
-## 📝 Użycie
+## Usage
 
-### Menu Bar App (Zalecane)
+### Menu bar app (recommended)
 
 ```bash
 python -m src.menu_app
 ```
 
-Aplikacja pojawi się w pasku menu z opcjami:
-- Status w czasie rzeczywistym
-- Otwieranie logów
-- Reset pamięci
-- Ustawienia
+The app appears in the macOS menu bar with:
+- Real-time status
+- Open logs
+- Retranscribe submenu
+- Settings (General / Transcription / Disks / Maintenance tabs)
+- PRO activation
+- Quit
 
-### CLI Mode
+### CLI mode
 
 ```bash
 python -m src.main
 ```
 
-## 🔧 Konfiguracja
+## Configuration
 
-Konfiguracja w `src/config.py` lub przez zmienne środowiskowe:
+Configuration lives in the user settings file (managed via the Settings window) or via environment variables:
 
-| Zmienna | Opis | Domyślnie |
-|---------|------|-----------|
-| `OLYMPUS_TRANSCRIBE_DIR` | Folder na transkrypcje | `~/Documents/Transcriptions` |
-| `WHISPER_MODEL` | Model whisper | `small` |
-| `WHISPER_LANGUAGE` | Język transkrypcji | `pl` |
+| Variable | Description | Default |
+|---|---|---|
+| `MALINCHE_TRANSCRIBE_DIR` | Output folder for transcripts | `~/Documents/Transcriptions` |
+| `WHISPER_MODEL` | Whisper model | `small` |
+| `WHISPER_LANGUAGE` | Transcription language | `pl` |
 
-Szczegóły: **[Docs/API.md](Docs/API.md#configpy)**
+User data lives at `~/Library/Application Support/Malinche/` (config, logs, models, runtime).
 
-## 📚 Dokumentacja
+For details see **[Docs/API.md](Docs/API.md)**.
 
-| Dokument | Opis |
-|----------|------|
-| **[QUICKSTART.md](QUICKSTART.md)** | Szybki start dla developerów |
-| **[CHANGELOG.md](CHANGELOG.md)** | Historia zmian |
-| **[BACKLOG.md](BACKLOG.md)** | Zaplanowane funkcje |
-| **[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md)** | Architektura systemu |
-| **[Docs/API.md](Docs/API.md)** | Dokumentacja API modułów |
-| **[Docs/DEVELOPMENT.md](Docs/DEVELOPMENT.md)** | Przewodnik deweloperski |
-| **[Docs/FULL_DISK_ACCESS_SETUP.md](Docs/FULL_DISK_ACCESS_SETUP.md)** | Konfiguracja FDA |
-| **[Docs/PUBLIC-DISTRIBUTION-PLAN.md](Docs/PUBLIC-DISTRIBUTION-PLAN.md)** | Plan dystrybucji v2.0.0 |
+## Documentation
 
-## 🧪 Development
+| Document | Description |
+|---|---|
+| **[QUICKSTART.md](QUICKSTART.md)** | Quick start for developers |
+| **[CHANGELOG.md](CHANGELOG.md)** | Release history |
+| **[BACKLOG.md](BACKLOG.md)** | Planned features |
+| **[Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md)** | System architecture |
+| **[Docs/API.md](Docs/API.md)** | Module API reference |
+| **[Docs/DEVELOPMENT.md](Docs/DEVELOPMENT.md)** | Developer guide |
+| **[Docs/FULL_DISK_ACCESS_SETUP.md](Docs/FULL_DISK_ACCESS_SETUP.md)** | Full Disk Access setup |
+| **[Docs/PUBLIC-DISTRIBUTION-PLAN.md](Docs/PUBLIC-DISTRIBUTION-PLAN.md)** | v2.0.0 distribution plan |
+
+## Development
 
 ```bash
-# Testy
+# Tests
 pytest tests/ -v
 
-# Formatowanie
-black src/
-isort src/
-
 # Linting
-flake8 src/
-mypy src/
+ruff check src/
+
+# Build a signed DMG
+make release
 ```
 
-Szczegóły: **[Docs/DEVELOPMENT.md](Docs/DEVELOPMENT.md)**
+For details see **[Docs/DEVELOPMENT.md](Docs/DEVELOPMENT.md)**.
 
-## 🗺️ Roadmap
+## Roadmap
 
-### v2.0.0 FREE (Q1 2025)
-- [ ] Universal recorder support
-- [ ] First-run wizard
-- [ ] py2app packaging
+### v2.0.0 FREE
+- [x] Universal recorder support
+- [x] First-run wizard
+- [x] py2app packaging
+- [x] DMG release (unsigned beta)
 - [ ] Code signing & notarization
-- [ ] DMG release
 
-### v2.1.0 PRO (Q2 2025)
+### v2.1.0 PRO
 - [ ] AI summaries
 - [ ] Auto-tagging
 - [ ] Cloud sync
 - [ ] License management
 
-Szczegóły: **[Docs/PUBLIC-DISTRIBUTION-PLAN.md](Docs/PUBLIC-DISTRIBUTION-PLAN.md)**
+For details see **[Docs/PUBLIC-DISTRIBUTION-PLAN.md](Docs/PUBLIC-DISTRIBUTION-PLAN.md)**.
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
-### Aplikacja nie wykrywa dysku
+### App does not detect the volume
 
-1. Sprawdź czy dysk jest zamontowany: `ls /Volumes/`
-2. Sprawdź logi: `tail -f ~/Library/Logs/olympus_transcriber.log`
-3. Upewnij się, że aplikacja ma **Full Disk Access**: **[Docs/FULL_DISK_ACCESS_SETUP.md](Docs/FULL_DISK_ACCESS_SETUP.md)**
+1. Check that the volume is mounted: `ls /Volumes/`
+2. Check the log: `tail -f ~/Library/Application\ Support/Malinche/logs/malinche.log`
+3. Confirm the app has **Full Disk Access**: see **[Docs/FULL_DISK_ACCESS_SETUP.md](Docs/FULL_DISK_ACCESS_SETUP.md)**
 
-### whisper.cpp nie znaleziony
+### whisper.cpp not found
 
-```bash
-bash scripts/install_whisper_cpp.sh
-```
+The first-run wizard downloads whisper-cli automatically. To re-trigger downloads, open Settings → Maintenance → "Re-download dependencies".
 
-## 📄 Licencja
+## License
 
 MIT License
 
-## 🤝 Contributing
+## Contributing
 
-1. Fork repozytorium
-2. Utwórz feature branch: `git checkout -b feature/nazwa`
-3. Commit: `git commit -m "v2.0.0: Opis zmiany"`
-4. Push i Pull Request do `develop`
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/name`
+3. Commit with a descriptive message ending with `[tests: pass]`
+4. Open a Pull Request against `main`
 
-Szczegóły workflow: **[Docs/DEVELOPMENT.md](Docs/DEVELOPMENT.md)**
+For workflow details see **[Docs/DEVELOPMENT.md](Docs/DEVELOPMENT.md)**.
 
 ---
 
-> **Powiązane dokumenty:**
-> - Architektura: [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md)
+> **Related documents:**
+> - Architecture: [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md)
 > - API: [Docs/API.md](Docs/API.md)
 > - Development: [Docs/DEVELOPMENT.md](Docs/DEVELOPMENT.md)
-> - Plan v2.0.0: [Docs/PUBLIC-DISTRIBUTION-PLAN.md](Docs/PUBLIC-DISTRIBUTION-PLAN.md)
+> - v2.0.0 plan: [Docs/PUBLIC-DISTRIBUTION-PLAN.md](Docs/PUBLIC-DISTRIBUTION-PLAN.md)

@@ -76,7 +76,7 @@ class UserSettings:
     setup_version: str = ""
     setup_stage: str = "welcome"
     index_migrated: bool = False
-    transrec_migrated: bool = defaults.DEFAULT_TRANSREC_MIGRATED
+    legacy_migrated: bool = defaults.DEFAULT_LEGACY_MIGRATED
 
     def __post_init__(self) -> None:
         """Normalize types after init (e.g., JSON-loaded values)."""
@@ -105,6 +105,11 @@ class UserSettings:
             try:
                 with open(config_path, "r", encoding="utf-8") as f:
                     data = json.load(f)
+                # Backward compat: alpha builds wrote `transrec_migrated`.
+                if "transrec_migrated" in data and "legacy_migrated" not in data:
+                    data["legacy_migrated"] = data.pop("transrec_migrated")
+                else:
+                    data.pop("transrec_migrated", None)
                 return cls(**data)
             except (json.JSONDecodeError, TypeError):
                 pass
@@ -135,7 +140,7 @@ class UserSettings:
             "setup_version": self.setup_version,
             "setup_stage": self.setup_stage,
             "index_migrated": self.index_migrated,
-            "transrec_migrated": self.transrec_migrated,
+            "legacy_migrated": self.legacy_migrated,
         }
 
     def find_trusted_volume(self, uuid: str) -> Optional[TrustedVolume]:

@@ -53,7 +53,7 @@ def test_ensure_ready_migrates_legacy_layout(tmp_path, monkeypatch):
     assert not (tmp_path / ".olympus_transcriber_state.json").exists()
 
     assert settings.setup_version == APP_VERSION
-    assert settings.transrec_migrated is True
+    assert settings.legacy_migrated is True
 
 
 def test_ensure_ready_is_idempotent(tmp_path, monkeypatch):
@@ -91,7 +91,7 @@ def test_ensure_ready_skips_migration_when_flag_set(tmp_path, monkeypatch):
 
     move_mock.assert_not_called()
     cleanup_mock.assert_not_called()
-    assert settings.transrec_migrated is True
+    assert settings.legacy_migrated is True
 
 
 def test_ensure_ready_still_saves_setup_version_on_fast_path(tmp_path, monkeypatch):

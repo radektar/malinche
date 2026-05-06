@@ -31,7 +31,7 @@ def show_pro_activation():
     )
 
     if response == 1:
-        webbrowser.open("https://transrec.app/pro")
+        webbrowser.open("https://malinche.app/pro")
     elif response == 0:
         key_response = rumps.Window(
             title="PRO activation",

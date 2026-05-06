@@ -1,383 +1,153 @@
-# Malinche - Quick Start Guide
+# Malinche — Quick Start
 
-Szybki przewodnik uruchomienia w 5 minut.
+Get Malinche running locally in about 5 minutes.
 
-## 📦 Wymagania
+## Requirements
 
-- macOS (Silicon zalecane dla Core ML)
-- Python 3.8+
-- ffmpeg (instalowany automatycznie)
-- whisper.cpp (instalowany automatycznie)
-- Olympus LS-P1 recorder
-- **Opcjonalnie:** Anthropic API key dla podsumowań AI
+- macOS 12+ (Apple Silicon recommended for Core ML acceleration)
+- Python 3.12+
+- About 1.5 GB of free disk space (whisper model + ffmpeg)
+- **Optional:** Anthropic API key for AI summaries (PRO)
 
-## 🚀 Instalacja (6 kroków)
-
-### 1. Przejdź do folderu projektu
+## 1. Clone and create a virtual environment
 
 ```bash
-cd ~/CODE/Olympus_transcription
-```
+git clone https://github.com/radektar/malinche.git
+cd malinche
 
-### 2. Utwórz virtual environment
-
-```bash
 python3 -m venv venv
 source venv/bin/activate
 ```
 
-### 3. Zainstaluj zależności
-
-```bash
-make install
-```
-
-lub ręcznie:
+## 2. Install Python dependencies
 
 ```bash
 pip install --upgrade pip
 pip install -r requirements.txt
-pip install -r requirements-dev.txt
+pip install -r requirements-dev.txt   # only for development
 ```
 
-### 4. Zainstaluj whisper.cpp
+## 3. (Optional) Configure Claude API for AI summaries
 
 ```bash
-bash scripts/install_whisper_cpp.sh
-```
-
-To pobierze, skompiluje i skonfiguruje whisper.cpp z Core ML (jeśli Apple Silicon).
-Proces trwa 2-5 minut.
-
-### 4.5. (Opcjonalnie) Skonfiguruj Claude API dla podsumowań
-
-**Najprostszy sposób - plik .env:**
-
-```bash
-# Skopiuj przykładowy plik
 cp .env.example .env
-
-# Edytuj .env i dodaj swój klucz API
-nano .env  # lub vim, code, etc.
+# edit .env and add: ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-W pliku `.env` dodaj:
-```bash
-ANTHROPIC_API_KEY=sk-ant-...
-```
+Without an API key the app still runs — it just falls back to filename-based titles instead of AI-generated ones.
 
-**Alternatywnie - zmienne środowiskowe:**
+Get a key at <https://console.anthropic.com/>.
+
+## 4. Run the app
 
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
+python -m src.menu_app
 ```
 
-Lub dodaj do `~/.zshrc`:
-```bash
-echo 'export ANTHROPIC_API_KEY="sk-ant-..."' >> ~/.zshrc
-source ~/.zshrc
-```
+On first launch the wizard will:
+1. Ask which recorder you use (Olympus LS-P1, generic SD card, etc.)
+2. Download whisper-cli, ffmpeg, and the chosen Whisper model (~500 MB for `small`)
+3. Prompt for Full Disk Access if needed (see [Docs/FULL_DISK_ACCESS_SETUP.md](Docs/FULL_DISK_ACCESS_SETUP.md))
 
-**Bez API key:** System będzie działał, ale bez podsumowań AI (użyje prostych tytułów z nazwy pliku).
+Once setup completes, the app appears in the macOS menu bar. Click the icon for status, settings, logs, and PRO activation.
 
-**Gdzie zdobyć klucz:** https://console.anthropic.com/
+## 5. Test it
 
-### 5. Test lokalny
+1. Plug in your recorder (or insert an SD card with audio files).
+2. The app status changes to "Scanning recorder…" then "Processing: <filename>".
+3. Open the log viewer (menu bar → Open logs) to watch progress live.
+4. Transcripts land in your configured output folder (default: `~/Documents/Transcriptions`).
 
-**Opcja A: Tray App (Zalecane - z interfejsem graficznym)**
+## Output format
 
-```bash
-python src/menu_app.py
-```
+Transcripts are saved as `.md` files with YAML frontmatter, ready for Obsidian:
 
-Aplikacja pojawi się w pasku menu macOS. Kliknij ikonę, aby zobaczyć status i opcje.
-
-**Opcja B: Tryb daemon (CLI)**
-
-```bash
-make run
-```
-
-lub:
-
-```bash
-python src/main.py
-```
-
-**Oczekiwany output:**
-```
-🚀 Malinche starting...
-✓ Found whisper.cpp at: /Users/username/whisper.cpp/main
-✓ Found ffmpeg at: /opt/homebrew/bin/ffmpeg
-✓ Core ML model found - GPU acceleration enabled
-✓ FSEvents monitor started
-✓ Periodic checker started
-✓ All monitors running
-⏳ Waiting for recorder connection...
-```
-
-Podłącz recorder - powinno pokazać:
-```
-📢 Detected recorder activity: /Volumes/LS-P1
-✓ Recorder detected: /Volumes/LS-P1
-📁 Found X new audio file(s)
-🎙️  Starting transcription: recording.mp3
-🔄 Attempting transcription with Core ML acceleration
-✓ Transcription complete: recording.mp3
-```
-
-### 6. Skonfiguruj Full Disk Access (Wymagane dla daemona)
-
-**⚠️ WAŻNE:** Daemon uruchomiony przez `launchd` lub jako aplikacja `.app` wymaga **Full Disk Access** aby móc odczytywać pliki z zewnętrznych dysków (rekorder Olympus).
-
-**Szybka konfiguracja:**
-
-1. Otwórz System Settings → Privacy & Security → **Full Disk Access**
-2. Kliknij przycisk **"+"** (plus)
-3. Naciśnij **Cmd + Shift + G** (Go to Folder)
-4. Wklej: `~/Applications`
-5. Wybierz **Malinche.app**
-6. Kliknij **Open**
-7. Upewnij się, że checkbox obok aplikacji jest **zaznaczony**
-
-**Alternatywa:** Jeśli używasz ręcznego uruchomienia z Terminala, nie jest to wymagane (Terminal ma już pełny dostęp).
-
-📖 **Szczegółowa instrukcja:** Zobacz [`Docs/FULL_DISK_ACCESS_SETUP.md`](Docs/FULL_DISK_ACCESS_SETUP.md)
-
-### 7. Zainstaluj jako daemon
-
-**Opcja A: Użyj aplikacji .app (Zalecane)**
-
-Aplikacja `Malinche.app` została już utworzona w `~/Applications/`. 
-
-**Automatyczne uruchamianie przy logowaniu:**
-- System Settings → General → **Login Items**
-- Upewnij się, że `Malinche.app` jest na liście
-
-**Lub użyj LaunchAgent:**
-```bash
-make setup-daemon
-```
-
-**Opcja B: Ręczne uruchomienie**
-
-```bash
-open ~/Applications/Malinche.app
-```
-
-**Gotowe!** Aplikacja działa w tle i automatycznie uruchomi się przy następnym logowaniu.
-
----
-
-## ✅ Weryfikacja
-
-### Sprawdź status
-
-```bash
-make status
-```
-
-### Zobacz logi
-
-```bash
-make logs
-```
-
-### Testuj działanie
-
-1. Podłącz Olympus LS-P1
-2. Sprawdź logi:
-   ```bash
-   tail -f ~/Library/Logs/olympus_transcriber.log
-   ```
-3. Sprawdź transkrypcje:
-   ```bash
-   ls -la ~/Library/Mobile\ Documents/iCloud~md~obsidian/Documents/Obsidian/11-Transcripts/
-   ```
-
----
-
-## 📝 Format Wyjściowy
-
-Transkrypcje są zapisywane jako pliki `.md` (markdown) w folderze Obsidian:
-```
-~/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian/11-Transcripts/
-```
-
-**Nazwa pliku:** `YYYY-MM-DD_Tytul.md` (generowana z podsumowania AI)
-
-**Struktura pliku:**
 ```markdown
 ---
-title: "Rozmowa o projekcie"
-date: 2025-11-19
-recording_date: 2025-11-19T14:30:00
+title: "Project planning conversation"
+date: 2026-05-05
+recording_date: 2026-05-05T14:30:00
 source: REC001.mp3
 duration: 00:15:32
 tags: [transcription]
 ---
 
-## Podsumowanie
+## Summary
 
-[Długie podsumowanie wygenerowane przez Claude AI...]
+[AI-generated summary, only if Claude API is configured.]
 
-## Transkrypcja
+## Transcript
 
-[Pełna transkrypcja nagrania...]
+[Full whisper.cpp transcript here.]
 ```
 
-Pliki są gotowe do użycia w Obsidian z pełnym frontmatter YAML.
-
-**Uwaga:** Jeśli nie masz skonfigurowanego `ANTHROPIC_API_KEY`, system użyje prostych tytułów z nazwy pliku.
-
----
-
-## 🔧 Przydatne komendy
+## Useful commands
 
 ```bash
-# Makefile commands
-make help           # Pokaż wszystkie komendy
-make test           # Uruchom testy
-make lint           # Sprawdź kod
-make format         # Formatuj kod
-make stop-daemon    # Zatrzymaj daemon
-make reload-daemon  # Przeładuj daemon
-make logs           # Zobacz logi
-make clean          # Wyczyść cache
+# Run all unit tests
+pytest tests/ -v
 
-# Bezpośrednie komendy
-python src/main.py  # Uruchom lokalnie
-pytest tests/ -v    # Uruchom testy
+# Lint
+ruff check src/
+
+# Build a DMG (unsigned, for development)
+make release
+
+# Open the user data directory
+open ~/Library/Application\ Support/Malinche/
 ```
 
----
+## Troubleshooting
 
-## 📂 Kluczowe lokalizacje
+### whisper.cpp not found
 
-| Co | Gdzie |
-|----|-------|
-| Transkrypcje | Obsidian vault `11-Transcripts` |
-| Logi aplikacji | `~/Library/Logs/olympus_transcriber.log` |
-| Plik stanu | `~/.olympus_transcriber_state.json` |
-| LaunchAgent plist | `~/Library/LaunchAgents/com.user.olympus-transcriber.plist` |
-| Logi LaunchAgent | `/tmp/olympus-transcriber-out.log` |
+Re-trigger downloads from the menu bar: **Settings → Maintenance → "Re-download dependencies"**.
 
----
+### Recorder not detected
 
-## 🐛 Troubleshooting
+1. Check that the volume is mounted: `ls /Volumes/`
+2. Open the log viewer (menu bar → Open logs) and look for "Recorder detected" or "Waiting for recorder".
 
-### whisper.cpp nie znaleziony
+### Whisper Metal error (-6)
 
-```bash
-# Zainstaluj whisper.cpp
-bash scripts/install_whisper_cpp.sh
-
-# Sprawdź instalację
-~/whisper.cpp/main -h
-
-# Jeśli nie działa, sprawdź ścieżkę w config.py
-ls ~/whisper.cpp/main
-```
-
-### Recorder nie wykrywa się
-
-```bash
-# Sprawdź czy zamontowany
-ls /Volumes/
-
-# Uruchom lokalnie z logami debug
-python src/main.py
-```
-
-### Daemon nie startuje
-
-```bash
-# Sprawdź błędy
-cat /tmp/olympus-transcriber-err.log
-
-# Przeładuj
-make reload-daemon
-
-# Sprawdź status
-launchctl list | grep olympus
-```
-
-### Whisper zgłasza błąd Metal (-6)
-
-Od wersji 1.7.1 aplikacja automatycznie wykrywa komunikaty typu
-`ggml_metal_device_init: tensor API disabled` i uruchamia ponownie
-transkrypcję w trybie CPU. Jeśli chcesz całkowicie wyłączyć Core ML:
+The app auto-detects Metal failures (`ggml_metal_device_init: tensor API disabled`) and retries on CPU. To disable Core ML entirely:
 
 ```bash
 export WHISPER_COREML=0
-python -m src.main
+python -m src.menu_app
 ```
 
-### Proces zablokowany przez lock file
+### Process locked
 
-Jeżeli w logach pojawia się komunikat
-`Skipping process_recorder because another instance holds lock`, oznacza to,
-że inna instancja wciąż działa lub zostawiła plik blokady.
+If logs say `Skipping process_recorder because another instance holds lock`:
 
 ```bash
-ls ~/.olympus_transcriber/transcriber.lock
-rm ~/.olympus_transcriber/transcriber.lock  # tylko gdy masz pewność, że daemon nie działa
+ls ~/Library/Application\ Support/Malinche/runtime/transcriber.lock
+rm ~/Library/Application\ Support/Malinche/runtime/transcriber.lock   # only if you're sure no instance is running
 ```
 
-### Testy nie przechodzą
+## Key locations
 
-```bash
-# Zainstaluj dev dependencies
-pip install -r requirements-dev.txt
+| What | Where |
+|---|---|
+| App config | `~/Library/Application Support/Malinche/config.json` |
+| App logs | `~/Library/Application Support/Malinche/logs/malinche.log` |
+| State file | `~/Library/Application Support/Malinche/state.json` |
+| Whisper binaries | `~/Library/Application Support/Malinche/bin/` |
+| Whisper models | `~/Library/Application Support/Malinche/models/` |
+| Output directory | configurable, default `~/Documents/Transcriptions/` |
 
-# Uruchom z verbose
-pytest tests/ -v -s
-```
+## Multi-Mac (iCloud vault)
 
----
+- Set `MALINCHE_TRANSCRIBE_DIR` to a folder inside your iCloud Drive (`~/Library/Mobile Documents/…`).
+- Malinche writes a deduplication index to `.malinche/index.json` inside the vault.
+- A second Mac sees the same audio file's fingerprint and skips it.
+- FREE: dedup/skip. PRO: versioned retranscription (`.v2.md`, `.v3.md`).
 
-## 📚 Dodatkowa dokumentacja
+## Further reading
 
-- `README.md` - Pełna dokumentacja projektu
-- `Docs/ARCHITECTURE.md` - Architektura systemu
-- `Docs/DEVELOPMENT.md` - Guide dla developerów
-- `Docs/TESTING-GUIDE.md` - Szczegółowy guide testowania
-- `Docs/API.md` - Dokumentacja API
-- `CHANGELOG.md` - Historia zmian
-
----
-
-## 🎯 Następne kroki
-
-1. ✅ Zainstaluj i przetestuj lokalnie
-2. ✅ Zainstaluj jako daemon
-3. ✅ Podłącz recorder i zweryfikuj
-4. 📖 Przeczytaj `DEVELOPMENT.md` dla advanced usage
-5. 🔧 Dostosuj konfigurację w `src/config.py` jeśli potrzeba
-6. 🧪 Uruchom testy: `make test`
-
----
-
-## 💡 Wskazówki
-
-- **Pierwsze uruchomienie**: Wszystkie pliki z ostatnich 7 dni będą transkrybowane
-- **Kolejne podłączenia**: Tylko nowe pliki od ostatniego podłączenia
-- **Timeout**: Transkrypcja ma 30 minut timeout
-- **State file**: Usuń `~/.olympus_transcriber_state.json` aby zresetować historię
-- **Logi**: Zawsze sprawdzaj logi przy problemach
-
----
-
-## ✨ Gotowe do użycia!
-
-Podłącz swój Olympus LS-P1 i ciesz się automatycznymi transkrypcjami! 🎉
-
----
-
-## Multi-Mac (iCloud Vault)
-
-- Umieść `TRANSCRIBE_DIR` w iCloud (`~/Library/Mobile Documents/...`).
-- Malinche zapisuje dedup index w `.malinche/index.json` wewnątrz Vault.
-- Gdy drugi Mac zobaczy ten sam plik audio, fingerprint zostanie wykryty i plik zostanie pominięty.
-- W FREE działa dedup/skip. W PRO dostępna jest wersjonowana retranskrypcja (`.v2.md`, `.v3.md`).
-
+- [README.md](README.md) — feature overview
+- [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md) — system architecture
+- [Docs/DEVELOPMENT.md](Docs/DEVELOPMENT.md) — developer guide
+- [Docs/API.md](Docs/API.md) — module API reference
+- [CHANGELOG.md](CHANGELOG.md) — release history

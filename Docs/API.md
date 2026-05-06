@@ -1,30 +1,30 @@
 # API Documentation
 
-> **Wersja:** v2.0.0 (w przygotowaniu)
+> **Version:** v2.0.0-beta.8 (development)
 >
-> **Powiązane dokumenty:**
-> - [README.md](../README.md) - Przegląd projektu
-> - [ARCHITECTURE.md](ARCHITECTURE.md) - Architektura systemu
-> - [DEVELOPMENT.md](DEVELOPMENT.md) - Przewodnik deweloperski
+> **Related documents:**
+> - [README.md](../README.md) — project overview
+> - [ARCHITECTURE.md](ARCHITECTURE.md) — system architecture
+> - [DEVELOPMENT.md](DEVELOPMENT.md) — developer guide
 
 Complete API reference for Malinche modules.
 
 ## Table of Contents
 
-- [config.py](#configpy) - Konfiguracja
-- [features.py](#featurespy) - 🆕 Flagi funkcji (FREE/PRO/PRO_ORG)
-- [license.py](#licensepy) - 🆕 Zarządzanie licencją
-- [logger.py](#loggerpy) - Logging
-- [file_monitor.py](#file_monitorpy) - FSEvents monitoring
-- [transcriber.py](#transcriberpy) - Silnik transkrypcji
-- [markdown_generator.py](#markdown_generatorpy) - Generator MD
-- [state_manager.py](#state_managerpy) - Zarządzanie stanem
-- [menu_app.py](#menu_apppy) - Menu bar app
-- [app_core.py](#app_corepy) - Core logic
-- [summarizer.py](#summarizerpy) - AI summaries (PRO)
-- [tagger.py](#taggerpy) - Auto-tagging (PRO)
-- [fingerprint.py](#fingerprintpy) - Audio fingerprinting
-- [vault_index.py](#vault_indexpy) - Vault dedup index
+- [config.py](#configpy) — configuration
+- [features.py](#featurespy) — feature flags (FREE/PRO/PRO_ORG)
+- [license.py](#licensepy) — license management
+- [logger.py](#loggerpy) — logging
+- [file_monitor.py](#file_monitorpy) — FSEvents monitoring
+- [transcriber.py](#transcriberpy) — transcription engine
+- [markdown_generator.py](#markdown_generatorpy) — markdown generator
+- [state_manager.py](#state_managerpy) — state management
+- [menu_app.py](#menu_apppy) — menu bar app
+- [app_core.py](#app_corepy) — core logic
+- [summarizer.py](#summarizerpy) — AI summaries (PRO)
+- [tagger.py](#taggerpy) — auto-tagging (PRO)
+- [fingerprint.py](#fingerprintpy) — audio fingerprinting
+- [vault_index.py](#vault_indexpy) — vault dedup index
 
 ---
 
@@ -43,12 +43,12 @@ Central configuration dataclass with all application settings.
 | Name | Type | Default | Description |
 |------|------|---------|-------------|
 | `TRANSCRIBE_DIR` | `Path` | `~/Documents/Transcriptions` | Output directory for transcriptions |
-| `LOCAL_RECORDINGS_DIR` | `Path` | `~/.transrec/recordings` | Staging directory for audio files |
-| `LOG_DIR` | `Path` | `~/Library/Logs` | Directory for log files |
-| `STATE_FILE` | `Path` | `~/.transrec_state.json` | State file path |
-| `LOG_FILE` | `Path` | `~/Library/Logs/transrec.log` | Main log file path |
-| `WHISPER_CPP_PATH` | `Path` | `~/whisper.cpp/main` | Path to whisper.cpp binary |
-| `WHISPER_CPP_MODELS_DIR` | `Path` | `~/whisper.cpp/models` | Models directory |
+| `LOCAL_RECORDINGS_DIR` | `Path` | `~/Library/Application Support/Malinche/recordings` | Staging directory for audio files |
+| `LOG_DIR` | `Path` | `~/Library/Application Support/Malinche/logs` | Directory for log files |
+| `STATE_FILE` | `Path` | `~/Library/Application Support/Malinche/state.json` | State file path |
+| `LOG_FILE` | `Path` | `~/Library/Application Support/Malinche/logs/malinche.log` | Main log file path (rotating, 5×5 MB) |
+| `WHISPER_CPP_PATH` | `Path` | `~/Library/Application Support/Malinche/bin/whisper-cli` | Path to whisper.cpp binary |
+| `WHISPER_CPP_MODELS_DIR` | `Path` | `~/Library/Application Support/Malinche/models` | Models directory |
 | `WHISPER_MODEL` | `str` | `"small"` | Model size (tiny/base/small/medium/large) |
 | `WHISPER_LANGUAGE` | `str` | `"pl"` | Transcription language |
 | `TRANSCRIPTION_TIMEOUT` | `int` | `3600` | Max transcription time (seconds) |
@@ -60,9 +60,10 @@ Central configuration dataclass with all application settings.
 
 | Variable | Config Field | Description |
 |----------|--------------|-------------|
-| `OLYMPUS_TRANSCRIBE_DIR` | `TRANSCRIBE_DIR` | Override output directory |
+| `MALINCHE_TRANSCRIBE_DIR` | `TRANSCRIBE_DIR` | Override output directory |
+| `OLYMPUS_TRANSCRIBE_DIR` | `TRANSCRIBE_DIR` | Legacy alias for `MALINCHE_TRANSCRIBE_DIR` (still honored during migration) |
 | `WHISPER_CPP_PATH` | `WHISPER_CPP_PATH` | Override whisper.cpp path |
-| `ANTHROPIC_API_KEY` | - | API key for summaries (PRO) |
+| `ANTHROPIC_API_KEY` | — | API key for AI summaries (PRO) |
 
 #### Methods
 
@@ -358,7 +359,7 @@ tags:
   - notes
 ---
 
-# Transkrypcja
+# Transcript
 
 Text content...
 ```
@@ -408,7 +409,7 @@ Get list of already processed files for volume.
 
 macOS menu bar application.
 
-### Class: `OlympusMenuApp`
+### Class: `MalincheMenuApp`
 
 rumps-based menu bar application.
 
@@ -449,7 +450,7 @@ class AppState(Enum):
     ERROR = "error"
 ```
 
-### Class: `OlympusTranscriber`
+### Class: `MalincheTranscriber`
 
 Main application coordinator.
 
@@ -460,9 +461,9 @@ Main application coordinator.
 Start the transcriber daemon.
 
 ```python
-from src.app_core import OlympusTranscriber
+from src.app_core import MalincheTranscriber
 
-app = OlympusTranscriber()
+app = MalincheTranscriber()
 app.start()
 ```
 
@@ -606,8 +607,8 @@ except Exception as e:
 
 ---
 
-> **Powiązane dokumenty:**
-> - [README.md](../README.md) - Przegląd projektu
-> - [ARCHITECTURE.md](ARCHITECTURE.md) - Architektura systemu
-> - [DEVELOPMENT.md](DEVELOPMENT.md) - Przewodnik deweloperski
-> - [PUBLIC-DISTRIBUTION-PLAN.md](PUBLIC-DISTRIBUTION-PLAN.md) - Plan dystrybucji v2.0.0
+> **Related documents:**
+> - [README.md](../README.md) — project overview
+> - [ARCHITECTURE.md](ARCHITECTURE.md) — system architecture
+> - [DEVELOPMENT.md](DEVELOPMENT.md) — developer guide
+> - [PUBLIC-DISTRIBUTION-PLAN.md](PUBLIC-DISTRIBUTION-PLAN.md) — v2.0.0 distribution plan
