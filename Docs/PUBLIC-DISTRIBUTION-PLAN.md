@@ -1,246 +1,251 @@
-# 📦 Plan Dystrybucji Publicznej - Malinche
+# Public Distribution Plan — Malinche
 
-**Wersja:** 1.2 (Freemium - Subscription Model)  
-**Data utworzenia:** 2025-12-17  
-**Ostatnia aktualizacja:** 2026-02-08  
-**Status:** DRAFT - Do zatwierdzenia  
-**Model:** Freemium (FREE open-source + PRO subskrypcja)
-
----
-
-## 📋 Spis treści
-
-1. [Podsumowanie wykonawcze](#1-podsumowanie-wykonawcze)
-2. [Decyzje strategiczne](#2-decyzje-strategiczne)
-3. [Architektura docelowa](#3-architektura-docelowa)
-4. [Plan implementacji - Fazy](#4-plan-implementacji---fazy)
-5. [Strategia testowania](#5-strategia-testowania)
-6. [Szczegóły techniczne](#6-szczegóły-techniczne)
-7. [Harmonogram i kamienie milowe](#7-harmonogram-i-kamienie-milowe)
-8. [Ryzyka i mitygacja](#8-ryzyka-i-mitygacja)
-9. [Koszty](#9-koszty)
-10. [Kryteria sukcesu](#10-kryteria-sukcesu)
-11. [Strategia Git i repozytoria](#11-strategia-git-i-repozytoria)
-12. [Następne kroki](#12-następne-kroki)
-13. [Podsumowanie modelu Freemium](#13-podsumowanie-modelu-freemium)
+**Plan version:** 1.2 (Freemium — Subscription Model)
+**Created:** 2025-12-17
+**Last updated:** 2026-05-05
+**Status:** DRAFT — pending approval
+**Model:** Freemium (FREE open-source + PRO subscription)
 
 ---
 
-## 1. Podsumowanie wykonawcze
+## Table of contents
 
-### Cel projektu
-
-Przekształcenie Malinche z narzędzia developerskiego w aplikację gotową do publicznej dystrybucji, z:
-- Prostą instalacją (drag & drop do Applications)
-- Wsparciem dla dowolnego recordera/karty SD
-- Profesjonalnym UX (code signing, notaryzacja)
-- Automatycznym pobieraniem zależności (whisper.cpp)
-- **Modelem Freemium** (FREE + PRO Individual + PRO Org)
-
-### Model biznesowy
-
-| Wersja | Cena | Funkcje | Limity |
-|--------|------|---------|--------|
-| **FREE** | $0 (open source) | Transkrypcja lokalna, eksport MD, dowolne recordery | Brak |
-| **PRO Individual** | Miesięczna subskrypcja | FREE + AI summaries, AI tags, Diarization | 300 min/mies |
-| **PRO Organization** | Miesięczna subskrypcja | PRO + Knowledge Base, Shared Lexicon, Cloud Sync | 1000+ min/mies |
-
-### Kluczowe decyzje techniczne
-
-| Aspekt | Decyzja | Uzasadnienie |
-|--------|---------|--------------|
-| **Narzędzie pakowania** | py2app + rumps | Dedykowane dla menu bar apps, lepsze niż PyInstaller |
-| **Architektura CPU** | Tylko Apple Silicon (M1/M2/M3/M4) | Uproszczenie buildu, 80%+ nowych Mac'ów |
-| **Whisper.cpp** | Download on first run | Mniejsza paczka początkowa (~15MB vs 550MB) |
-| **FFmpeg** | Bundlowany statycznie | Bez dependency na Homebrew |
-| **Code signing** | Tak ($99/rok) | Profesjonalne UX bez ostrzeżeń Gatekeeper |
-| **Backend PRO** | FastAPI (Python) | Współdzielona logika z klientem, łatwa integracja AI |
-| **Płatności** | LemonSqueezy / Stripe | Tax compliance, obsługa subskrypcji i kluczy API |
+1. [Executive summary](#1-executive-summary)
+2. [Strategic decisions](#2-strategic-decisions)
+3. [Target architecture](#3-target-architecture)
+4. [Implementation plan — phases](#4-implementation-plan--phases)
+5. [Testing strategy](#5-testing-strategy)
+6. [Costs](#6-costs)
+7. [Freemium summary](#7-freemium-summary)
 
 ---
 
-## 2. Decyzje strategiczne
+## 1. Executive summary
 
-### 2.1. Docelowa platforma
+### Project goal
+
+Transform Malinche from a developer tool into a publicly distributable application with:
+- One-step install (drag & drop into Applications)
+- Support for any USB recorder or SD card
+- Professional UX (code signing, notarization)
+- Auto-download of dependencies (whisper.cpp + models)
+- **Freemium model** (FREE + PRO Individual + PRO Organization)
+
+### Business model
+
+| Tier | Price | Features | Limits |
+|---|---|---|---|
+| **FREE** | $0 (open source) | Local transcription, MD export, any recorder | None |
+| **PRO Individual** | Monthly subscription | FREE + AI summaries, AI tags, diarization | 300 min/month |
+| **PRO Organization** | Monthly subscription | PRO + Knowledge Base, Shared Lexicon, Cloud Sync | 1000+ min/month |
+
+### Key technical decisions
+
+| Aspect | Decision | Rationale |
+|---|---|---|
+| **Packaging tool** | py2app + rumps | Tailored for menu bar apps, better than PyInstaller for this case |
+| **CPU architecture** | Apple Silicon only (M1/M2/M3/M4) | Simpler build, 80%+ of new Macs |
+| **whisper.cpp** | Download on first run | Smaller installer (~15 MB vs 550 MB) |
+| **FFmpeg** | Statically bundled | No Homebrew dependency |
+| **Code signing** | Yes ($99/yr) | Professional UX, no Gatekeeper warnings |
+| **PRO backend** | FastAPI (Python) | Shares logic with the client; easy AI integration |
+| **Payments** | LemonSqueezy / Stripe | Tax compliance, subscription + API key management |
+
+---
+
+## 2. Strategic decisions
+
+### 2.1. Target platform
 
 ```
-✅ WYBÓR: Apple Silicon (ARM64) only
+✅ Apple Silicon (ARM64) only
 
-Uzasadnienie:
-- 80%+ nowych Mac'ów to Apple Silicon (od 2020)
-- Upraszcza proces budowania (jeden build)
-- Core ML acceleration działa tylko na Apple Silicon
-- Intel Mac'i mogą używać wersji developerskiej (źródła)
+Rationale:
+- 80%+ of new Macs are Apple Silicon (since 2020)
+- Simplifies the build (single binary)
+- Core ML acceleration only works on Apple Silicon
+- Intel Mac users can run the dev version from source
 ```
 
-### 2.2. Docelowy użytkownik
+### 2.2. Target user
 
 ```
-✅ WYBÓR: Użytkownik nietechniczny
+✅ Non-technical user
 
-Konsekwencje:
-- Wszystkie zależności pobierane automatycznie
-- Brak wymagania Homebrew
-- Wizard prowadzący przez konfigurację
-- Jasne instrukcje dla Full Disk Access
+Implications:
+- All dependencies downloaded automatically
+- No Homebrew required
+- Wizard walks the user through setup
+- Clear instructions for Full Disk Access
 ```
 
-### 2.3. Model dystrybucji
+### 2.3. Distribution model
 
 ```
-✅ WYBÓR: Freemium (FREE + PRO)
+✅ Freemium (FREE + PRO)
 
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         MALINCHE FREE                                   │
-│                     (Open Source - GitHub)                               │
-│ ├─────────────────────────────────────────────────────────────────────────┤
-│ ✅ Automatyczne wykrywanie recorderów/kart SD                          │
-│ ✅ Transkrypcja lokalna (whisper.cpp)                                  │
-│ ✅ Podstawowe tagi (#transcription, #audio)                            │
-│ ✅ Export do Markdown                                                   │
-│ ✅ Menu bar app                                                        │
-│ ✅ First-run wizard                                                    │
+│                     (Open Source — GitHub)                               │
+├─────────────────────────────────────────────────────────────────────────┤
+│ ✅ Auto-detect recorders / SD cards                                     │
+│ ✅ Local transcription (whisper.cpp)                                    │
+│ ✅ Basic tags (#transcription, #audio)                                  │
+│ ✅ Markdown export                                                      │
+│ ✅ Menu bar app                                                         │
+│ ✅ First-run wizard                                                     │
 └─────────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         MALINCHE PRO INDIVIDUAL                         │
-│                    (Miesięczna subskrypcja)                             │
-│ ├─────────────────────────────────────────────────────────────────────────┤
-│ ⭐ AI Podsumowania (przez serwer z Claude/GPT)                         │
-│ ⭐ Inteligentne tagi AI                                                │
-│ ⭐ Automatyczne nazewnictwo plików z AI                                │
-│ ⭐ Diaryzacja rozmówców (lokalna/serwerowa)                            │
-│ 📊 Limit: 300 minut przetwarzania miesięcznie                          │
+│                       (Monthly subscription)                            │
+├─────────────────────────────────────────────────────────────────────────┤
+│ ⭐ AI summaries (server-side via Claude/GPT)                            │
+│ ⭐ Smart AI tags                                                        │
+│ ⭐ Auto-titles for files                                                │
+│ ⭐ Speaker diarization (local/server)                                   │
+│ 📊 Limit: 300 minutes of processing per month                           │
 └─────────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         MALINCHE PRO ORGANIZATION                       │
-│                    (Miesięczna subskrypcja)                             │
-│ ├─────────────────────────────────────────────────────────────────────────┤
-│ 🏢 Współdzielona baza rozmówców                                        │
-│ 🏢 Słownik dziedzinowy (Custom Lexicon)                                 │
-│ 🏢 Baza Wiedzy (Knowledge Base extraction)                              │
+│                       (Monthly subscription)                            │
+├─────────────────────────────────────────────────────────────────────────┤
+│ 🏢 Shared speaker database                                              │
+│ 🏢 Domain lexicon                                                       │
+│ 🏢 Knowledge base extraction                                            │
 │ 🏢 Cloud sync (Obsidian, S3, Azure)                                     │
-│ 📊 Limit: 1000+ minut przetwarzania miesięcznie                        │
+│ 📊 Limit: 1000+ minutes of processing per month                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 3. Architektura docelowa
+## 3. Target architecture
 
-### 3.1. Struktura aplikacji (v2.0.0)
+### 3.1. App layout (v2.0.0)
 
 ```
 ~/Applications/
-└── Malinche.app/                        (~15MB download)
+└── Malinche.app/                        (~15 MB download)
     └── Contents/
         ├── MacOS/
-        │   └── Malinche                 (główny plik wykonywalny)
+        │   └── Malinche                 (main executable)
         ├── Resources/
         │   ├── icon.icns
-        │   └── ffmpeg                   (statyczny, ~15MB)
+        │   └── ffmpeg                   (static, ~15 MB)
 
 ~/Library/Application Support/Malinche/
-├── whisper.cpp/                         (pobierane przy 1. uruchomieniu)
-├── models/                              (modele GGML)
-├── config.json                          (ustawienia użytkownika)
-├── license.json                         (klucz licencyjny)
-└── license_cache.json                   (cache weryfikacji offline)
+├── bin/whisper-cli                      (downloaded on first run)
+├── models/                              (GGML models)
+├── config.json                          (user settings)
+├── state.json                           (per-volume state)
+├── runtime/transcriber.lock
+├── recordings/                          (staging dir)
+└── logs/malinche.log                    (rotating, 5×5 MB)
 ```
 
 ---
 
-## 4. Plan implementacji - Fazy
+## 4. Implementation plan — phases
 
-### FAZA 1: Uniwersalne źródła nagrań (ZAKOŃCZONA ✅)
-Aplikacja wykrywa dowolny dysk/kartę SD. Nowy system `UserSettings`.
+### Phase 1: Universal recording sources (DONE ✅)
+Detect any external volume / SD card. New `UserSettings` system.
 
-### FAZA 2: System pobierania zależności (ZAKOŃCZONA ✅)
-Automatyczne pobieranie whisper.cpp i modeli z GitHub/HuggingFace.
+### Phase 2: Dependency download system (DONE ✅)
+Automatic whisper.cpp + model downloads from GitHub / HuggingFace.
 
-### FAZA 3: First-Run Wizard (ZAKOŃCZONA ✅)
-Przyjazny tutorial i konfiguracja wstępna.
+### Phase 3: First-run wizard (DONE ✅)
+Friendly tutorial and initial configuration.
 
-### FAZA 4: Pakowanie py2app (ZAKOŃCZONA ✅)
-Tworzenie .app bundle.
+### Phase 4: py2app packaging (DONE ✅)
+`.app` bundle generation.
 
-### FAZA 5: Code Signing & Notaryzacja (W TOKU)
-Podpisywanie aplikacji certyfikatem Apple Developer.
+### Phase 5: Code signing & notarization (IN PROGRESS)
+Sign the application with an Apple Developer certificate; submit for notarization.
 
-### FAZA 6: Profesjonalny DMG (ZAKOŃCZONA ✅ - wersja testowa)
-Skrypty budowania DMG i instrukcje dla testerów.
+### Phase 6: Professional DMG (DONE ✅, unsigned beta)
+DMG build scripts + tester instructions.
 
-### FAZA 7: GUI Settings & Polish (ZAKOŃCZONA ✅)
-Menu ustawień, wybór folderów, języka i modeli.
+### Phase 7: GUI settings & polish (DONE ✅)
+Settings window, folder picker, language and model selection.
 
-### FAZA 8: Infrastruktura Freemium (ZAKOŃCZONA ✅)
-- System Feature Flags (FREE/PRO/PRO_ORG).
-- License Manager z obsługą offline cache (7 dni).
-- PRO Gates w summarizerze i taggerze.
-- UI aktywacji PRO w menu paska stanu.
+### Phase 8: Freemium infrastructure (DONE ✅)
+- Feature flags (FREE/PRO/PRO_ORG)
+- License manager with offline cache (7 days)
+- PRO gates in summarizer and tagger
+- PRO activation UI in the menu bar
 
----
+### Phase 9: UI redesign (DONE ✅)
+- Wizard consolidation: single config step (folder + language + model)
+- Settings: single panel instead of a sequence of alerts
+- Menu bar state icons + new app icon + custom DMG background
+- English UI; aztec accent palette
 
-## 5. Strategia testowania
-
-### 5.1. Wymagania Coverage
-- **Minimum 80% coverage** dla wszystkich nowych modułów.
-- **100% coverage** dla krytycznych modułów: `src/config/settings.py`, `src/config/license.py`, `src/core/file_monitor.py`.
-
-### 5.2. Testy manualne (Faza 8)
-- [ ] Aktywacja nieprawidłowego klucza → błąd UI.
-- [ ] Symulacja braku internetu → użycie cache'u licencji.
-- [ ] Wygaśnięcie cache'u (7 dni) → powrót do FREE.
-- [ ] Próba użycia AI w wersji FREE → log "Require PRO" i brak akcji.
+### Phase 10: PRO backend (PLANNED)
+FastAPI service for `/v1/license`, `/v1/summarize`, `/v1/tags`. Hosted on Cloudflare Workers + LemonSqueezy.
 
 ---
 
-## 9. Koszty
+## 5. Testing strategy
 
-### 8.1. Koszty infrastruktury (PRO)
+### 5.1. Coverage requirements
 
-| Serwis | Darmowy tier | Szacowany koszt (100 PRO users) |
-|--------|--------------|----------------------------------|
-| Claude API (Haiku) | - | ~$10-20/mies |
-| Diarization (VAD/Embeddings) | Lokalnie | $0 (koszt CPU użytkownika) |
-| Hosting API | CF Workers / Fly.io | $0-5/mies |
-| **RAZEM** | | **~$15-25/mies** |
+- **Minimum 80% coverage** for all new modules
+- **100% coverage** for critical modules: `src/config/settings.py`, `src/config/license.py`, `src/file_monitor.py`
 
-### 8.2. Projekcja przychodów
+### 5.2. Manual tests (Phase 8)
 
-- Model: Subskrypcja (np. $8/mies Individual, $25/mies Organization).
-- Próg rentowności (break-even): ~5-10 aktywnych subskrypcji PRO.
+- [ ] Activate invalid key → UI error
+- [ ] Simulate offline → license cache used
+- [ ] Cache expiry (7 days) → fall back to FREE
+- [ ] Try to use AI on FREE tier → "Requires PRO" log + no action
 
 ---
 
-## 13. Podsumowanie modelu Freemium
+## 6. Costs
+
+### 6.1. Infrastructure cost (PRO)
+
+| Service | Free tier | Estimated cost (100 PRO users) |
+|---|---|---|
+| Claude API (Haiku) | — | ~$10–20 / month |
+| Diarization (VAD / embeddings) | Local | $0 (user-side CPU) |
+| API hosting | CF Workers / Fly.io | $0–5 / month |
+| **Total** | | **~$15–25 / month** |
+
+### 6.2. Revenue projection
+
+- Model: subscription (e.g. $8/mo Individual, $25/mo Organization)
+- Break-even: ~5–10 active PRO subscriptions
+
+---
+
+## 7. Freemium summary
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    STRATEGIA FREEMIUM                            │
+│                    FREEMIUM STRATEGY                             │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                  │
 │  FREE (GitHub, MIT)                                              │
-│  ├─ Lokalna transkrypcja bez limitów                             │
-│  └─ Eksport do Markdown                                          │
+│  ├─ Local transcription, no limits                               │
+│  └─ Markdown export                                              │
 │                                                                  │
-│  PRO INDIVIDUAL (Subskrypcja miesięczna)                         │
-│  ├─ AI Summaries & Smart Tags                                    │
-│  ├─ Diaryzacja rozmówców (Speaker ID)                            │
-│  └─ Limit: 300 minut przetwarzania/mies                          │
+│  PRO INDIVIDUAL (monthly subscription)                           │
+│  ├─ AI summaries & smart tags                                    │
+│  ├─ Speaker diarization                                          │
+│  └─ Limit: 300 minutes / month                                   │
 │                                                                  │
-│  PRO ORGANIZATION (Subskrypcja miesięczna)                       │
-│  ├─ Baza Wiedzy (Knowledge Base)                                 │
-│  ├─ Słownik dziedzinowy (Lexicon)                                │
-│  └─ Cloud Sync & Shared Speaker DB                               │
+│  PRO ORGANIZATION (monthly subscription)                         │
+│  ├─ Knowledge base                                               │
+│  ├─ Domain lexicon                                               │
+│  └─ Cloud sync & shared speaker DB                               │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-**Autor:** Cursor AI  
-**Wersja planu:** 1.2 (Subscription Model)  
-**Zatwierdzenie:** [ ] Oczekuje na zatwierdzenie  
-**Data zatwierdzenia:** 2026-02-08
+**Plan version:** 1.2 (Subscription Model)
+**Approval:** [ ] Pending

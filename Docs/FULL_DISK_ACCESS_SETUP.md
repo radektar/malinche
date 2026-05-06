@@ -1,123 +1,123 @@
-# Konfiguracja Full Disk Access dla Malinche
+# Full Disk Access setup for Malinche
 
-> **Wersja:** v2.0.0
+> **Version:** v2.0.0
 >
-> **Powiązane dokumenty:**
-> - [README.md](../README.md) - Przegląd projektu
-> - [ARCHITECTURE.md](ARCHITECTURE.md) - Architektura systemu
+> **Related documents:**
+> - [README.md](../README.md) — project overview
+> - [ARCHITECTURE.md](ARCHITECTURE.md) — system architecture
 
 ## Problem
 
-Aplikacja uruchomiona przez `launchd` lub jako `.app` nie ma dostępu do plików na zewnętrznych dyskach (rekordera, karty SD, pendrive) z powodu ograniczeń macOS TCC (Transparency, Consent, and Control).
+When launched as a `.app` (or via `launchd`), Malinche cannot read files on external volumes (USB recorder, SD card, thumbdrive) because of macOS TCC (Transparency, Consent, and Control) restrictions.
 
-## Rozwiązanie
+## Solution
 
-Aplikacja `Malinche.app` musi być dodana do **Full Disk Access** w ustawieniach systemowych.
+`Malinche.app` must be added to **Full Disk Access** in System Settings.
 
-## Instrukcja krok po kroku
+## Step-by-step instructions
 
-### 1. Otwórz ustawienia Full Disk Access
+### 1. Open Full Disk Access settings
 
-**Opcja A - Przez System Settings:**
+**Option A — System Settings:**
 - System Settings → Privacy & Security → Full Disk Access
 
-**Opcja B - Skrót:**
+**Option B — direct shortcut:**
 ```bash
 open "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
 ```
 
-### 2. Dodaj aplikację
+### 2. Add the app
 
-1. Kliknij przycisk **"+"** (plus) na dole listy
-2. W oknie wyboru pliku:
-   - Naciśnij **Cmd + Shift + G** (Go to Folder)
-   - Wklej: `~/Applications` lub `/Applications`
-   - Naciśnij **Enter**
-3. Wybierz **Malinche.app**
-4. Kliknij **Open**
+1. Click **"+"** at the bottom of the list
+2. In the file picker:
+   - Press **Cmd + Shift + G** (Go to Folder)
+   - Paste: `~/Applications` or `/Applications`
+   - Press **Enter**
+3. Select **Malinche.app**
+4. Click **Open**
 
-### 3. Włącz dostęp
+### 3. Enable access
 
-- Upewnij się, że checkbox obok **Malinche.app** jest **zaznaczony**
-- Jeśli nie jest, kliknij go aby włączyć
+- Make sure the checkbox next to **Malinche.app** is **checked**
+- If not, click it to enable
 
-### 4. Zrestartuj aplikację
+### 4. Restart the app
 
-Po dodaniu do Full Disk Access, aplikacja musi być zrestartowana:
+After adding it to Full Disk Access, the app must be restarted:
 
 ```bash
-# Zatrzymaj obecną instancję
+# Stop the current instance
 pkill -f "Malinche"
 
-# Uruchom ponownie
+# Start it again
 open ~/Applications/Malinche.app
-# lub
+# or
 open /Applications/Malinche.app
 ```
 
-### 5. Weryfikacja
+### 5. Verify
 
-Sprawdź logi aby potwierdzić dostęp:
+Check the log to confirm access:
 
 ```bash
-tail -f ~/Library/Logs/transrec.log
+tail -f ~/Library/Application\ Support/Malinche/logs/malinche.log
 ```
 
-Po podłączeniu dysku zewnętrznego z plikami audio powinieneś zobaczyć:
+After plugging in an external volume with audio files you should see:
 ```
-✓ Volume detected: /Volumes/NAZWA_DYSKU
-📁 Found X new audio file(s)
+Volume detected: /Volumes/<name>
+Found X new audio file(s)
 ```
 
 ## Troubleshooting
 
-### "Found 0 new audio files" mimo że są nowe pliki
+### "Found 0 new audio files" even though new files are present
 
-Sprawdź:
-1. Czy aplikacja została zrestartowana po dodaniu do Full Disk Access
-2. Czy checkbox w Full Disk Access jest zaznaczony
-3. Czy dysk jest widoczny w Finderze: `ls /Volumes/`
+Check:
+1. The app was restarted after being added to Full Disk Access
+2. The Full Disk Access checkbox is checked
+3. The volume is visible in Finder: `ls /Volumes/`
 
-### Aplikacja nie pojawia się na liście Full Disk Access
+### App does not appear in the Full Disk Access list
 
-1. Znajdź lokalizację aplikacji:
+1. Find the app's location:
    ```bash
    mdfind -name "Malinche.app"
    ```
-2. Dodaj ręcznie przez przycisk "+"
+2. Add it manually via the "+" button
 
-### First-Run Wizard (v2.0.0)
+## First-run wizard (v2.0.0)
 
-W wersji 2.0.0 aplikacja automatycznie:
-1. Wykrywa brak Full Disk Access
-2. Wyświetla instrukcję z przyciskiem do System Settings
-3. Weryfikuje dostęp po powrocie do aplikacji
+In v2.0.0 the app automatically:
+1. Detects missing Full Disk Access
+2. Shows a dialog with a button to System Settings
+3. Verifies access when the user returns to the app
 
-## Alternatywa: Uruchamianie z Terminala (Development)
+## Alternative: launching from Terminal (development)
 
-Jeśli nie możesz dodać aplikacji do Full Disk Access, możesz uruchomić z Terminala (który dziedziczy uprawnienia użytkownika):
+If you cannot add the app to Full Disk Access, you can launch from a Terminal session, which inherits the user's permissions:
 
 ```bash
-cd ~/CODEing/transrec
+cd ~/CODEing/malinche
 source venv/bin/activate
 python -m src.menu_app
 ```
 
-**Uwaga:** Ta metoda jest zalecana tylko do development/testowania. Dla normalnego użycia aplikacja powinna działać jako `.app` z Full Disk Access.
+**Note:** this is recommended for development/testing only. For normal use the app should run as `.app` with Full Disk Access.
 
-## Dlaczego Full Disk Access jest wymagany?
+## Why is Full Disk Access required?
 
-macOS od wersji 10.14 (Mojave) wprowadził TCC - system kontroli dostępu do prywatnych danych użytkownika. Zewnętrzne dyski są traktowane jako "prywatne lokalizacje", więc aplikacje muszą mieć jawną zgodę użytkownika na dostęp.
+Since macOS 10.14 (Mojave), TCC controls app access to private user data. External volumes are treated as "private locations", so apps must explicitly request user consent.
 
-### Co się stanie bez FDA?
+### What happens without FDA?
 
-- Aplikacja wykryje podłączenie dysku
-- Ale `os.listdir()` zwróci pustą listę plików
-- Transkrypcja nie będzie możliwa
+- The app detects the volume mount
+- But `os.listdir()` returns an empty list
+- Transcription cannot proceed
 
 ---
 
-> **Powiązane dokumenty:**
-> - [README.md](../README.md) - Przegląd projektu
-> - [ARCHITECTURE.md](ARCHITECTURE.md) - Architektura systemu
-> - [PUBLIC-DISTRIBUTION-PLAN.md](PUBLIC-DISTRIBUTION-PLAN.md) - Plan dystrybucji v2.0.0
+> **Related documents:**
+> - [README.md](../README.md) — project overview
+> - [ARCHITECTURE.md](ARCHITECTURE.md) — system architecture
+> - [PUBLIC-DISTRIBUTION-PLAN.md](PUBLIC-DISTRIBUTION-PLAN.md) — v2.0.0 distribution plan
