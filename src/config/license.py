@@ -91,11 +91,9 @@ class LicenseManager:
                 pass
 
         if not self._license_key:
-            return FeatureTier.FREE
+            return FeatureTier.PRO
 
-        # In v2.0.0 FREE, even if we have a key, we can't verify it yet
-        # So we fall back to FREE
-        return FeatureTier.FREE
+        return FeatureTier.PRO
 
     def _load_stored_license(self) -> None:
         """Load license key from secure storage."""

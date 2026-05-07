@@ -37,18 +37,18 @@ class DownloadWindow:
                 NSWindow,
                 NSWindowStyleMaskTitled,
                 NSWindowStyleMaskClosable,
-                NSRect,
                 NSTextField,
                 NSProgressIndicator,
                 NSBackingStoreBuffered,
                 NSOperationQueue,
             )
+            from Foundation import NSMakeRect
 
             self._appkit = {
                 "NSWindow": NSWindow,
                 "NSWindowStyleMaskTitled": NSWindowStyleMaskTitled,
                 "NSWindowStyleMaskClosable": NSWindowStyleMaskClosable,
-                "NSRect": NSRect,
+                "NSMakeRect": NSMakeRect,
                 "NSTextField": NSTextField,
                 "NSProgressIndicator": NSProgressIndicator,
                 "NSBackingStoreBuffered": NSBackingStoreBuffered,
@@ -77,7 +77,7 @@ class DownloadWindow:
 
         def _build():
             NSWindow = self._appkit["NSWindow"]
-            NSRect = self._appkit["NSRect"]
+            NSMakeRect = self._appkit["NSMakeRect"]
             NSTextField = self._appkit["NSTextField"]
             NSProgressIndicator = self._appkit["NSProgressIndicator"]
             style = (
@@ -86,7 +86,7 @@ class DownloadWindow:
             )
 
             self._window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-                NSRect((0, 0), (460, 140)),
+                NSMakeRect(0, 0, 460, 140),
                 style,
                 self._appkit["NSBackingStoreBuffered"],
                 False,
@@ -95,7 +95,7 @@ class DownloadWindow:
 
             content = self._window.contentView()
             self._label = NSTextField.alloc().initWithFrame_(
-                NSRect((20, 80), (420, 40))
+                NSMakeRect(20, 80, 420, 40)
             )
             self._label.setStringValue_(self.state.detail)
             self._label.setBezeled_(False)
@@ -105,7 +105,7 @@ class DownloadWindow:
             content.addSubview_(self._label)
 
             self._progress = NSProgressIndicator.alloc().initWithFrame_(
-                NSRect((20, 40), (420, 20))
+                NSMakeRect(20, 40, 420, 20)
             )
             self._progress.setIndeterminate_(False)
             self._progress.setMinValue_(0.0)

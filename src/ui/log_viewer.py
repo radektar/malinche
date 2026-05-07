@@ -105,7 +105,6 @@ try:
         NSWindowStyleMaskResizable,
         NSWindowStyleMaskMiniaturizable,
         NSBackingStoreBuffered,
-        NSRect,
         NSScrollView,
         NSTextView,
         NSPopUpButton,
@@ -121,7 +120,7 @@ try:
         NSTimer,
         NSObject,
     )
-    from Foundation import NSMakeRange
+    from Foundation import NSMakeRange, NSMakeRect
     _APPKIT_AVAILABLE = True
 except ImportError:
     _APPKIT_AVAILABLE = False
@@ -192,7 +191,7 @@ class LogViewerWindow:
             | NSWindowStyleMaskMiniaturizable
         )
         self._window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-            NSRect((0, 0), (760, 520)),
+            NSMakeRect(0, 0, 760, 520),
             style,
             NSBackingStoreBuffered,
             False,
@@ -205,7 +204,7 @@ class LogViewerWindow:
         # Toolbar row at top: level popup + search field + clear button
         toolbar_y = 480
         self._popup = NSPopUpButton.alloc().initWithFrame_pullsDown_(
-            NSRect((16, toolbar_y), (130, 26)),
+            NSMakeRect(16, toolbar_y, 130, 26),
             False,
         )
         for opt in self.LEVEL_OPTIONS:
@@ -214,13 +213,13 @@ class LogViewerWindow:
         content.addSubview_(self._popup)
 
         self._search_field = NSSearchField.alloc().initWithFrame_(
-            NSRect((156, toolbar_y), (480, 26))
+            NSMakeRect(156, toolbar_y, 480, 26)
         )
         self._search_field.setPlaceholderString_("Filter messages…")
         content.addSubview_(self._search_field)
 
         clear_btn = NSButton.alloc().initWithFrame_(
-            NSRect((648, toolbar_y), (96, 26))
+            NSMakeRect(648, toolbar_y, 96, 26)
         )
         clear_btn.setTitle_("Clear filter")
         clear_btn.setBezelStyle_(1)  # NSBezelStyleRounded
@@ -228,7 +227,7 @@ class LogViewerWindow:
 
         # Status label below toolbar (entry count + path)
         self._status_label = NSTextField.alloc().initWithFrame_(
-            NSRect((16, 452), (728, 18))
+            NSMakeRect(16, 452, 728, 18)
         )
         self._status_label.setBezeled_(False)
         self._status_label.setDrawsBackground_(False)
@@ -239,7 +238,7 @@ class LogViewerWindow:
 
         # Scrollable text view (newest-first content)
         scroll = NSScrollView.alloc().initWithFrame_(
-            NSRect((16, 16), (728, 428))
+            NSMakeRect(16, 16, 728, 428)
         )
         scroll.setHasVerticalScroller_(True)
         scroll.setHasHorizontalScroller_(False)
@@ -247,7 +246,7 @@ class LogViewerWindow:
         scroll.setBorderType_(2)  # NSBezelBorder
 
         self._text_view = NSTextView.alloc().initWithFrame_(
-            NSRect((0, 0), (712, 428))
+            NSMakeRect(0, 0, 712, 428)
         )
         self._text_view.setEditable_(False)
         self._text_view.setRichText_(True)
