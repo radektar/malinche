@@ -97,15 +97,12 @@ def _assert_real_home_untouched():
     after = _snapshot(_USER_HOME_PROTECTED_PATHS)
 
     mutated = [
-        path
-        for path in _USER_HOME_PROTECTED_PATHS
-        if before[path] != after[path]
+        path for path in _USER_HOME_PROTECTED_PATHS if before[path] != after[path]
     ]
 
     if mutated:
         details = "\n".join(
-            f"  - {path}: mtime {before[path]!r} -> {after[path]!r}"
-            for path in mutated
+            f"  - {path}: mtime {before[path]!r} -> {after[path]!r}" for path in mutated
         )
         pytest.fail(
             "Test run mutated real user HOME artifacts. "
@@ -118,3 +115,54 @@ def _assert_real_home_untouched():
 def pytest_sessionfinish(session, exitstatus):
     """Clean up the session-wide fake HOME tempdir."""
     shutil.rmtree(_FAKE_HOME, ignore_errors=True)
+
+
+# --------------------------------------------------------------------------- #
+# Audio sample fixtures (L2/L3 scenario tests).
+#
+# Backed by ``tests/fixtures/audio_factory.py``. The factory caches under the OS
+# temp dir — NOT under HOME — so it never trips the guard above. Every fixture
+# skips cleanly when ``say``/``ffmpeg`` are unavailable, so the unit suite (L1)
+# stays green on a box without them. See ``Docs/TESTING-E2E-STRATEGY.md``.
+# --------------------------------------------------------------------------- #
+
+
+@pytest.fixture(scope="session")
+def audio_factory():
+    """Session-wide :class:`AudioFactory`. Skips if `say`/`ffmpeg` are absent."""
+    from tests.fixtures.audio_factory import AudioFactory
+
+    factory = AudioFactory()
+    if not factory.available:
+        pytest.skip("audio fixtures require macOS `say` and `ffmpeg`")
+    return factory
+
+
+@pytest.fixture(scope="session")
+def sample_pl(audio_factory):
+    """A Polish spoken-word WAV (16 kHz mono)."""
+    return audio_factory.make(lang="pl_PL", ext=".wav")
+
+
+@pytest.fixture(scope="session")
+def sample_en(audio_factory):
+    """An English spoken-word WAV (16 kHz mono)."""
+    return audio_factory.make(lang="en_US", ext=".wav")
+
+
+@pytest.fixture(scope="session")
+def samples_all_formats(audio_factory):
+    """The same English utterance in every ``AUDIO_EXTENSIONS`` format."""
+    return audio_factory.all_formats(lang="en_US")
+
+
+@pytest.fixture(scope="session")
+def corrupted_audio(audio_factory):
+    """A file with audio magic bytes followed by garbage (alpha.16 case)."""
+    return audio_factory.corrupted(ext=".mp3")
+
+
+@pytest.fixture(scope="session")
+def silence_audio(audio_factory):
+    """A valid but silent 2s clip (empty-transcript path)."""
+    return audio_factory.silence(duration=2.0, ext=".wav")

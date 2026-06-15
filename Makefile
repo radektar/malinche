@@ -1,6 +1,6 @@
 # Olympus Transcriber - Development Makefile
 
-.PHONY: help install test lint format clean run setup-daemon stop-daemon logs build-app build-dmg release
+.PHONY: help install test test-pipeline test-e2e test-ui lint format clean run setup-daemon stop-daemon logs build-app build-dmg release
 
 help:
 	@echo "Malinche - Development Commands"
@@ -11,7 +11,10 @@ help:
 	@echo ""
 	@echo "Development:"
 	@echo "  make run           - Run locally"
-	@echo "  make test          - Run tests"
+	@echo "  make test          - Run unit tests (L1, fast)"
+	@echo "  make test-pipeline - Run L2 pipeline tests (real whisper)"
+	@echo "  make test-e2e      - Run all E2E tests (L2 + L3, needs API key)"
+	@echo "  make test-ui       - Run menu bar UI tests (L4)"
 	@echo "  make lint          - Run linters"
 	@echo "  make format        - Format code"
 	@echo ""
@@ -35,8 +38,20 @@ install:
 	@echo "Done!"
 
 test:
-	@echo "Running tests..."
-	pytest tests/ -v
+	@echo "Running unit tests (L1)..."
+	pytest tests/ -m "not e2e" --ignore=tests/integration
+
+test-pipeline:
+	@echo "Running L2 pipeline tests (real whisper, mocked Claude)..."
+	pytest tests/e2e/test_pipeline_real_whisper.py -v
+
+test-e2e:
+	@echo "Running all E2E scenario tests (L2 + L3; L3 needs ANTHROPIC_API_KEY)..."
+	pytest tests/e2e/ -v
+
+test-ui:
+	@echo "Running menu bar UI tests (L4)..."
+	pytest tests/ -m ui -v
 
 test-coverage:
 	@echo "Running tests with coverage..."

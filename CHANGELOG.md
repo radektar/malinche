@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Crash (SIGSEGV) when closing the Settings window.** The native settings `NSWindow` was released by both AppKit (on close) and Python; the deferred close animation (`-[_NSWindowTransformAnimation dealloc]`) then dereferenced freed memory (`EXC_BAD_ACCESS`). Fixed with `setReleasedWhenClosed_(False)`, dismissing via `orderOut_` instead of the animated `close()`, and retaining the window/delegate past the runloop turn that tears them down.
+- **m4a / wma / aac recordings silently failed to transcribe.** whisper-cli only decodes 16 kHz WAV (plus mp3/flac/ogg in this build); the pipeline fed it the raw file and never converted, so common recorder formats — notably m4a/aac from iPhone Voice Memos — failed with `failed to read audio data as wav` and no clear error. `Transcriber._convert_to_wav` now normalises every input to 16 kHz mono WAV via ffmpeg before whisper (also fixing non-16 kHz / stereo sources). Surfaced and guarded by the new L2 scenario tests — see `Docs/TESTING-E2E-STRATEGY.md` §F1.
+
+### Added
+- **End-to-end / scenario test layers (L1–L3)** under `tests/e2e/` and `tests/fixtures/`: a deterministic audio sample factory (macOS `say` + ffmpeg, all 7 formats + edge cases), real-whisper pipeline tests (per-format, multilingual, WER-scored), and real-Claude summary-quality tests (structural + LLM-as-judge), with `make test-pipeline` / `make test-e2e` / `make test-ui` targets. See `Docs/TESTING-E2E-STRATEGY.md`.
+
 ### Changed
+- **Removed redundant system notifications for automatic transcription.** The menu-bar status item already shows recorder connection, progress and completion, so the "Recorder wykryty" and "Transkrypcja zakończona" `osascript` notifications were pure noise — dropped. User-initiated feedback (retranscribe start/complete/fail, memory reset) and error notifications are kept.
 - GitHub repository renamed from `radektar/transrec` to `radektar/malinche`. Old URLs auto-redirect; explicit references in `src/setup/checksums.py` and `.github/workflows/build-whisper.yml` updated to the new path.
 - Migration flag `transrec_migrated` renamed to `legacy_migrated` in `src/config/settings.py`. `UserSettings.load()` reads the old key name as a backward-compat alias and rewrites it on next save, so existing alpha users are unaffected.
 - Active English documentation rewrite: `README.md`, `QUICKSTART.md`, `BACKLOG.md`, and `Docs/*.md` (architecture, development, API, plans, guides) translated from Polish to English. Historical archives in `Docs/archive/`, `Docs/testing-archive/`, `Docs/test-reports/`, and pre-Unreleased entries below remain in Polish.
