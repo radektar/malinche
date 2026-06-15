@@ -147,6 +147,19 @@ class MalincheMenuApp(rumps.App):
         )
         self.menu.add(self.quit_item)
 
+        # Menu-bar status panel (NSPopover): left-click shows the card, right-
+        # click falls back to this native menu. Installed once the status-item
+        # button exists (after the run loop starts). On any failure the native
+        # menu stays fully functional — no regression.
+        from src.ui.status_panel import build_status_panel
+
+        self._status_panel = build_status_panel(
+            {"settings": self._show_settings, "quit": self._quit_app}
+        )
+        self._panel_install_tries = 0
+        if self._status_panel is not None:
+            rumps.Timer(self._install_status_panel, 0.4).start()
+
         # Start status update timer
         rumps.Timer(self._update_status, 2).start()  # Update every 2 seconds
         
@@ -207,6 +220,17 @@ class MalincheMenuApp(rumps.App):
         does not render both the icon and a stray emoji/name fallback next to
         each other in the status bar.
         """
+        # Mirror the status into the popover panel header (if installed). v1
+        # shows the status label + symbol; richer rows come later.
+        panel = getattr(self, "_status_panel", None)
+        if panel is not None:
+            try:
+                from src.ui.status_panel_model import build_panel_model
+
+                panel.update_(build_panel_model(status))
+            except Exception:  # pragma: no cover - cosmetic, never fatal
+                pass
+
         icon_path = self._icon_paths.get(status)
         if icon_path:
             self.title = None
@@ -702,6 +726,33 @@ class MalincheMenuApp(rumps.App):
         )
         return decision
 
+    def _install_status_panel(self, timer):
+        """Wire the NSPopover panel onto the status-item button (one-shot).
+
+        Runs on a short timer because the status item only exists once the run
+        loop has started. Stops itself on success, or after a few attempts.
+        Fully guarded: any failure leaves the native menu intact.
+        """
+        self._panel_install_tries += 1
+        try:
+            nsapp = getattr(self, "_nsapp", None)
+            status_item = getattr(nsapp, "nsstatusitem", None)
+            button = status_item.button() if status_item is not None else None
+            ns_menu = getattr(self.menu, "_menu", None)
+            if button is not None and ns_menu is not None and self._status_panel is not None:
+                self._status_panel.installOnStatusItem_button_menu_(
+                    status_item, button, ns_menu
+                )
+                timer.stop()
+                logger.info("Status panel installed on the menu-bar item")
+                return
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Status panel install failed (keeping native menu): %s", exc)
+            timer.stop()
+            self._status_panel = None
+            return
+        if self._panel_install_tries >= 10:
+            timer.stop()  # give up; native menu stays
 
     def _update_status(self, _):
         """Update status menu item based on current state."""
