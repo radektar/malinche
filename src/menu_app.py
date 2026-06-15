@@ -1107,6 +1107,24 @@ def main():
         except Exception as sync_err:  # noqa: BLE001
             logger.warning("Launch-at-login sync failed: %s", sync_err)
 
+        # Menu-bar-only: no Dock icon. The built .app gets this from
+        # LSUIElement in Info.plist, but that does not apply when running the
+        # script directly (dev shows a "Python" Dock icon). Setting the
+        # activation policy at runtime makes dev match production and is a
+        # belt-and-suspenders for the bundle. Accessory (not Prohibited) so the
+        # Settings / log windows can still be shown and focused.
+        try:
+            from AppKit import (
+                NSApplication,
+                NSApplicationActivationPolicyAccessory,
+            )
+
+            NSApplication.sharedApplication().setActivationPolicy_(
+                NSApplicationActivationPolicyAccessory
+            )
+        except Exception as policy_err:  # noqa: BLE001
+            logger.debug("Could not set accessory activation policy: %s", policy_err)
+
         app = MalincheMenuApp()
         app.run()
     except KeyboardInterrupt:
