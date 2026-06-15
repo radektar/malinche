@@ -50,6 +50,8 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
     "pro: marks tests for the PRO/MCP product (skipped until malinche_pro exists)",
+    "e2e: scenario tests that run real whisper and/or real Claude (L2/L3)",
+    "ui: menu bar UI tests (L4)",
 ]
 
 [tool.coverage.run]
