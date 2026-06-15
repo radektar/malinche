@@ -1830,12 +1830,6 @@ Brak podsumowania AI. Możliwe przyczyny:
                         processed_s,
                         processed_s + processed_f,
                     )
-                    if processed_s:
-                        send_notification(
-                            title="Malinche",
-                            subtitle="Transkrypcja zakończona",
-                            message=f"Przetworzono: {processed_s}/{processed_s + processed_f} plików",
-                        )
                 else:
                     logger.info("❌ Recorder not found")
                 self.recorder_monitoring = False
@@ -1901,16 +1895,8 @@ Brak podsumowania AI. Możliwe przyczyny:
                 recorder_names,
             )
 
-            if not self.recorder_was_notified:
-                subtitle = "Recorder wykryty"
-                if pending_count > 0:
-                    subtitle = f"Recorder wykryty: {pending_count} do transkrypcji"
-                send_notification(
-                    title="Malinche",
-                    subtitle=subtitle,
-                    message=f"Podłączono: {recorder_names}",
-                )
-                self.recorder_was_notified = True
+            # Recorder-detected notification removed: the menu-bar status item
+            # already shows connection/pending state (no redundant system push).
 
             processed_success = 0
             processed_failed = 0
@@ -1976,12 +1962,7 @@ Brak podsumowania AI. Możliwe przyczyny:
                     f"{processed_failed}/{total_processed} failed"
                 )
                 
-                # Send completion notification
-                send_notification(
-                    title="Malinche",
-                    subtitle="Transkrypcja zakończona",
-                    message=f"Przetworzono: {processed_success}/{total_processed} plików"
-                )
+                # Completion notification removed: menu-bar status reflects this.
             else:
                 logger.info("ℹ️  No pending files to transcribe")
             

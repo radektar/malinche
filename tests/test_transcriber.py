@@ -1128,50 +1128,45 @@ def _pick_dead_pid() -> int:
 
 @patch('src.transcriber.send_notification')
 def test_process_recorder_no_notification_when_no_new_files(mock_notification, transcriber, mock_recorder_path):
-    """Recorder detection notification should still appear once when connected."""
+    """No system notification on recorder detection — the menu-bar status shows it."""
     with patch.object(transcriber, 'find_recorders', return_value=([] if mock_recorder_path is None else [mock_recorder_path])):
-        with patch.object(transcriber, 'get_last_sync_time', 
+        with patch.object(transcriber, 'get_last_sync_time',
                          return_value=datetime.now() + timedelta(days=1)):  # Future date = no new files
             with patch.object(transcriber, 'save_sync_time'):
                 transcriber.process_recorder()
 
-                subtitles = [call[1].get('subtitle', '') for call in mock_notification.call_args_list]
-                assert any('Recorder wykryty' in subtitle for subtitle in subtitles)
+                assert mock_notification.call_count == 0
 
 
 @patch('src.transcriber.send_notification')
-def test_process_recorder_sends_notification_when_new_files_found(
+def test_process_recorder_emits_no_status_notifications_when_files_found(
     mock_notification, transcriber, mock_recorder_path, tmp_path, monkeypatch
 ):
-    """Test that notifications are sent when new files are found."""
+    """Automatic transcription emits no system notifications.
+
+    Recorder-detected and completion notifications were removed: the menu-bar
+    status item already reflects connection / progress / completion, so a system
+    push would be redundant noise. This guards against re-adding it.
+    """
     from src import config as config_module
-    
+
     staging_dir = tmp_path / "staging"
     staging_dir.mkdir()
     update_transcriber_config(transcriber, monkeypatch, LOCAL_RECORDINGS_DIR=staging_dir)
-    
+
     with patch.object(transcriber, 'find_recorders', return_value=([] if mock_recorder_path is None else [mock_recorder_path])):
         with patch.object(
             transcriber,
             "find_pending_audio_files",
             return_value=[(mock_recorder_path / "Music" / "recording1.mp3", "fp-1")],
         ):
-            with patch.object(transcriber, 'get_last_sync_time', 
+            with patch.object(transcriber, 'get_last_sync_time',
                              return_value=datetime.now() - timedelta(days=1)):  # Past date = new files
                 with patch.object(transcriber, 'transcribe_file', return_value=True):
                     with patch.object(transcriber, 'save_sync_time'):
                         transcriber.process_recorder()
-                        
-                        # Should send notifications: recorder detected + completion
-                        assert mock_notification.call_count >= 2
-                        
-                        # Check that recorder detection notification was sent
-                        call_args_list = [call[1] for call in mock_notification.call_args_list]
-                        subtitles = [args.get('subtitle', '') for args in call_args_list]
-                        assert any('Recorder wykryty' in subtitle for subtitle in subtitles)
-                        
-                        # Check that completion notification was sent
-                        assert any('zakończona' in subtitle for subtitle in subtitles)
+
+                        assert mock_notification.call_count == 0
 
 
 def test_process_recorder_does_not_force_idle_when_lock_held(
