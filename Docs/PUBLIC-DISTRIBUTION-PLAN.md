@@ -1,10 +1,10 @@
 # Public Distribution Plan — Malinche
 
-**Plan version:** 1.2 (Freemium — Subscription Model)
+**Plan version:** 1.3 (MCP-first PRO model)
 **Created:** 2025-12-17
-**Last updated:** 2026-05-05
+**Last updated:** 2026-06-14
 **Status:** DRAFT — pending approval
-**Model:** Freemium (FREE open-source + PRO subscription)
+**Model:** Freemium (FREE/BYOK open-source + PRO subscription = MCP integration)
 
 ---
 
@@ -29,15 +29,22 @@ Transform Malinche from a developer tool into a publicly distributable applicati
 - Support for any USB recorder or SD card
 - Professional UX (code signing, notarization)
 - Auto-download of dependencies (whisper.cpp + models)
-- **Freemium model** (FREE + PRO Individual + PRO Organization)
+- **Freemium model** (FREE/BYOK open source + PRO subscription)
 
 ### Business model
 
-| Tier | Price | Features | Limits |
-|---|---|---|---|
-| **FREE** | $0 (open source) | Local transcription, MD export, any recorder | None |
-| **PRO Individual** | Monthly subscription | FREE + AI summaries, AI tags, diarization | 300 min/month |
-| **PRO Organization** | Monthly subscription | PRO + Knowledge Base, Shared Lexicon, Cloud Sync | 1000+ min/month |
+The application is open source (MIT). AI features run locally via BYOK (the user's own `ANTHROPIC_API_KEY`). The paid PRO tier sells **MCP integration** — a hosted transcript database the user's LLM can search natively — not hosted AI summaries.
+
+| Tier | Price | What it adds |
+|---|---|---|
+| **FREE (MIT)** | $0 | Local transcription, Markdown export, any recorder, basic tags |
+| **+ BYOK** | $0 (user pays Anthropic directly) | AI summaries, smart tags, AI naming, versioning — all local with own key |
+| **PRO Individual** | Subscription (amount TBD¹) | Cloud transcript DB + embeddings, local MCP server, auto-config for MCP clients, semantic search, cross-device sync |
+| **PRO Organization** | Subscription (amount TBD¹) | PRO + org features (deferred — see §2.3) |
+
+¹ Pricing is an open decision — see the open questions in [BACKLOG.md](../BACKLOG.md). Considered: subscription $5–$12/mo Individual; optional $25/mo Organization; or $79 lifetime. To be decided before Phase 10 (backend).
+
+> **Key subtlety:** PRO does not replace BYOK. The fullest experience is **PRO + BYOK** — local AI summaries via the user's Anthropic key, plus a hosted, MCP-searchable transcript DB via the subscription.
 
 ### Key technical decisions
 
@@ -48,8 +55,10 @@ Transform Malinche from a developer tool into a publicly distributable applicati
 | **whisper.cpp** | Download on first run | Smaller installer (~15 MB vs 550 MB) |
 | **FFmpeg** | Statically bundled | No Homebrew dependency |
 | **Code signing** | Yes ($99/yr) | Professional UX, no Gatekeeper warnings |
-| **PRO backend** | FastAPI (Python) | Shares logic with the client; easy AI integration |
-| **Payments** | LemonSqueezy / Stripe | Tax compliance, subscription + API key management |
+| **PRO value prop** | MCP integration | Defensible (DB + embeddings + MCP server) vs. a thin hosted-Claude wrapper; rides the growing MCP ecosystem |
+| **PRO backend** | Supabase (Postgres + pgvector) + Cloudflare Workers | Managed DB with per-user RLS; thin stateless Workers for license + embeddings |
+| **AI summaries** | Stay in MIT via BYOK | Not part of PRO; no Claude proxy on the backend |
+| **Payments** | LemonSqueezy | Tax compliance; webhook → license_key issuance in Supabase |
 
 ---
 
@@ -82,40 +91,48 @@ Implications:
 ### 2.3. Distribution model
 
 ```
-✅ Freemium (FREE + PRO)
+✅ Freemium (FREE/BYOK open source + PRO subscription)
 
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                         MALINCHE FREE                                   │
+│                         MALINCHE FREE (MIT)                              │
 │                     (Open Source — GitHub)                               │
 ├─────────────────────────────────────────────────────────────────────────┤
 │ ✅ Auto-detect recorders / SD cards                                     │
 │ ✅ Local transcription (whisper.cpp)                                    │
 │ ✅ Basic tags (#transcription, #audio)                                  │
 │ ✅ Markdown export                                                      │
-│ ✅ Menu bar app                                                         │
-│ ✅ First-run wizard                                                     │
+│ ✅ Menu bar app + first-run wizard                                      │
 └─────────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                         MALINCHE PRO INDIVIDUAL                         │
-│                       (Monthly subscription)                            │
+│                 MALINCHE + BYOK (own ANTHROPIC_API_KEY)                  │
+│                 (still MIT — no subscription required)                   │
 ├─────────────────────────────────────────────────────────────────────────┤
-│ ⭐ AI summaries (server-side via Claude/GPT)                            │
+│ ⭐ AI summaries (local, via your Claude key)                            │
 │ ⭐ Smart AI tags                                                        │
-│ ⭐ Auto-titles for files                                                │
-│ ⭐ Speaker diarization (local/server)                                   │
-│ 📊 Limit: 300 minutes of processing per month                           │
+│ ⭐ AI naming (auto-titles)                                              │
+│ ⭐ Markdown versioning / Retranscribe                                   │
 └─────────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                         MALINCHE PRO ORGANIZATION                       │
-│                       (Monthly subscription)                            │
+│                    MALINCHE PRO INDIVIDUAL                               │
+│                       (Subscription — amount TBD)                       │
 ├─────────────────────────────────────────────────────────────────────────┤
-│ 🏢 Shared speaker database                                              │
-│ 🏢 Domain lexicon                                                       │
-│ 🏢 Knowledge base extraction                                            │
-│ 🏢 Cloud sync (Obsidian, S3, Azure)                                     │
-│ 📊 Limit: 1000+ minutes of processing per month                         │
+│ ⭐ Auto-pipeline transcript → hosted cloud DB + embeddings              │
+│ ⭐ Local MCP server (search across all your transcripts)               │
+│ ⭐ Auto-config for Claude Desktop / Cursor / Continue / Claude Code     │
+│ ⭐ Semantic search across transcripts                                   │
+│ ⭐ Cross-device sync                                                    │
+│ (AI summaries still via BYOK — PRO does not host a Claude proxy)        │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│              MALINCHE PRO ORGANIZATION (deferred)                        │
+│                       (Subscription — amount TBD)                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│ 🏢 Org-only features (shared speaker DB, domain lexicon, knowledge base)│
+│    are deferred and may ship as a separate product layered on the PRO   │
+│    MCP server — not committed to the Malinche product scope at launch.  │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -144,6 +161,39 @@ Implications:
 ├── recordings/                          (staging dir)
 └── logs/malinche.log                    (rotating, 5×5 MB)
 ```
+
+### 3.2. PRO data flow (v2.1.0)
+
+PRO features live in a private `malinche_pro` package, lazy-loaded by the open-source app. The pipeline turns local transcripts into an LLM-searchable database:
+
+```
+[Malinche app FREE/MIT]                          [Malinche PRO add-on / private]
+─────────────────                                ────────────────────────────────
+Recorder → whisper.cpp → markdown in folder
+                              │
+                              │ (FREE: done here)
+                              ▼
+                    ┌────────────────────────┐
+                    │ malinche_pro daemon    │  watches the .md folder
+                    └────────────┬───────────┘
+                                 │ upload + embedding request (JWT-auth)
+                                 ▼
+                    ┌────────────────────────┐
+                    │ Supabase               │  Postgres + pgvector, per-user RLS
+                    │  - transcripts         │
+                    │  - transcript_embeddings│
+                    └────────────┬───────────┘
+                                 │ read (RLS-scoped)
+                                 ▼
+                    ┌────────────────────────┐
+                    │ malinche_pro MCP server│  local stdio MCP
+                    └────────────┬───────────┘
+                                 │ MCP protocol
+                                 ▼
+                    Claude Desktop / Cursor / Continue / Claude Code / Zed
+```
+
+MCP MVP exposes 5 tools: `search_transcripts`, `get_transcript`, `list_recent`, `list_by_date_range`, `find_quotes`.
 
 ---
 
@@ -182,8 +232,17 @@ Settings window, folder picker, language and model selection.
 - Menu bar state icons + new app icon + custom DMG background
 - English UI; aztec accent palette
 
-### Phase 10: PRO backend (PLANNED)
-FastAPI service for `/v1/license`, `/v1/summarize`, `/v1/tags`. Hosted on Cloudflare Workers + LemonSqueezy.
+### Phase 10: PRO backend + MCP integration (PLANNED, post-publication, 6–12 weeks)
+
+Does not block the open-source publication. Stack:
+
+- **Supabase** (managed Postgres + pgvector), single-tenant with per-user RLS: tables `transcripts` and `transcript_embeddings`.
+- **Cloudflare Workers** (thin, stateless): `POST /v1/license/validate` → JWT (`user_id + tier + expires_at`); `POST /v1/embeddings` → proxy to Voyage/OpenAI (computes chunk embeddings, does not store the transcript).
+- **LemonSqueezy webhook** → creates/refreshes the user record + license_key in Supabase.
+- **Private package `malinche_pro`**: `daemon.py` (folder watcher → upload), `mcp_server.py` (stdio MCP), `tools/` (5 MCP tools), `db_client.py`, `embedding_client.py`, `auto_config.py`, `license_jwt.py`.
+- **Private repo `malinche-backend`**: Supabase migrations + Workers source. Not open source.
+
+Out of scope: an AI-summaries proxy. BYOK stays in MIT — the backend never sees the user's Anthropic key and never generates summaries.
 
 ---
 
@@ -199,7 +258,8 @@ FastAPI service for `/v1/license`, `/v1/summarize`, `/v1/tags`. Hosted on Cloudf
 - [ ] Activate invalid key → UI error
 - [ ] Simulate offline → license cache used
 - [ ] Cache expiry (7 days) → fall back to FREE
-- [ ] Try to use AI on FREE tier → "Requires PRO" log + no action
+- [ ] Use AI without BYOK configured → clear "set ANTHROPIC_API_KEY" prompt, no action
+- [ ] Use MCP/cloud features without PRO → "Requires PRO subscription" log + no action
 
 ---
 
@@ -207,17 +267,19 @@ FastAPI service for `/v1/license`, `/v1/summarize`, `/v1/tags`. Hosted on Cloudf
 
 ### 6.1. Infrastructure cost (PRO)
 
+PRO does not host AI summaries (those are BYOK, paid by the user to Anthropic). The backend cost is the transcript DB + embeddings + license validation.
+
 | Service | Free tier | Estimated cost (100 PRO users) |
 |---|---|---|
-| Claude API (Haiku) | — | ~$10–20 / month |
-| Diarization (VAD / embeddings) | Local | $0 (user-side CPU) |
-| API hosting | CF Workers / Fly.io | $0–5 / month |
-| **Total** | | **~$15–25 / month** |
+| Embeddings (Voyage `voyage-3-lite`) | — | ~$0.05–0.20 / PRO user / month |
+| Supabase (Postgres + pgvector) | Free tier covers early users | $0 → ~$25/mo (Pro) at scale |
+| API hosting (Cloudflare Workers) | Generous free tier | $0–5 / month |
+| **Total (100 users)** | | **~$10–50 / month** (mostly DB at scale) |
 
 ### 6.2. Revenue projection
 
-- Model: subscription (e.g. $8/mo Individual, $25/mo Organization)
-- Break-even: ~5–10 active PRO subscriptions
+- Model and amount: **TBD** — see open questions in [BACKLOG.md](../BACKLOG.md). Considered: subscription $5–$12/mo Individual; optional $25/mo Organization; or $79 lifetime.
+- Break-even: a handful of active PRO subscriptions covers infrastructure.
 
 ---
 
@@ -230,22 +292,25 @@ FastAPI service for `/v1/license`, `/v1/summarize`, `/v1/tags`. Hosted on Cloudf
 │                                                                  │
 │  FREE (GitHub, MIT)                                              │
 │  ├─ Local transcription, no limits                               │
-│  └─ Markdown export                                              │
+│  └─ Markdown export + basic tags                                 │
 │                                                                  │
-│  PRO INDIVIDUAL (monthly subscription)                           │
-│  ├─ AI summaries & smart tags                                    │
-│  ├─ Speaker diarization                                          │
-│  └─ Limit: 300 minutes / month                                   │
+│  + BYOK (own ANTHROPIC_API_KEY, still MIT)                       │
+│  ├─ AI summaries & smart tags & naming                           │
+│  └─ Markdown versioning / retranscribe                           │
 │                                                                  │
-│  PRO ORGANIZATION (monthly subscription)                         │
-│  ├─ Knowledge base                                               │
-│  ├─ Domain lexicon                                               │
-│  └─ Cloud sync & shared speaker DB                               │
+│  PRO INDIVIDUAL (subscription — amount TBD)                      │
+│  ├─ Cloud transcript DB + embeddings                             │
+│  ├─ Local MCP server + semantic search                           │
+│  ├─ Auto-config for Claude Desktop / Cursor / Continue           │
+│  └─ Cross-device sync                                            │
+│                                                                  │
+│  PRO ORGANIZATION (deferred)                                     │
+│  └─ Org features may ship as a separate product on the PRO MCP   │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-**Plan version:** 1.2 (Subscription Model)
+**Plan version:** 1.3 (MCP-first PRO model)
 **Approval:** [ ] Pending

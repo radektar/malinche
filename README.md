@@ -4,21 +4,30 @@
 
 Automatic audio transcription system for any USB recorder or SD card on macOS.
 
+Local-first audio transcription for macOS — coming v2.1.0 with MCP integration (your transcripts, searchable natively inside Claude, Cursor, Continue and other MCP-aware tools).
+
 ## Features
 
-### FREE (v2.0.0)
-- **Auto-detection** — recognizes any external volume containing audio files
-- **Smart scanning** — finds only new audio files since the last sync
-- **Automatic transcription** — uses whisper.cpp with Core ML for maximum performance
-- **Markdown output** — transcripts saved as `.md` files with YAML frontmatter
-- **Menu bar app** — native macOS app with menu bar interface
-- **Settings UI** — graphical configuration window
+Malinche has three usage levels. The application code is fully open source (MIT). Adding your own Anthropic key unlocks AI features locally; a future PRO subscription adds the hosted transcript database and MCP integration.
 
-### PRO (v2.1.0 — planned)
-- 🔒 **AI summaries** — automatic summary generation via Claude API
-- 🔒 **Auto-tagging** — intelligent transcript tagging
-- 🔒 **Auto-title** — file names generated from summary
-- 🔒 **Cloud sync** — synchronization with Obsidian/iCloud
+| Feature | FREE | + BYOK (`ANTHROPIC_API_KEY`) | + PRO subscription (v2.1.0) |
+|---|:---:|:---:|:---:|
+| Auto-detect recorders / SD cards | ✓ | ✓ | ✓ |
+| Local transcription (whisper.cpp + Core ML) | ✓ | ✓ | ✓ |
+| Markdown export with YAML frontmatter | ✓ | ✓ | ✓ |
+| Basic tags | ✓ | ✓ | ✓ |
+| Menu bar app + first-run wizard + Settings UI | ✓ | ✓ | ✓ |
+| AI summaries (Claude) | — | ✓ | ✓ (your key) |
+| AI smart tags | — | ✓ | ✓ |
+| AI naming (auto-title) | — | ✓ | ✓ |
+| Markdown versioning / Retranscribe | — | ✓ | ✓ |
+| **Auto-pipeline transcript → cloud DB** | — | — | ⭐ PRO |
+| **Local MCP server** | — | — | ⭐ PRO |
+| **Semantic search across transcripts** | — | — | ⭐ PRO |
+| **Auto-config for Claude Desktop / Cursor / Continue / Claude Code** | — | — | ⭐ PRO |
+| **Cross-device sync** | — | — | ⭐ PRO |
+
+> **BYOK (Bring Your Own Key):** set `ANTHROPIC_API_KEY` in your environment and all AI features run locally against your own Anthropic account — no subscription needed. PRO does not replace BYOK: the fullest experience is **PRO + BYOK** (local AI summaries via your key + a hosted, MCP-searchable transcript database via the subscription).
 
 ## Requirements
 
@@ -111,6 +120,8 @@ For details see **[Docs/API.md](Docs/API.md)**.
 | **[Docs/DEVELOPMENT.md](Docs/DEVELOPMENT.md)** | Developer guide |
 | **[Docs/FULL_DISK_ACCESS_SETUP.md](Docs/FULL_DISK_ACCESS_SETUP.md)** | Full Disk Access setup |
 | **[Docs/PUBLIC-DISTRIBUTION-PLAN.md](Docs/PUBLIC-DISTRIBUTION-PLAN.md)** | v2.0.0 distribution plan |
+| **[Docs/TESTING-PRO-MCP.md](Docs/TESTING-PRO-MCP.md)** | PRO / MCP integration test plan (v2.1.0) |
+| **[Docs/READINESS-CRITERIA.md](Docs/READINESS-CRITERIA.md)** | Definition of Done for the doc-strategy rewrite |
 
 ## Development
 
@@ -136,11 +147,14 @@ For details see **[Docs/DEVELOPMENT.md](Docs/DEVELOPMENT.md)**.
 - [x] DMG release (unsigned beta)
 - [ ] Code signing & notarization
 
-### v2.1.0 PRO
-- [ ] AI summaries
-- [ ] Auto-tagging
-- [ ] Cloud sync
-- [ ] License management
+### v2.1.0 PRO (MCP integration)
+- [ ] Local MCP server (search/get/list transcripts) for Claude Desktop, Cursor, Continue, Claude Code, Zed
+- [ ] Cloud transcript DB + embeddings (Supabase + Cloudflare Workers)
+- [ ] Auto-config wizard for MCP clients
+- [ ] Cross-device sync
+- [ ] License management (LemonSqueezy)
+
+> AI summaries, smart tags and naming are **not** PRO features — they run locally in MIT via BYOK (`ANTHROPIC_API_KEY`).
 
 For details see **[Docs/PUBLIC-DISTRIBUTION-PLAN.md](Docs/PUBLIC-DISTRIBUTION-PLAN.md)**.
 
