@@ -1,5 +1,6 @@
 """AI-powered summarization for transcripts."""
 
+import re
 import time
 from abc import ABC, abstractmethod
 from typing import Dict, Optional, Tuple
@@ -8,6 +9,51 @@ from src.config import config
 from src.logger import logger
 
 Anthropic = None  # type: ignore[assignment]
+
+
+# --------------------------------------------------------------------------- #
+# Output-language detection.
+#
+# Claude (esp. Haiku) has a strong prior toward the language of its long
+# instruction block, so "respond in the transcript's language" alone is flaky
+# (~60% on English input). Detecting the language in code and naming it
+# explicitly in the prompt ("Write the ENTIRE response in ENGLISH") makes the
+# output language deterministic. The app's content languages are Polish and
+# English (see ``SUPPORTED_LANGUAGES``); anything else falls back to the
+# generic in-prompt rule.
+# --------------------------------------------------------------------------- #
+
+_PL_DIACRITICS = set("ąćęłńóśźżĄĆĘŁŃÓŚŹŻ")
+_PL_STOPWORDS = {
+    "się", "że", "jest", "oraz", "jako", "dla", "nie", "tak", "czy", "już",
+    "albo", "ale", "być", "ma", "to", "na", "do", "po", "od", "przy", "który",
+}
+_EN_STOPWORDS = {
+    "the", "and", "to", "of", "is", "for", "we", "in", "on", "that", "this",
+    "with", "will", "by", "an", "it", "at", "as", "be", "are", "our", "have",
+}
+
+
+def detect_language(text: str) -> Optional[str]:
+    """Best-effort ``"pl"``/``"en"`` detection for the summary's output language.
+
+    Returns ``None`` when neither language is a clear winner, so the caller can
+    fall back to the generic "respond in the transcript's language" instruction.
+    """
+    if not text or not text.strip():
+        return None
+    if any(ch in _PL_DIACRITICS for ch in text):
+        return "pl"
+    words = re.findall(r"[a-ząćęłńóśźż]+", text.lower())
+    if not words:
+        return None
+    pl_hits = sum(w in _PL_STOPWORDS for w in words)
+    en_hits = sum(w in _EN_STOPWORDS for w in words)
+    if en_hits > pl_hits:
+        return "en"
+    if pl_hits > en_hits:
+        return "pl"
+    return None
 
 
 class APIBillingError(Exception):
@@ -168,65 +214,74 @@ class ClaudeSummarizer(BaseSummarizer):
         Returns:
             Formatted prompt string
         """
-        return f"""Przeanalizuj poniższą transkrypcję nagrania audio i wygeneruj:
+        lang = detect_language(transcript)
+        if lang == "en":
+            lang_directive = (
+                "WRITE THE ENTIRE RESPONSE IN ENGLISH — the title, every section "
+                "heading, and all body text. Do not use any other language.\n\n"
+            )
+        elif lang == "pl":
+            lang_directive = (
+                "NAPISZ CAŁĄ ODPOWIEDŹ PO POLSKU — tytuł, wszystkie nagłówki sekcji "
+                "i całą treść. Nie używaj żadnego innego języka.\n\n"
+            )
+        else:
+            lang_directive = ""
 
-1. KRÓTKI TYTUŁ (maksymalnie {self.title_max_length} znaków) - powinien być zwięzły i opisowy
+        return f"""{lang_directive}Analyse the audio transcript below and produce concise, well-structured notes.
 
-2. PODSUMOWANIE w formacie markdown zawierające następujące sekcje:
+OUTPUT LANGUAGE — most important: Write the ENTIRE response — the title, EVERY
+section heading, and ALL body text — in the SAME language as the transcript. If the
+transcript is in English, respond fully in English; if in Polish, respond in Polish;
+and so on. The example headings below are in English ONLY as a layout guide —
+translate every heading into the transcript's own language. Never mix or switch
+languages, and never default to a language other than the transcript's.
 
-   ## Podsumowanie
-   - 5-7 zdań opisujących kluczowe spostrzeżenia ze spotkania
-   - Używaj **pogrubienia** dla najważniejszych pojęć, decyzji i zobowiązań
-   - Używaj *kursywy* dla dodatkowego kontekstu lub uwag
-   - Możesz używać blockquotes (`>`) dla ważnych stwierdzeń
-   - Wykorzystuj pełne możliwości markdown: listy numerowane, tabele (gdy odpowiednie), separatory (`---`)
+GROUNDING — equally important: Base everything ONLY on what is actually said in the
+transcript. Do not invent tasks, deadlines, names, numbers, decisions or conclusions
+that are not there. No editorialising such as "the project will succeed if…". If
+there is little to report, write less or omit a section — fewer true points beat a
+padded, invented template. Never add content just to fill the structure.
 
-   ## Kluczowe punkty
-   - Sekcja z punktami podzielonymi według priorytetu używając emoji:
-     - ⚠️ **Krytyczne:** Najważniejsze decyzje, zobowiązania, terminy wymagające natychmiastowej uwagi
-     - ⚡ **Ważne:** Istotne tematy, które wymagają monitorowania lub dalszych działań
-     - 📝 **Informacyjne:** Dodatkowe informacje, kontekst, tło rozmowy
-   - Każdy punkt powinien być konkretny i zwięzły
-   - Używaj **pogrubienia** dla kluczowych słów w każdym punkcie
-   - Skup się na elementach, na których należy się skupić po spotkaniu
+Produce:
 
-   ## Cytaty
-   - Sekcja z bezpośrednimi cytatami z transkrypcji, pogrupowanymi tematycznie
-   - Każdy temat powinien mieć nagłówek poziomu 3 (###)
-   - Cytaty formatuj jako blockquotes (`>`) z dodatkowym kontekstem
-   - Format dla każdego cytatu:
-     > "Dokładny cytat z transkrypcji"
-     > — *Kontekst: [krótki opis sytuacji, w której został wypowiedziany]*
-   - Wybierz 3-5 najważniejszych cytatów, które najlepiej ilustrują kluczowe wątki rozmowy
-   - Cytaty MUSZĄ być rzeczywistymi fragmentami z transkrypcji (nie parafrazami)
-   - Cytaty powinny potwierdzać i uzupełniać informacje z sekcji "Podsumowanie"
-   - Grupuj cytaty tematycznie - każdy temat w osobnej sekcji z nagłówkiem ###
+1. A SHORT TITLE (max {self.title_max_length} characters) — concise and descriptive, in the transcript's language.
 
-   ## Lista działań (To-do)
-   - 3-5 konkretnych zadań do wykonania po spotkaniu
-   - Każde zadanie w formie listy punktowanej (zaczynającej się od "-")
-   - Zadania powinny zaczynać się od czasownika w trybie rozkazującym (np. "Przygotować...", "Skontaktować się...")
-   - Możesz używać checkboxów (`- [ ]`) dla zadań wymagających wykonania
+2. A SUMMARY in markdown with these sections (translate the headings):
 
-STYLOWANIE MARKDOWN:
-- Wykorzystuj pełne możliwości markdown: **pogrubienie**, *kursywa*, `kod inline`, blockquotes (`>`), listy numerowane, tabele (gdy odpowiednie)
-- Używaj separatorów (`---`) między większymi sekcjami jeśli potrzebne
-- Formatuj cytaty jako blockquotes dla lepszej czytelności
-- Używaj emoji (⚠️ ⚡ 📝) konsekwentnie dla priorytetów w sekcji Kluczowe punkty
+   ## Summary
+   - As many sentences as the content truly supports (a short recording → a short summary; do not stretch it)
+   - **Bold** the key concepts, decisions and commitments; *italics* for context that is actually present
 
-WAŻNE:
-- Podsumowanie powinno być zwięzłe i skupiać się na najważniejszych wnioskach
-- Cytaty MUSZĄ być rzeczywistymi fragmentami z transkrypcji (nie parafrazami)
-- Cytaty grupuj tematycznie - każdy temat w osobnej sekcji z nagłówkiem ###
-- Lista zadań powinna zawierać tylko konkretne, wykonalne akcje
-- Używaj wyłącznie języka polskiego
-- Formatuj odpowiedź jako markdown z pełnym wykorzystaniem możliwości stylowania
+   ## Key points
+   - Bullets grouped by priority, only those genuinely present in the recording:
+     - ⚠️ **Critical:** decisions, commitments, deadlines stated directly
+     - ⚡ **Important:** significant topics needing follow-up
+     - 📝 **Info:** context, background
+   - Skip a tier entirely if nothing fits it. Do not manufacture points.
 
-Odpowiedz WYŁĄCZNIE w formacie:
-TITLE: [tytuł]
-SUMMARY: [podsumowanie w formacie markdown z sekcjami: ## Podsumowanie, ## Kluczowe punkty, ## Cytaty, ## Lista działań (To-do)]
+   ## Quotes
+   - 0–5 VERBATIM fragments from the transcript (not paraphrases), grouped by topic
+   - Each topic under a level-3 heading (###); format:
+     > "Exact quote from the transcript"
+     > — *Context: [short note on the situation]*
+   - A quote MUST appear literally in the transcript. If there are no clear quotes, give fewer or omit the section.
 
-Transkrypcja:
+   ## Action items
+   - Only tasks that genuinely follow from the transcript (there may be fewer than 3, or zero)
+   - Each as `- [ ]`, starting with a verb. Do not invent tasks "for completeness".
+
+MARKDOWN STYLE:
+- Use **bold**, *italics*, `inline code`, blockquotes (`>`), lists and separators (`---`) where they aid readability
+- Use the emoji (⚠️ ⚡ 📝) consistently for priorities in "Key points"
+
+Reply ONLY in this format (keep the labels TITLE and SUMMARY in English — do not translate them):
+TITLE: [title in the transcript's language]
+SUMMARY: [markdown summary; section headings in the transcript's language]
+
+REMINDER: respond ENTIRELY in the transcript's own language (title, headings, body).
+
+Transcript:
 {transcript}"""
     
     def _parse_response(self, response_text: str) -> Tuple[str, str]:
