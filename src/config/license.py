@@ -76,11 +76,13 @@ class LicenseManager:
         return {"minutes_monthly": 0, "unlimited": False}
 
     def _verify_license(self) -> FeatureTier:
-        """Verify license with server (with offline fallback)."""
-        # Placeholder for v2.0.0 FREE
-        # In v2.0.0 FREE, we always return FREE tier unless a local license is found
-        # (which won't happen yet)
-        
+        """Resolve the active tier: a valid local cache wins, else the default.
+
+        Beta: there is no licensing backend yet, so every install is granted
+        PRO — beta testers get the full feature set without a key. A still-valid
+        cached tier is honoured if present. At GA this default flips back to
+        FREE and real verification against ``LICENSE_API`` takes over.
+        """
         cached = self._load_cache()
         if cached:
             try:
@@ -90,9 +92,7 @@ class LicenseManager:
             except (ValueError, KeyError):
                 pass
 
-        if not self._license_key:
-            return FeatureTier.PRO
-
+        # Beta: unconditionally unlock PRO (no backend / license key required).
         return FeatureTier.PRO
 
     def _load_stored_license(self) -> None:

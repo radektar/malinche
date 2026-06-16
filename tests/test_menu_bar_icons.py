@@ -1,61 +1,63 @@
-"""Assets-level tests for menu bar status icons."""
+"""Menu-bar status icons.
 
-from pathlib import Path
+The old shipped ``assets/menu_bar/*.png`` set was retired in the L4 redesign:
+icons are now rendered at runtime from SF Symbols via
+``style.render_symbol_png`` (see ``src/menu_app.py::_resolve_icon_paths``). SF
+Symbols are guaranteed on macOS 12+, which also retires the missing-PNG / emoji
+fallback. These tests exercise that real mechanism instead of stale assets, so
+they need no Pillow and no checked-in PNGs.
+"""
 
+from __future__ import annotations
 
-ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets" / "menu_bar"
+import pytest
+
+from src.app_status import AppStatus
+from src.ui import style
+
+requires_appkit = pytest.mark.skipif(
+    not style._APPKIT_AVAILABLE, reason="SF Symbol rendering requires AppKit (PyObjC)"
+)
+
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
-EXPECTED_ICONS = [
-    "idle.png",
-    "scanning.png",
-    "transcribing.png",
-    "migrating.png",
-    "error.png",
-]
+
+@requires_appkit
+@pytest.mark.parametrize("status", list(AppStatus))
+def test_every_status_renders_a_valid_png(status):
+    """Each status maps to an SF Symbol that rasterises to a real PNG."""
+    png = style.render_symbol_png(
+        style.symbol_name_for_status(status), point=15.0, pixel_size=36
+    )
+    assert png is not None, f"no icon rendered for {status}"
+    assert png[:8] == PNG_MAGIC, f"{status} icon is not a PNG"
+    # Catch empty/blown-up renders the way the old size guard did.
+    assert 100 < len(png) < 20_000, f"{status} icon size suspicious: {len(png)} bytes"
 
 
-def test_menu_bar_icons_exist():
-    for filename in EXPECTED_ICONS:
-        path = ASSETS_DIR / filename
-        assert path.exists(), f"Missing menu bar icon: {path}"
+@requires_appkit
+@pytest.mark.parametrize("status", list(AppStatus))
+def test_rendered_icon_is_rgba_template(status):
+    """Icons must be RGBA with an alpha channel so they adopt the menu-bar tint.
 
-
-def test_menu_bar_icons_are_valid_png():
-    for filename in EXPECTED_ICONS:
-        path = ASSETS_DIR / filename
-        header = path.read_bytes()[:8]
-        assert header == PNG_MAGIC, f"Invalid PNG header for {path}"
-
-
-def test_menu_bar_icons_have_reasonable_size():
-    """Catch corrupted/stale placeholders.
-
-    Real template PNGs for a 44x44 canvas are typically 200-1500 bytes.
-    Anything absurdly small or large is almost certainly broken.
+    A template glyph keeps its colour black and carries shape in the alpha
+    channel; an opaque or non-alpha image would render as a fixed blob that
+    ignores light/dark mode. ``render_symbol_png`` builds template PNGs by
+    construction (``setTemplate_(True)`` + a single black draw); this verifies
+    the rasterised output kept that structure.
     """
-    for filename in EXPECTED_ICONS:
-        path = ASSETS_DIR / filename
-        size = path.stat().st_size
-        assert size > 100, f"{path} suspiciously small: {size} bytes"
-        assert size < 20_000, f"{path} suspiciously large: {size} bytes"
+    from AppKit import NSBitmapImageRep
+    from Foundation import NSData
 
+    png = style.render_symbol_png(
+        style.symbol_name_for_status(status), point=15.0, pixel_size=36
+    )
+    assert png is not None
 
-def test_menu_bar_icons_are_monochrome_template():
-    """Template icons must have RGBA with only black pixels + alpha.
-
-    If the PNG contains non-black colours it will render as a coloured
-    blob in the menu bar instead of adapting to light/dark mode.
-    """
-    from PIL import Image  # type: ignore[import-untyped]
-
-    for filename in EXPECTED_ICONS:
-        path = ASSETS_DIR / filename
-        img = Image.open(path)
-        assert img.mode == "RGBA", f"{path} must be RGBA, got {img.mode}"
-        for r, g, b, a in img.getdata():
-            if a == 0:
-                continue
-            assert (r, g, b) == (0, 0, 0), (
-                f"{path} contains non-black pixel ({r},{g},{b}) with alpha={a}"
-            )
+    data = NSData.dataWithBytes_length_(png, len(png))
+    rep = NSBitmapImageRep.imageRepWithData_(data)
+    assert rep is not None, f"{status} icon failed to decode"
+    assert rep.hasAlpha(), f"{status} icon has no alpha channel"
+    assert rep.samplesPerPixel() == 4, (
+        f"{status} icon is not RGBA (samples/pixel={rep.samplesPerPixel()})"
+    )

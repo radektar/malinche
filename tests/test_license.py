@@ -16,11 +16,11 @@ class TestLicenseManager:
              patch.object(LicenseManager, "_cache_path", return_value=license_dir / "license_cache.json"):
             yield license_dir
 
-    def test_default_tier_is_free(self, mock_paths):
-        """Default tier should be FREE when no license or cache exists."""
+    def test_default_tier_is_pro_during_beta(self, mock_paths):
+        """Beta grants PRO to every install (no licensing backend yet)."""
         manager = LicenseManager()
-        assert manager.get_current_tier() == FeatureTier.FREE
-        assert manager.get_features().ai_summaries is False
+        assert manager.get_current_tier() == FeatureTier.PRO
+        assert manager.get_features().ai_summaries is True
 
     def test_get_features_returns_correct_flags(self, mock_paths):
         """get_features should return flags for the current tier."""
@@ -81,8 +81,8 @@ class TestLicenseManager:
         )
         
         manager = LicenseManager()
-        # v2.0.0 FREE always returns FREE on verify
-        assert manager.get_current_tier() == FeatureTier.FREE
+        # Expired cache is ignored, falling back to the beta PRO default.
+        assert manager.get_current_tier() == FeatureTier.PRO
 
     def test_get_usage_limits(self, mock_paths):
         """get_usage_limits should return correct limits for each tier."""
@@ -133,4 +133,5 @@ class TestLicenseManager:
         
         manager = LicenseManager()
         assert manager._license_key is None
-        assert manager.get_current_tier() == FeatureTier.FREE
+        # Corrupt files are ignored gracefully → beta PRO default applies.
+        assert manager.get_current_tier() == FeatureTier.PRO
