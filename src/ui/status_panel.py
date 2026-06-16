@@ -32,6 +32,7 @@ try:
         NSEventMaskRightMouseDown,
         NSEventModifierFlagControl,
         NSEventTypeRightMouseDown,
+        NSImageView,
         NSMakeRect,
         NSMakeSize,
         NSPopover,
@@ -50,6 +51,7 @@ except ImportError:  # pragma: no cover - non-mac
 
 _PANEL_WIDTH = 320.0
 _PAD = 16.0
+_TEXT_DX = 28.0  # text column: icons at _PAD, labels at _PAD + _TEXT_DX
 _ROW_GAP = float(style.SPACE_TIGHT)
 _BTN_H = 30.0
 _BTN_GAP = 2.0
@@ -101,26 +103,30 @@ if _APPKIT_AVAILABLE:
             elements = []  # (subview,) added after we know total height
             cy = _PAD
 
-            # Header: status symbol + title.
+            # Header: icon (vertically centred) + stacked title / status, so the
+            # status line sits directly under the name on the text column.
+            header_h = 40.0
+            text_x = _PAD + _TEXT_DX
+            text_w = inner - _TEXT_DX
             sym_name = model.status_symbol if model else "waveform"
             header_symbol = self._icon_button(
-                sym_name, NSMakeRect(_PAD, cy, 20, 20), point=16.0
+                sym_name,
+                NSMakeRect(_PAD, cy + (header_h - 18) / 2, 18, 18),
+                point=17.0,
             )
             elements.append(header_symbol)
             title = style.make_label("Malinche", style="title")
             if title is not None:
-                title.setFrame_(NSMakeRect(_PAD + 28, cy - 1, inner - 28, 20))
+                title.setFrame_(NSMakeRect(text_x, cy, text_w, 20))
                 elements.append(title)
-            cy += 22
-
             status_text = model.status_text if model else "…"
             status_label = style.make_label(
                 status_text, style="caption", secondary=True
             )
             if status_label is not None:
-                status_label.setFrame_(NSMakeRect(_PAD, cy, inner, 16))
+                status_label.setFrame_(NSMakeRect(text_x, cy + 21, text_w, 16))
                 elements.append(status_label)
-            cy += 16
+            cy += header_h
 
             # Active row: file + indeterminate spinner.
             if model and model.active_row is not None:
@@ -136,7 +142,9 @@ if _APPKIT_AVAILABLE:
                 )
                 file_label = style.make_label(model.active_row.title, style="caption")
                 if file_label is not None:
-                    file_label.setFrame_(NSMakeRect(_PAD + 22, cy, inner - 22 - 22, 16))
+                    file_label.setFrame_(
+                        NSMakeRect(_PAD + _TEXT_DX, cy, inner - _TEXT_DX - 22, 16)
+                    )
                     elements.append(file_label)
                 spinner = NSProgressIndicator.alloc().initWithFrame_(
                     NSMakeRect(width - _PAD - 16, cy, 16, 16)
@@ -168,7 +176,9 @@ if _APPKIT_AVAILABLE:
                     )
                     lbl = style.make_label(row.title, style="caption")
                     if lbl is not None:
-                        lbl.setFrame_(NSMakeRect(_PAD + 24, cy, inner - 24, 15))
+                        lbl.setFrame_(
+                            NSMakeRect(_PAD + _TEXT_DX, cy, inner - _TEXT_DX, 15)
+                        )
                         elements.append(lbl)
                     cy += 20
 
@@ -218,23 +228,32 @@ if _APPKIT_AVAILABLE:
 
         @objc.python_method
         def _make_action_button(self, label, symbol_name, frame, action):
-            # Borderless menu-style row with hover highlight: leading SF Symbol,
-            # label tight beside it.
+            # Menu-style row: full-width hover-highlight button as the click
+            # target, with a separate icon (icon column) + label (text column)
+            # so everything lines up on the same two-column grid as the header.
             from src.ui.hover import make_hover_button
 
             button = make_hover_button(frame) or NSButton.alloc().initWithFrame_(frame)
-            button.setTitle_("  " + label)
+            button.setTitle_("")
             button.setBordered_(False)
-            button.setAlignment_(0)  # left-aligned content
-            font = style.system_font("body")
-            if font is not None:
-                button.setFont_(font)
-            img = style.sf_symbol(symbol_name, point=14.0)
-            if img is not None:
-                button.setImage_(img)
-                button.setImagePosition_(2)  # NSImageLeft — icon on the leading edge
             button.setTarget_(self)
             button.setAction_(action)
+            h = frame.size.height
+
+            img = style.sf_symbol(symbol_name, point=14.0)
+            if img is not None:
+                icon = NSImageView.alloc().initWithFrame_(
+                    NSMakeRect(0, (h - 16) / 2, 16, 16)
+                )
+                icon.setImage_(img)
+                button.addSubview_(icon)
+
+            lbl = style.make_label(label, style="body")
+            if lbl is not None:
+                lbl.setFrame_(
+                    NSMakeRect(_TEXT_DX, (h - 18) / 2, frame.size.width - _TEXT_DX, 18)
+                )
+                button.addSubview_(lbl)
             return button
 
         # -- actions ------------------------------------------------------- #

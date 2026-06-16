@@ -43,6 +43,7 @@ if _APPKIT_AVAILABLE:
                 return None
             self.setWantsLayer_(True)
             self.layer().setCornerRadius_(6.0)
+            self._selected = False
             return self
 
         def updateTrackingAreas(self):
@@ -54,15 +55,36 @@ if _APPKIT_AVAILABLE:
             )
             self.addTrackingArea_(area)
 
+        # Persistent selection (e.g. the active sidebar item). Hover paints over
+        # it; leaving restores the selected fill instead of clearing it.
+        def setSelected_(self, flag):
+            self._selected = bool(flag)
+            self._applyRestingBackground()
+
+        @objc.python_method
+        def _applyRestingBackground(self):
+            if self._selected:
+                colour = NSColor.selectedContentBackgroundColor().CGColor()
+            else:
+                colour = NSColor.clearColor().CGColor()
+            self.layer().setBackgroundColor_(colour)
+
         def mouseEntered_(self, event):
             self.layer().setBackgroundColor_(
                 NSColor.selectedContentBackgroundColor()
-                .colorWithAlphaComponent_(0.5)
+                .colorWithAlphaComponent_(0.5 if not self._selected else 1.0)
                 .CGColor()
             )
 
         def mouseExited_(self, event):
-            self.layer().setBackgroundColor_(NSColor.clearColor().CGColor())
+            self._applyRestingBackground()
+
+        def hitTest_(self, point):
+            # The whole row is one click target; decorative icon/label children
+            # must not swallow the click.
+            if objc.super(_HoverButton, self).hitTest_(point) is not None:
+                return self
+            return None
 
 
 def make_hover_button(frame):

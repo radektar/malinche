@@ -160,18 +160,13 @@ try:
             self.highlightSection_(sender.tag())
 
         def highlightSection_(self, index):
-            from AppKit import NSColor
-
             if self.sections:
                 for i, view in enumerate(self.sections):
                     view.setHidden_(i != index)
             if self.sidebar_buttons:
-                selected = NSColor.selectedContentBackgroundColor()
-                clear = NSColor.clearColor()
                 for i, button in enumerate(self.sidebar_buttons):
-                    button.layer().setBackgroundColor_(
-                        (selected if i == index else clear).CGColor()
-                    )
+                    if button.respondsToSelector_(b"setSelected:"):
+                        button.setSelected_(i == index)
 
         # Save / Cancel
         def saveClicked_(self, sender):
@@ -344,7 +339,9 @@ def _section(blocks):
     width = _content_width()
     gap = 16
     total = sum(h for _, h in blocks) + gap * max(len(blocks) - 1, 0)
-    section = _SettingsFlippedView.alloc().initWithFrame_(NSMakeRect(0, 0, width, total))
+    section = _SettingsFlippedView.alloc().initWithFrame_(
+        NSMakeRect(0, 0, width, total)
+    )
     y = 0.0
     for view, height in blocks:
         view.setFrameOrigin_(NSMakePoint(0, y))
@@ -652,9 +649,10 @@ def _show_native_settings_window(
         content.addSubview_(section)
         section_views.append(section)
 
-        row = NSButton.alloc().initWithFrame_(
-            NSMakeRect(10, row_y, _SIDEBAR_W - 20, 34)
-        )
+        from src.ui.hover import make_hover_button
+
+        row_frame = NSMakeRect(10, row_y, _SIDEBAR_W - 20, 34)
+        row = make_hover_button(row_frame) or NSButton.alloc().initWithFrame_(row_frame)
         row.setTitle_("  " + label)
         row.setBordered_(False)
         row.setAlignment_(0)
@@ -665,8 +663,6 @@ def _show_native_settings_window(
         if img is not None:
             row.setImage_(img)
             row.setImagePosition_(2)  # leading
-        row.setWantsLayer_(True)
-        row.layer().setCornerRadius_(6.0)
         row.setTag_(index)
         row.setTarget_(delegate)
         row.setAction_("selectSection:")
