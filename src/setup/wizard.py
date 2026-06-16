@@ -335,7 +335,39 @@ class SetupWizard:
         explicitly approved (via the Yes/No/Once dialog when connected,
         or legacy 'specific' with a list of disk names).
         """
-        response = rumps.alert(
+        from src.setup.onboarding_window import show_onboarding_screen
+
+        idx = self.STEPS_ORDER.index(WizardStep.SOURCE_CONFIG)
+        # primary=1 → Ask, secondary=0 → Specific names, tertiary=-1 → Cancel.
+        response = show_onboarding_screen(
+            title="Recording sources",
+            body=(
+                "Malinche can ask you the first time each new disk is "
+                "connected — recommended — or watch only specific disk "
+                "names you provide (e.g. LS-P1, ZOOM-H6)."
+            ),
+            primary="Ask on new disk",
+            secondary="Specific names…",
+            tertiary="Cancel",
+            step_index=idx,
+            step_count=len(self.STEPS_ORDER),
+        )
+        if response is None:
+            response = self._source_config_alert_fallback()
+
+        if response == -1:  # Cancel
+            return "cancel"
+        if response == 1:  # Ask — manual + UUID whitelist
+            self.settings.watch_mode = "manual"
+            self.settings.watched_volumes = []
+            self.settings.needs_volume_onboarding = False
+            return "next"
+        # response == 0 → Specific disk names (advanced)
+        return self._prompt_specific_disks()
+
+    def _source_config_alert_fallback(self) -> int:
+        """Plain-alert source-mode picker. Returns 1 / 0 / -1 like the window."""
+        return int(rumps.alert(
             title="📁 Recording sources",
             message=(
                 "Where should Malinche pull recordings from?\n\n"
@@ -348,37 +380,172 @@ class SetupWizard:
             ok="Ask on new disk",
             cancel="Specific disk names",
             other="Cancel",
+        ))
+
+    def _prompt_specific_disks(self) -> str:
+        """Collect explicit disk names for the legacy 'specific' watch mode."""
+        window = rumps.Window(
+            title="Disk names",
+            message="Enter disk names separated by commas\n(e.g. LS-P1, ZOOM-H6):",
+            default_text="LS-P1",
+            ok="OK",
+            cancel="Back",
+            dimensions=(300, 24),
         )
+        result = window.run()
 
-        if response == -1:  # Cancel (other button)
-            return "cancel"
-        elif response == 1:  # Ask — manual + UUID whitelist
-            self.settings.watch_mode = "manual"
-            self.settings.watched_volumes = []
-            self.settings.needs_volume_onboarding = False
-        else:  # Specific disks (legacy specific)
-            window = rumps.Window(
-                title="Disk names",
-                message="Enter disk names separated by commas\n(e.g. LS-P1, ZOOM-H6):",
-                default_text="LS-P1",
-                ok="OK",
-                cancel="Back",
-                dimensions=(300, 24),
-            )
-            result = window.run()
+        if result.clicked == 0:  # Cancel/Back
+            return "back"
 
-            if result.clicked == 0:  # Cancel/Back
-                return "back"
-
-            volumes = [v.strip() for v in result.text.split(",") if v.strip()]
-            self.settings.watch_mode = "specific"
-            self.settings.watched_volumes = volumes
-            self.settings.needs_volume_onboarding = False
-
+        volumes = [v.strip() for v in result.text.split(",") if v.strip()]
+        self.settings.watch_mode = "specific"
+        self.settings.watched_volumes = volumes
+        self.settings.needs_volume_onboarding = False
         return "next"
 
     def _show_basic_config(self) -> str:
-        """Unified step for output folder, language and model."""
+        """Output folder, language and model — styled onboarding window."""
+        from src.setup.onboarding_window import (
+            _APPKIT_AVAILABLE,
+            show_onboarding_screen,
+        )
+
+        if not _APPKIT_AVAILABLE:
+            return self._basic_config_legacy()
+
+        from AppKit import NSButton, NSMakeRect, NSPopUpButton, NSTextField, NSView
+
+        from src.ui.folder_picker import apply_basic_settings, select_folder_with_warning
+
+        language_codes = list(SUPPORTED_LANGUAGES.keys())
+        model_codes = list(SUPPORTED_MODELS.keys())
+        selected_language = (
+            self.settings.language
+            if self.settings.language in language_codes
+            else language_codes[0]
+        )
+        selected_model = (
+            self.settings.whisper_model
+            if self.settings.whisper_model in model_codes
+            else model_codes[0]
+        )
+        state = {"folder": str(self.settings.output_dir)}
+        refs: dict = {}
+
+        def _short(path: str) -> str:
+            return path if len(path) <= 58 else "..." + path[-55:]
+
+        def _plain_label(text, x, y, w, h):
+            field = NSTextField.alloc().initWithFrame_(NSMakeRect(x, y, w, h))
+            field.setStringValue_(text)
+            field.setBezeled_(False)
+            field.setDrawsBackground_(False)
+            field.setEditable_(False)
+            field.setSelectable_(False)
+            return field
+
+        def build(width, delegate):
+            acc_h = 152.0
+            view = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, width, acc_h))
+
+            view.addSubview_(_plain_label("Transcripts folder", 0, 130, width, 18))
+
+            folder_value = NSTextField.alloc().initWithFrame_(
+                NSMakeRect(0, 104, width - 188, 20)
+            )
+            folder_value.setStringValue_(_short(state["folder"]))
+            folder_value.setBezeled_(False)
+            folder_value.setDrawsBackground_(False)
+            folder_value.setEditable_(False)
+            folder_value.setSelectable_(True)
+            view.addSubview_(folder_value)
+            refs["folder_field"] = folder_value
+
+            choose = NSButton.alloc().initWithFrame_(
+                NSMakeRect(width - 176, 100, 176, 28)
+            )
+            choose.setTitle_("Choose folder…")
+            choose.setBezelStyle_(1)
+            choose.setTarget_(delegate)
+            choose.setAction_("accessoryClicked:")
+            view.addSubview_(choose)
+
+            view.addSubview_(_plain_label("Language", 0, 60, 90, 22))
+            lang_popup = NSPopUpButton.alloc().initWithFrame_(
+                NSMakeRect(100, 56, width - 100, 26)
+            )
+            for code, name in SUPPORTED_LANGUAGES.items():
+                lang_popup.addItemWithTitle_(f"{name} ({code})")
+            lang_popup.selectItemAtIndex_(language_codes.index(selected_language))
+            view.addSubview_(lang_popup)
+            refs["lang"] = lang_popup
+
+            view.addSubview_(_plain_label("Model", 0, 16, 90, 22))
+            model_popup = NSPopUpButton.alloc().initWithFrame_(
+                NSMakeRect(100, 12, width - 100, 26)
+            )
+            for code, name in SUPPORTED_MODELS.items():
+                model_popup.addItemWithTitle_(f"{code.upper()}: {name}")
+            model_popup.selectItemAtIndex_(model_codes.index(selected_model))
+            view.addSubview_(model_popup)
+            refs["model"] = model_popup
+
+            return view, acc_h
+
+        def on_pick():
+            picked = select_folder_with_warning(
+                choose_folder_dialog,
+                warn_non_icloud=lambda _p: rumps.alert(
+                    title="Folder outside iCloud",
+                    message=(
+                        "The selected folder is not inside iCloud. "
+                        "Multi-device dedup will be local to this Mac."
+                    ),
+                    ok="OK",
+                ),
+                is_icloud_check=lambda p: is_icloud_synced(Path(p)),
+                title=TEXTS["folder_picker_title"],
+                message=TEXTS["folder_picker_message"],
+            )
+            if picked:
+                state["folder"] = picked
+                field = refs.get("folder_field")
+                if field is not None:
+                    field.setStringValue_(_short(picked))
+
+        idx = self.STEPS_ORDER.index(WizardStep.BASIC_CONFIG)
+        response = show_onboarding_screen(
+            title="Output & language",
+            body="Choose where transcripts are saved, plus the language and model.",
+            primary="Next",
+            secondary="Back",
+            tertiary="Cancel",
+            accessory=build,
+            accessory_action=on_pick,
+            step_index=idx,
+            step_count=len(self.STEPS_ORDER),
+        )
+        if response is None:
+            return self._basic_config_legacy()
+        if response == -1:
+            return "cancel"
+        if response == 0:
+            return "back"
+
+        selected_language = language_codes[refs["lang"].indexOfSelectedItem()]
+        selected_model = model_codes[refs["model"].indexOfSelectedItem()]
+        apply_basic_settings(
+            self.settings,
+            selected_folder=state["folder"],
+            selected_language=selected_language,
+            selected_model=selected_model,
+            supported_languages=SUPPORTED_LANGUAGES,
+            supported_models=SUPPORTED_MODELS,
+        )
+        return "next"
+
+    def _basic_config_legacy(self) -> str:
+        """Unified output/language/model step — plain NSAlert fallback."""
         try:
             from AppKit import NSAlert, NSView, NSRect, NSTextField, NSPopUpButton
 
@@ -629,7 +796,68 @@ class SetupWizard:
             return "next"
 
     def _show_ai_config(self) -> str:
-        """AI summary configuration (optional)."""
+        """AI summary configuration — styled onboarding window (two screens)."""
+        from src.setup.onboarding_window import (
+            _APPKIT_AVAILABLE,
+            show_onboarding_screen,
+        )
+
+        if not _APPKIT_AVAILABLE:
+            return self._ai_config_legacy()
+
+        idx = self.STEPS_ORDER.index(WizardStep.AI_CONFIG)
+        choice = show_onboarding_screen(
+            title="AI summaries (optional)",
+            body=(
+                "Malinche can generate titles and summaries with Claude. This "
+                "needs an Anthropic API key (~$0.01–0.05 per recording). You "
+                "can also add it later in Settings."
+            ),
+            primary="Add API key",
+            secondary="Skip",
+            tertiary="Cancel",
+            step_index=idx,
+            step_count=len(self.STEPS_ORDER),
+        )
+        if choice is None:
+            return self._ai_config_legacy()
+        if choice == -1:  # Cancel
+            return "cancel"
+        if choice == 0:  # Skip
+            self.settings.enable_ai_summaries = False
+            return "next"
+
+        # choice == 1 → key-entry screen with an embedded text field.
+        from AppKit import NSMakeRect, NSTextField
+
+        refs: dict = {}
+
+        def build(width, _delegate):
+            field = NSTextField.alloc().initWithFrame_(NSMakeRect(0, 0, width, 26))
+            field.setPlaceholderString_("sk-ant-...")
+            refs["field"] = field
+            return field, 26.0
+
+        key_result = show_onboarding_screen(
+            title="Claude API key",
+            body="Paste the key from console.anthropic.com.",
+            primary="Save",
+            secondary="Skip",
+            accessory=build,
+            step_index=idx,
+            step_count=len(self.STEPS_ORDER),
+        )
+        field = refs.get("field")
+        key = field.stringValue().strip() if field is not None else ""
+        if key_result == 1 and key:
+            self.settings.enable_ai_summaries = True
+            self.settings.ai_api_key = key
+        else:
+            self.settings.enable_ai_summaries = False
+        return "next"
+
+    def _ai_config_legacy(self) -> str:
+        """AI summary configuration — plain alert + text-window fallback."""
         response = rumps.alert(
             title="🤖 AI summaries (optional)",
             message=(
