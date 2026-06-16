@@ -18,7 +18,7 @@ See ``Docs/UI-REDESIGN-L4-PLAN.md`` (phase 4).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional, Tuple
 
 from src.logger import logger
 
@@ -65,6 +65,7 @@ if _APPKIT_AVAILABLE:
                 return None
             self.window = window
             self.result = 0
+            self.accessory_action = None
             return self
 
         def primaryClicked_(self, sender):
@@ -75,6 +76,15 @@ if _APPKIT_AVAILABLE:
 
         def tertiaryClicked_(self, sender):
             self._finish(-1)
+
+        def accessoryClicked_(self, sender):
+            """Run the caller's accessory handler without dismissing the modal."""
+            action = getattr(self, "accessory_action", None)
+            if action is not None:
+                try:
+                    action()
+                except Exception as exc:  # pragma: no cover - defensive
+                    logger.warning("Onboarding accessory action failed: %s", exc)
 
         @objc.python_method
         def _finish(self, value):
@@ -144,14 +154,56 @@ def show_onboarding_screen(
     tertiary: Optional[str] = None,
     step_index: Optional[int] = None,
     step_count: Optional[int] = None,
+    accessory: Optional[Callable[[float, object], Tuple[object, float]]] = None,
+    accessory_action: Optional[Callable[[], None]] = None,
 ) -> Optional[int]:
-    """Show one onboarding screen modally. Returns 1/0/-1, or None without AppKit."""
+    """Show one onboarding screen modally. Returns 1/0/-1, or None without AppKit.
+
+    ``accessory`` lets a step embed its own controls (folder picker, popups, a
+    text field) between the body and the progress dots. It is called as
+    ``accessory(content_width, delegate)`` and must return ``(view, height)``;
+    the window grows to fit. Buttons inside the accessory can target the
+    delegate's ``accessoryClicked:`` selector (the run-modal stays up) and the
+    caller is notified through ``accessory_action``. The caller reads control
+    values back from references it closed over once this returns.
+    """
     if not _APPKIT_AVAILABLE:
         return None
 
-    # Measure a tall-enough window; content is laid out top-down (flipped).
     has_dots = bool(step_count and step_count > 1)
-    height = _PAD + 84 + 16 + 30 + 12 + 90 + (24 if has_dots else 0) + 56 + _PAD
+    content_width = _WIDTH - 2 * _PAD
+
+    # The delegate exists before the accessory so embedded buttons can target
+    # it; the window is wired in once its height is known.
+    delegate = _OnboardingDelegate.alloc().initWithWindow_(None)
+    delegate.accessory_action = accessory_action
+
+    acc_view = None
+    acc_h = 0.0
+    if accessory is not None:
+        acc_view, acc_h = accessory(content_width, delegate)
+
+    # Top-down (flipped) layout. Compute every slot up front so the window can
+    # be sized exactly before any subview is placed.
+    body_h = 44.0 if acc_view is not None else 86.0
+    cy = _PAD
+    icon_y = cy
+    cy += 84
+    title_y = cy
+    cy += 36
+    body_y = cy
+    cy += body_h + 10
+    acc_y = None
+    if acc_view is not None:
+        acc_y = cy
+        cy += acc_h + 16
+    dots_y = None
+    if has_dots:
+        dots_y = cy
+        cy += 24
+    buttons_y = cy + 16
+    height = buttons_y + 32 + _PAD
+
     win = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
         NSMakeRect(0, 0, _WIDTH, height),
         NSWindowStyleMaskTitled,
@@ -161,6 +213,7 @@ def show_onboarding_screen(
     win.setTitle_("Malinche Setup")
     win.center()
     win.setReleasedWhenClosed_(False)
+    delegate.window = win
 
     root = style.vibrant_view(NSMakeRect(0, 0, _WIDTH, height), material="window")
     if root is None:
@@ -175,38 +228,35 @@ def show_onboarding_screen(
     content.setAutoresizingMask_(18)
     root.addSubview_(content)
 
-    cy = _PAD
     icon = _app_icon()
     if icon is not None:
         iv = NSImageView.alloc().initWithFrame_(
-            NSMakeRect((_WIDTH - 72) / 2, cy, 72, 72)
+            NSMakeRect((_WIDTH - 72) / 2, icon_y, 72, 72)
         )
         iv.setImage_(icon)
         content.addSubview_(iv)
-    cy += 84
 
     title_label = _label(title, "headline")
-    title_label.setFrame_(NSMakeRect(_PAD, cy, _WIDTH - 2 * _PAD, 28))
+    title_label.setFrame_(NSMakeRect(_PAD, title_y, content_width, 28))
     content.addSubview_(title_label)
-    cy += 36
 
     body_label = _label(body, "body", secondary=True)
-    body_label.setFrame_(NSMakeRect(_PAD, cy, _WIDTH - 2 * _PAD, 86))
+    body_label.setFrame_(NSMakeRect(_PAD, body_y, content_width, body_h))
     content.addSubview_(body_label)
-    cy += 96
+
+    if acc_view is not None:
+        acc_view.setFrame_(  # type: ignore[attr-defined]
+            NSMakeRect(_PAD, acc_y, content_width, acc_h)
+        )
+        content.addSubview_(acc_view)
 
     if has_dots:
         dots, total_w = _progress_dots(step_index or 0, step_count)
-        dots.setFrame_(NSMakeRect((_WIDTH - total_w) / 2, cy, total_w, 8))
+        dots.setFrame_(NSMakeRect((_WIDTH - total_w) / 2, dots_y, total_w, 8))
         content.addSubview_(dots)
-        cy += 24
-
-    delegate = _OnboardingDelegate.alloc().initWithWindow_(win)
 
     def _button(label, action, x, width, accent=False):
-        btn = NSButton.alloc().initWithFrame_(
-            NSMakeRect(x, height - _PAD - 32, width, 32)
-        )
+        btn = NSButton.alloc().initWithFrame_(NSMakeRect(x, buttons_y, width, 32))
         btn.setTitle_(label)
         btn.setBezelStyle_(1)
         if accent:
@@ -231,7 +281,7 @@ def show_onboarding_screen(
         _button(tertiary, "tertiaryClicked:", _PAD, 110)
 
     _RETAINED.clear()
-    _RETAINED.append((win, delegate))
+    _RETAINED.append((win, delegate, acc_view))
 
     win.makeKeyAndOrderFront_(None)
     NSApp.activateIgnoringOtherApps_(True)
