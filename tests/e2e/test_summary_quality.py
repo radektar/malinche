@@ -196,6 +196,46 @@ def test_polish_transcript_yields_polish_summary(summarizer, judge_client):
     assert score >= 4, f"summary not judged Polish (score {score}/5)"
 
 
+@requires_claude
+def test_english_transcript_yields_english_summary(summarizer, judge_client):
+    """An English transcript must produce an English summary (no forced PL).
+
+    Regression guard for the beta.10 prompt fix: the old prompt hard-coded
+    "Używaj wyłącznie języka polskiego", so English recordings came back as
+    Polish notes. The summary must now follow the transcript's language.
+    """
+    result = _run_or_skip(lambda: summarizer.generate(_EN_TRANSCRIPT))
+    question = (
+        "Is the following text written primarily in English? "
+        "Reply 5 for definitely English, 1 for definitely not English, "
+        "a single digit only.\n\n"
+        f"{result.get('summary', '')}"
+    )
+    score = _run_or_skip(lambda: _judge_score(judge_client, question))
+    assert score >= 4, f"English transcript did not yield an English summary ({score}/5)"
+
+
+@requires_claude
+def test_summary_does_not_fabricate(summarizer, judge_client):
+    """The summary must stay grounded — no invented tasks, names or decisions.
+
+    Guards the beta.10 anti-fabrication prompt change: the verbose template used
+    to pad short transcripts with hallucinated action items ("notify the team",
+    "prepare guidelines for Marek") that were never said.
+    """
+    result = _run_or_skip(lambda: summarizer.generate(_EN_TRANSCRIPT))
+    question = (
+        "You are checking a summary for fabrication against its transcript.\n"
+        "Rate 1 (many invented facts/tasks/names absent from the transcript) to "
+        "5 (fully grounded, every claim traceable to the transcript). "
+        "Reply with a single digit 1-5 only.\n\n"
+        f"TRANSCRIPT:\n{_EN_TRANSCRIPT}\n\n"
+        f"SUMMARY:\n{result.get('summary', '')}"
+    )
+    score = _run_or_skip(lambda: _judge_score(judge_client, question))
+    assert score >= 4, f"summary judged to contain fabrications ({score}/5)"
+
+
 # --------------------------------------------------------------------------- #
 # alpha.18 regression — no API key required.
 # --------------------------------------------------------------------------- #

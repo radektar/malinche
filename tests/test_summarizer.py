@@ -361,7 +361,64 @@ class TestGetSummarizer:
         """Test handling of unknown provider."""
         monkeypatch.setattr(config, 'ENABLE_SUMMARIZATION', True)
         monkeypatch.setattr(config, 'LLM_PROVIDER', 'unknown')
-        
+
         result = get_summarizer()
         assert result is None
+
+
+class TestPromptLanguageDirective:
+    """The detected language is turned into an explicit, named output directive."""
+
+    @pytest.fixture
+    def summarizer(self):
+        with patch('src.summarizer.Anthropic'):
+            return ClaudeSummarizer(api_key="test-key", model="m")
+
+    def test_prompt_embeds_english_directive(self, summarizer):
+        """An English transcript injects an explicit ENGLISH output directive."""
+        prompt = summarizer._build_prompt("We will ship the API on Wednesday.")
+        assert "WRITE THE ENTIRE RESPONSE IN ENGLISH" in prompt
+        assert "PO POLSKU" not in prompt
+
+    def test_prompt_embeds_polish_directive(self, summarizer):
+        """A Polish transcript injects an explicit POLISH output directive."""
+        prompt = summarizer._build_prompt("Musimy wysłać wycenę w przyszłym tygodniu.")
+        assert "NAPISZ CAŁĄ ODPOWIEDŹ PO POLSKU" in prompt
+        assert "IN ENGLISH" not in prompt
+
+    def test_prompt_omits_directive_when_language_unclear(self, summarizer):
+        """No hard directive when the language can't be decided — generic rule wins."""
+        prompt = summarizer._build_prompt("12345 — 67890 !!!")
+        assert "WRITE THE ENTIRE RESPONSE IN ENGLISH" not in prompt
+        assert "NAPISZ CAŁĄ ODPOWIEDŹ PO POLSKU" not in prompt
+        # The generic in-prompt language rule is always present as a fallback.
+        assert "OUTPUT LANGUAGE" in prompt
+
+
+class TestDetectLanguage:
+    """Pure, API-free output-language detection (drives the prompt directive)."""
+
+    @pytest.mark.parametrize(
+        "text, expected",
+        [
+            ("Anna will finish the database changes by Wednesday.", "en"),
+            ("The rollout plan goes to the team by end of day.", "en"),
+            ("Ustaliliśmy, że prototyp ma być gotowy do końca miesiąca.", "pl"),
+            # Polish without diacritics still resolves via stopwords (się/że/nie).
+            ("Musimy sie spotkac, zeby ustalic budzet, bo nie wiemy.", "pl"),
+            ("", None),
+            ("   ", None),
+            ("99 + 1 = 100 !!!", None),
+        ],
+    )
+    def test_detect_language(self, text, expected):
+        from src.summarizer import detect_language
+
+        assert detect_language(text) == expected
+
+    def test_diacritics_dominate(self):
+        """A single Polish diacritic is a decisive Polish signal."""
+        from src.summarizer import detect_language
+
+        assert detect_language("Spotkanie zakończyło się sukcesem") == "pl"
 
