@@ -51,8 +51,8 @@ except ImportError:  # pragma: no cover - non-mac
 _PANEL_WIDTH = 320.0
 _PAD = 16.0
 _ROW_GAP = float(style.SPACE_TIGHT)
-_BTN_H = 28.0
-_BTN_GAP = 6.0
+_BTN_H = 30.0
+_BTN_GAP = 2.0
 
 
 if _APPKIT_AVAILABLE:
@@ -218,14 +218,18 @@ if _APPKIT_AVAILABLE:
 
         @objc.python_method
         def _make_action_button(self, label, symbol_name, frame, action):
+            # Borderless menu-style row: leading SF Symbol, label tight beside it.
             button = NSButton.alloc().initWithFrame_(frame)
-            button.setTitle_(label)
-            button.setBezelStyle_(1)  # rounded
+            button.setTitle_("  " + label)
+            button.setBordered_(False)
             button.setAlignment_(0)  # left-aligned content
-            img = style.sf_symbol(symbol_name, point=12.0)
+            font = style.system_font("body")
+            if font is not None:
+                button.setFont_(font)
+            img = style.sf_symbol(symbol_name, point=13.0)
             if img is not None:
                 button.setImage_(img)
-                button.setImagePosition_(3)  # image on the leading edge
+                button.setImagePosition_(2)  # NSImageLeft — icon on the leading edge
             button.setTarget_(self)
             button.setAction_(action)
             return button
