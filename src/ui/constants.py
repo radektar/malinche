@@ -1,7 +1,10 @@
 """UI constants - easy to replace during redesign."""
 
-# Application metadata
-APP_VERSION = "2.0.0-beta.8"
+from src import __version__
+
+# Application metadata. Single source of truth is ``src.__version__``; the bundle
+# literal in ``setup_app.py`` is kept in lock-step by ``tests/test_versions_sync``.
+APP_VERSION = __version__
 APP_NAME = "Malinche"
 APP_AUTHOR = "Malinche Team"
 APP_WEBSITE = "https://malinche.app"
