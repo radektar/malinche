@@ -56,7 +56,12 @@ DEFAULT_LEGACY_MIGRATED = False
 
 # Audio detection defaults
 # Keep this set in sync with legacy Config expectations.
-AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".wma", ".flac", ".aac", ".ogg"}
+# .dss/.ds2 are Olympus Digital Speech Standard (dictaphone) formats — ffmpeg
+# can *decode* them (so `_convert_to_wav` handles them) but not encode them,
+# so the test audio factory can't render them (see test_audio_factory).
+AUDIO_EXTENSIONS = {
+    ".mp3", ".wav", ".m4a", ".wma", ".flac", ".aac", ".ogg", ".dss", ".ds2"
+}
 
 # Limit recursive scan depth under a volume root (performance safeguard).
 MAX_SCAN_DEPTH = 3

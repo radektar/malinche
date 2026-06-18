@@ -99,12 +99,26 @@ def factory(tmp_path_factory) -> AudioFactory:
 
 
 def test_format_list_matches_production_defaults():
-    """The corpus must cover exactly the formats Malinche claims to support."""
+    """The corpus must cover every format Malinche accepts *and can render*.
+
+    ffmpeg can decode but not encode Olympus DSS/DS2, so those are accept-only
+    and cannot appear in the renderable corpus. The factory set must therefore
+    be exactly ``defaults.AUDIO_EXTENSIONS`` minus that known decode-only set —
+    which still catches accidental drift in either direction.
+    """
     from src.config import defaults
 
-    assert set(af.AUDIO_EXTENSIONS) == set(defaults.AUDIO_EXTENSIONS), (
-        "audio_factory.AUDIO_EXTENSIONS drifted from "
-        "src.config.defaults.AUDIO_EXTENSIONS"
+    DECODE_ONLY = {".dss", ".ds2"}
+    factory_set = set(af.AUDIO_EXTENSIONS)
+    accepted = set(defaults.AUDIO_EXTENSIONS)
+
+    assert factory_set <= accepted, (
+        "audio_factory renders a format the app does not accept: "
+        f"{factory_set - accepted}"
+    )
+    assert accepted - factory_set == DECODE_ONLY, (
+        "accepted-but-unrenderable formats drifted from the known decode-only "
+        f"set; got {accepted - factory_set}, expected {DECODE_ONLY}"
     )
 
 
