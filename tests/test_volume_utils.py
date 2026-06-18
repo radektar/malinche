@@ -56,6 +56,21 @@ def test_has_audio_files_ignores_non_audio(tmp_path):
     assert has_audio_files(tmp_path) is False
 
 
+@pytest.mark.parametrize("ext", [".dss", ".ds2", ".DSS", ".DS2"])
+def test_has_audio_files_detects_olympus_dss(tmp_path, ext):
+    """Olympus DSS/DS2 dictaphone recordings count as audio (case-insensitive)."""
+    (tmp_path / f"DS500001{ext}").touch()
+    assert has_audio_files(tmp_path) is True
+
+
+def test_dss_formats_are_in_supported_extensions():
+    """.dss/.ds2 must be in the accepted set so the pipeline picks them up."""
+    from src.config import defaults
+
+    assert ".dss" in defaults.AUDIO_EXTENSIONS
+    assert ".ds2" in defaults.AUDIO_EXTENSIONS
+
+
 def test_has_audio_files_respects_max_depth(tmp_path):
     """Files beyond max_depth must not trigger detection."""
     deep = tmp_path / "a" / "b" / "c" / "d"

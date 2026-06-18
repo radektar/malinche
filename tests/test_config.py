@@ -41,8 +41,10 @@ def test_config_audio_extensions():
     """Test that audio extensions are properly set."""
     config = Config()
     
-    # Should include all supported audio formats
-    assert config.AUDIO_EXTENSIONS == {".mp3", ".wav", ".m4a", ".wma", ".flac", ".aac", ".ogg"}
+    # Should include all supported audio formats (incl. Olympus DSS/DS2).
+    assert config.AUDIO_EXTENSIONS == {
+        ".mp3", ".wav", ".m4a", ".wma", ".flac", ".aac", ".ogg", ".dss", ".ds2"
+    }
 
 
 def test_config_whisper_cpp_paths():

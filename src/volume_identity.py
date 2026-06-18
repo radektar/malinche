@@ -23,6 +23,14 @@ from src.logger import logger
 
 _DISKUTIL_TIMEOUT_SECONDS = 3.0
 
+# Stable, disk-bound identifiers in order of preference. ``VolumeUUID`` exists
+# for APFS/HFS+ but is typically absent on FAT/exFAT recorder cards; for those
+# ``DiskUUID`` (the GPT partition GUID) or ``MediaUUID`` (the whole-media id)
+# are still stable across relabels, remounts and card readers — strictly better
+# than the name-based composite fallback. Only when none are present do we fall
+# back to ``fallback:name:…`` (see :func:`_build_fallback_uuid`).
+_STABLE_UUID_KEYS = ("VolumeUUID", "DiskUUID", "MediaUUID")
+
 
 def _run_diskutil_info(volume_path: Path) -> Optional[dict]:
     """Wywołaj ``diskutil info -plist`` i zwróć sparsowany dict albo None."""
@@ -50,6 +58,15 @@ def _run_diskutil_info(volume_path: Path) -> Optional[dict]:
         return None
 
 
+def _extract_stable_uuid(info: dict) -> Optional[str]:
+    """Return the first non-empty stable id from *info* (see _STABLE_UUID_KEYS)."""
+    for key in _STABLE_UUID_KEYS:
+        value = info.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
 def _build_fallback_uuid(
     volume_path: Path,
     info: Optional[dict] = None,
@@ -71,16 +88,17 @@ def get_volume_uuid(volume_path: Path) -> str:
         volume_path: Mount-point volume, np. ``/Volumes/LS-P1``.
 
     Returns:
-        ``VolumeUUID`` (string) jeśli ``diskutil`` go zwrócił, inaczej
-        kompozyt ``fallback:name:<n>:size:<s>:fs:<fs>``.
+        A stable disk id (``VolumeUUID``/``DiskUUID``/``MediaUUID``) jeśli
+        ``diskutil`` którykolwiek zwrócił, inaczej kompozyt
+        ``fallback:name:<n>:size:<s>:fs:<fs>``.
     """
     info = _run_diskutil_info(volume_path)
     if info is None:
         return _build_fallback_uuid(volume_path, info=None)
 
-    uuid_value = info.get("VolumeUUID")
-    if isinstance(uuid_value, str) and uuid_value.strip():
-        return uuid_value.strip()
+    uuid = _extract_stable_uuid(info)
+    if uuid is not None:
+        return uuid
 
     return _build_fallback_uuid(volume_path, info=info)
 
@@ -100,10 +118,8 @@ def get_volume_metadata(volume_path: Path) -> dict:
             "uuid": _build_fallback_uuid(volume_path, info=None),
         }
 
-    uuid_value = info.get("VolumeUUID")
-    if isinstance(uuid_value, str) and uuid_value.strip():
-        uuid = uuid_value.strip()
-    else:
+    uuid = _extract_stable_uuid(info)
+    if uuid is None:
         uuid = _build_fallback_uuid(volume_path, info=info)
 
     return {

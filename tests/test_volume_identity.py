@@ -63,6 +63,41 @@ def test_get_volume_uuid_falls_back_when_uuid_field_missing():
     assert "fs:exFAT" in uuid
 
 
+def test_get_volume_uuid_uses_diskuuid_when_volumeuuid_missing():
+    """FAT/exFAT cards lack VolumeUUID — fall back to the stable DiskUUID."""
+    payload = _plist_payload(
+        None, DiskUUID="GPT-PART-GUID-1", TotalSize=64_000_000, FilesystemName="MS-DOS FAT32"
+    )
+    with patch(
+        "src.volume_identity.subprocess.run",
+        return_value=_make_completed(0, payload),
+    ):
+        uuid = get_volume_uuid(Path("/Volumes/NO NAME"))
+    assert uuid == "GPT-PART-GUID-1"  # a real id, not the name-based fallback
+
+
+def test_get_volume_uuid_uses_mediauuid_as_last_real_resort():
+    """When only MediaUUID is present, use it before the composite fallback."""
+    payload = _plist_payload(None, MediaUUID="MEDIA-GUID-9", FilesystemName="ExFAT")
+    with patch(
+        "src.volume_identity.subprocess.run",
+        return_value=_make_completed(0, payload),
+    ):
+        uuid = get_volume_uuid(Path("/Volumes/CARD"))
+    assert uuid == "MEDIA-GUID-9"
+
+
+def test_get_volume_uuid_prefers_volumeuuid_over_diskuuid():
+    """VolumeUUID stays the first choice when both are present."""
+    payload = _plist_payload("VOL-1", DiskUUID="DISK-2")
+    with patch(
+        "src.volume_identity.subprocess.run",
+        return_value=_make_completed(0, payload),
+    ):
+        uuid = get_volume_uuid(Path("/Volumes/X"))
+    assert uuid == "VOL-1"
+
+
 def test_get_volume_uuid_fallback_when_subprocess_raises():
     with patch(
         "src.volume_identity.subprocess.run",
