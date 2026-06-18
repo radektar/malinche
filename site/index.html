@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Malinche — mówisz, reszta zostaje</title>
+<meta name="description" content="Podłączasz dyktafon. Każde nagranie ląduje przepisane i poukładane w Twoim Obsidianie, na Twoim Macu. Nic nie ginie." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --terracotta:#C24010;
+    --terracotta-deep:#9A3009;
+    --jade:#057857;
+    --gold:#D6B033;
+    --cream:#F4E9CF;
+    --cream-hi:#FAF3E2;
+    --obsidian:#1A1A1F;
+    --ink:#241E18;
+    --ink-soft:#5A4E42;
+    --line:rgba(36,30,24,.14);
+    --maxw:1180px;
+    --measure:60ch;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;scroll-behavior:smooth}
+  body{
+    font-family:"Inter",system-ui,sans-serif;
+    color:var(--ink);
+    background:var(--cream);
+    line-height:1.6;
+    font-size:clamp(1rem,.95rem + .35vw,1.18rem);
+    position:relative;
+    overflow-x:hidden;
+  }
+  /* film grain — warmth/craft, very current */
+  body::before{
+    content:"";position:fixed;inset:0;z-index:1;pointer-events:none;
+    opacity:.05;mix-blend-mode:multiply;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .wrap{max-width:var(--maxw);margin-inline:auto;padding-inline:clamp(1.25rem,4vw,3rem)}
+  a{color:inherit}
+  .accent{color:var(--terracotta)}
+
+  /* ---- type ---- */
+  h1,h2,h3{font-family:"Fraunces","Fraunces",Georgia,serif;font-weight:500;line-height:1.02;letter-spacing:-.018em}
+  h1{font-size:clamp(2.15rem,7.4vw,5.6rem);overflow-wrap:break-word;hyphens:manual}
+  h2{font-size:clamp(1.9rem,3.6vw,3.1rem);letter-spacing:-.02em}
+  h3{font-family:"Inter",sans-serif;font-weight:600;font-size:1.06rem;letter-spacing:0}
+  .eyebrow{font-size:.78rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--terracotta)}
+  .lead{font-size:clamp(1.12rem,1rem + .7vw,1.42rem);color:var(--ink);max-width:48ch}
+  .muted{color:var(--ink-soft)}
+  p{max-width:var(--measure)}
+
+  /* ---- nav ---- */
+  header{position:sticky;top:0;z-index:30;background:rgba(244,233,207,.78);backdrop-filter:saturate(140%) blur(12px);-webkit-backdrop-filter:saturate(140%) blur(12px);border-bottom:1px solid transparent;transition:border-color .3s}
+  header.stuck{border-bottom-color:var(--line)}
+  nav{display:flex;align-items:center;justify-content:space-between;padding-block:clamp(1.1rem,2.5vw,1.7rem)}
+  .brand{display:flex;align-items:center;gap:.6rem;font-family:"Fraunces",serif;font-weight:600;font-size:1.28rem;letter-spacing:-.01em}
+  .chip{width:34px;height:34px;border-radius:10px;background:linear-gradient(180deg,var(--cream-hi),var(--cream));display:grid;place-items:center;box-shadow:0 1px 2px rgba(26,16,8,.18),inset 0 1px 0 rgba(255,255,255,.6);flex:0 0 auto}
+  .nav-links{display:flex;align-items:center;gap:1.4rem;font-size:.95rem}
+  .nav-links a{text-decoration:none;color:var(--ink-soft);font-weight:500;transition:color .2s}
+  .nav-links a:hover{color:var(--ink)}
+
+  /* ---- buttons ---- */
+  .btn{display:inline-flex;align-items:center;gap:.5rem;font-weight:600;font-size:.98rem;
+    padding:.85rem 1.4rem;border-radius:999px;text-decoration:none;transition:transform .15s,box-shadow .2s,background .2s;border:1px solid transparent}
+  .btn-primary{background:var(--terracotta);color:#fff;box-shadow:0 6px 20px -8px rgba(194,64,16,.7)}
+  .btn-primary:hover{background:var(--terracotta-deep);transform:translateY(-1px)}
+  .btn-ghost{border-color:var(--line);color:var(--ink);background:transparent}
+  .btn-ghost:hover{border-color:var(--ink);background:rgba(36,30,24,.03)}
+
+  /* ---- hero ---- */
+  .hero{position:relative;z-index:2;padding-top:clamp(2.5rem,6vw,5rem);padding-bottom:clamp(2rem,5vw,4rem);text-align:center}
+  .hero .eyebrow{display:inline-block;margin-bottom:1.4rem}
+  .hero h1{margin-inline:auto;max-width:16ch}
+  .hero .lead{margin:1.5rem auto 0}
+  .cta-row{display:flex;gap:.8rem;justify-content:center;flex-wrap:wrap;margin-top:2.2rem}
+  .note{margin-top:1rem;font-size:.86rem;color:var(--ink-soft)}
+
+  /* hero waveform, framed in a cream tile that echoes the app icon */
+  .tile{position:relative;margin:clamp(2rem,4.5vw,3.4rem) auto 0;width:min(620px,88vw);
+    background:linear-gradient(180deg,var(--cream-hi),#F1E4C6);
+    border-radius:32px;padding:clamp(1.8rem,4vw,2.8rem) clamp(1.6rem,4vw,3rem);
+    box-shadow:0 24px 60px -28px rgba(120,52,20,.45),inset 0 1px 0 rgba(255,255,255,.7),inset 0 0 0 1px rgba(120,52,20,.06)}
+  .tile .pyr-top{position:absolute;top:14px;left:0;right:0;height:14px;opacity:.28;
+    background-repeat:repeat-x;background-position:center;background-size:auto 14px;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='14' viewBox='0 0 56 14'%3E%3Cpath d='M6 14 V11 H14 V8 H22 V5 H34 V8 H42 V11 H50 V14 Z' fill='%23C24010'/%3E%3C/svg%3E")}
+  .wave{display:block;width:100%;height:auto;margin-top:.4rem}
+  .wave rect{transform-box:fill-box;transform-origin:center;animation:breathe 2.8s ease-in-out infinite}
+  @keyframes breathe{0%,100%{transform:scaleY(1)}50%{transform:scaleY(.84)}}
+  .wave rect:nth-child(odd){animation-duration:3.4s}
+  .wave rect:nth-child(3n){animation-duration:2.2s}
+
+  /* jade "runs locally" micro-accent — honours the one-accent system */
+  .local{display:inline-flex;align-items:center;gap:.5rem;margin-top:1.4rem;font-size:.84rem;font-weight:600;color:var(--jade);letter-spacing:.02em}
+  .local::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--jade);box-shadow:0 0 0 4px rgba(5,120,87,.14)}
+
+  /* ---- greca step-frieze divider ---- */
+  .frieze{height:20px;background-repeat:repeat-x;background-position:center;background-size:auto 20px;opacity:.32;margin-block:clamp(2.5rem,6vw,5rem);
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='20' viewBox='0 0 56 20'%3E%3Cpath d='M4 20 V15 H12 V10 H20 V5 H36 V10 H44 V15 H52 V20 Z' fill='%23C24010'/%3E%3C/svg%3E")}
+
+  /* ---- sections ---- */
+  section{position:relative;z-index:2}
+  .block{padding-block:clamp(2.5rem,5vw,4rem)}
+  .kicker{margin-bottom:1rem}
+
+  /* problem */
+  .problem p{font-size:clamp(1.1rem,1rem + .6vw,1.5rem);font-family:"Fraunces",serif;font-weight:400;line-height:1.34;color:var(--ink);max-width:24ch}
+  .problem .beat{color:var(--terracotta)}
+
+  /* the dark "turn" — magic vs engineering */
+  .turn{background:var(--obsidian);color:var(--cream);border-radius:28px;overflow:hidden;position:relative;margin-block:clamp(1rem,2vw,2rem)}
+  .turn .inner{padding:clamp(2.4rem,6vw,5rem) clamp(1.5rem,5vw,4.5rem);text-align:center}
+  .turn .eyebrow{color:var(--gold)}
+  .turn h2{color:var(--cream);max-width:20ch;margin:1rem auto 0;font-weight:500}
+  .turn p{color:rgba(244,233,207,.82);max-width:46ch;margin:1.4rem auto 0}
+  .turn .punch{font-family:"Fraunces",serif;font-size:clamp(1.4rem,1rem + 1.6vw,2.1rem);color:#fff;margin-top:1.8rem;font-weight:500;letter-spacing:-.01em}
+  .turn::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.07;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='44' height='44' viewBox='0 0 44 44'%3E%3Cpath d='M6 38 V14 H18 V6 H38' fill='none' stroke='%23D6B033' stroke-width='2'/%3E%3C/svg%3E");background-size:88px 88px}
+
+  /* ladder — experience steps, not feature parade */
+  .ladder{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(1rem,2.5vw,2rem);margin-top:2.5rem}
+  .step{padding-top:1.4rem;border-top:2px solid var(--terracotta)}
+  .step .n{font-family:"Fraunces",serif;font-size:1.1rem;color:var(--terracotta);font-weight:600}
+  .step h3{margin:.6rem 0 .5rem}
+  .step p{color:var(--ink-soft);font-size:1rem}
+  @media(max-width:720px){.ladder{grid-template-columns:1fr;gap:1.6rem}}
+
+  /* trust */
+  .trust{text-align:center}
+  .trust h2{max-width:18ch;margin-inline:auto}
+  .trust .deadpan{font-family:"Fraunces",serif;font-style:italic;font-size:clamp(1.2rem,1rem + 1vw,1.7rem);color:var(--terracotta);margin-top:1.6rem}
+  .trust .src{margin-top:1rem;font-size:.9rem;color:var(--ink-soft);max-width:52ch;margin-inline:auto}
+
+  /* who */
+  .who{text-align:center}
+  .who .tags{display:flex;flex-wrap:wrap;gap:.7rem;justify-content:center;margin-top:1.8rem}
+  .tag{border:1px solid var(--line);border-radius:999px;padding:.5rem 1.1rem;font-size:.95rem;color:var(--ink)}
+
+  /* waitlist / cta */
+  .signup{text-align:center;background:var(--cream-hi);border:1px solid var(--line);border-radius:28px;padding:clamp(2.4rem,5vw,4rem) clamp(1.5rem,4vw,3rem);margin-block:clamp(2.5rem,5vw,4rem)}
+  .signup h2{max-width:16ch;margin:0 auto 1rem}
+  .form{display:flex;gap:.6rem;justify-content:center;flex-wrap:wrap;margin-top:1.6rem}
+  .form input{font:inherit;font-size:1rem;padding:.85rem 1.1rem;border-radius:999px;border:1px solid var(--line);background:#fff;min-width:min(320px,82vw);color:var(--ink)}
+  .form input::placeholder{color:#9b8e7f}
+  .badge{display:inline-flex;align-items:center;gap:.45rem;font-size:.78rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--gold);margin-top:1.2rem}
+  .badge::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--gold)}
+
+  /* footer */
+  footer{position:relative;z-index:2;border-top:1px solid var(--line);margin-top:clamp(2.5rem,5vw,4rem)}
+  .foot{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;padding-block:2rem;font-size:.88rem;color:var(--ink-soft)}
+  .foot .brand{font-size:1.05rem;color:var(--ink)}
+  .dot{color:var(--jade)}
+
+  @media(max-width:600px){
+    .hero h1{max-width:18ch}
+    .hero h1 .accent{display:block}
+    .lead{font-size:1.08rem}
+    .nav-links a[href="#jak"],.nav-links a[href="#prywatnosc"]{display:none}
+  }
+  @media(prefers-reduced-motion:reduce){.wave rect{animation:none}}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <nav>
+      <div class="brand">
+        <span class="chip" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 22 22" fill="none">
+            <g fill="#C24010">
+              <rect x="1"  y="9"  width="1.4" height="4"  rx=".2"/>
+              <rect x="3"  y="6.5" width="1.4" height="9"  rx=".2"/>
+              <rect x="5"  y="8"  width="1.4" height="6"  rx=".2"/>
+              <rect x="7"  y="4.5" width="1.4" height="13" rx=".2"/>
+              <rect x="9"  y="3"  width="1.4" height="16" rx=".2"/>
+              <rect x="11" y="2.2" width="1.4" height="17.6" rx=".2"/>
+              <rect x="13" y="3"  width="1.4" height="16" rx=".2"/>
+              <rect x="15" y="4.5" width="1.4" height="13" rx=".2"/>
+              <rect x="17" y="8"  width="1.4" height="6"  rx=".2"/>
+              <rect x="19" y="6.5" width="1.4" height="9"  rx=".2"/>
+            </g>
+          </svg>
+        </span>
+        Malinche
+      </div>
+      <div class="nav-links">
+        <a href="#jak">Jak działa</a>
+        <a href="#prywatnosc">Prywatność</a>
+        <a href="https://github.com/radektar/malinche">GitHub</a>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="wrap">
+      <span class="eyebrow">Transkrypcja na Twoim Macu</span>
+      <h1>Mówisz. <span class="accent">Reszta zostaje.</span></h1>
+      <p class="lead">Podłączasz dyktafon. Każde nagranie ląduje przepisane i poukładane w Twoim Obsidianie — na Twoim Macu. Nic nie ginie.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#lista">Zapisz się na listę</a>
+        <a class="btn btn-ghost" href="https://github.com/radektar/malinche">Zobacz na GitHubie</a>
+      </div>
+      <div class="local">Działa lokalnie — audio nie opuszcza Maca</div>
+
+      <div class="tile">
+        <div class="pyr-top" aria-hidden="true"></div>
+        <svg class="wave" viewBox="0 0 560 200" role="img" aria-label="Fala dźwiękowa w kształcie stopniowanej piramidy">
+          <g fill="#C24010">
+            <rect x="20"  y="78"  width="26" height="44"  rx="1"/>
+            <rect x="74"  y="45"  width="26" height="110" rx="1"/>
+            <rect x="128" y="62"  width="26" height="76"  rx="1"/>
+            <rect x="182" y="28"  width="26" height="144" rx="1"/>
+            <rect x="236" y="8"   width="26" height="184" rx="1"/>
+            <rect x="290" y="0"   width="26" height="200" rx="1"/>
+            <rect x="344" y="8"   width="26" height="184" rx="1"/>
+            <rect x="398" y="28"  width="26" height="144" rx="1"/>
+            <rect x="452" y="62"  width="26" height="76"  rx="1"/>
+            <rect x="506" y="45"  width="26" height="110" rx="1"/>
+          </g>
+        </svg>
+      </div>
+    </div>
+  </section>
+
+  <div class="wrap"><div class="frieze" aria-hidden="true"></div></div>
+
+  <section class="block problem">
+    <div class="wrap">
+      <p>Idziesz na spacer i przychodzi myśl. Dobra myśl. Notujesz ją w głowie — i tyle ją widziałeś.</p>
+      <p style="margin-top:1.6rem">A nawet jak nagrasz, surowy transkrypt to ściana tekstu, do której nigdy nie wracasz. <span class="beat">Trzy miesiące później wymyślasz tę samą myśl od nowa.</span></p>
+    </div>
+  </section>
+
+  <section class="block" id="jak">
+    <div class="wrap">
+      <span class="eyebrow kicker">Jak to działa</span>
+      <h2>Nagrywasz raz. Wraca, kiedy jest potrzebne.</h2>
+      <div class="ladder">
+        <div class="step">
+          <div class="n">01</div>
+          <h3>Zgrywasz i zapominasz</h3>
+          <p>Podłączasz dyktafon albo kartę. Whisper przepisuje lokalnie, notatka ląduje w vaulcie, otagowana. Twoja rola się tu kończy.</p>
+        </div>
+        <div class="step">
+          <div class="n">02</div>
+          <h3>Pytasz w swoim Claude</h3>
+          <p>„Co ustaliliśmy w sprawie X?" Pytasz we własnym kliencie — odpowiedź zawsze tam jest. Bez przekopywania plików.</p>
+        </div>
+        <div class="step">
+          <div class="n">03</div>
+          <h3>Czasem to ono mówi pierwsze</h3>
+          <p>„Te trzy myśli sprzed miesięcy się łączą. Zrobisz z tym coś?" Podsuwa kierunki — nie każe. Pomyłkę odrzucasz jednym kliknięciem.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap">
+      <div class="turn">
+        <div class="inner">
+          <span class="eyebrow">To nie magia. To inżynieria.</span>
+          <h2>Przez lata mieli rację.</h2>
+          <p>Inżynierowie poprawiali każdego, kto mówił, że coś działa „magicznie". To nie magia — to inżynieria. I trudno było się nie zgodzić.</p>
+          <p>A teraz Twoja własna myśl sprzed pół roku wraca do Ciebie dokładnie wtedy, kiedy jest potrzebna. I nie do końca wiadomo, jak.</p>
+          <div class="punch">Może jednak to magia.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block trust" id="prywatnosc">
+    <div class="wrap">
+      <span class="eyebrow kicker">Prywatność</span>
+      <h2>Nagrania nie idą na niczyj serwer.</h2>
+      <p class="deadpan">Nie zgubimy tego, czego nigdy nie mieliśmy.</p>
+      <p class="src">Pewne narzędzie, które miało pamiętać za Ciebie, w grudniu 2025 skasowało dane użytkownikom w Europie. Twoje zostają tam, gdzie powinny — na Twoim dysku, w Twoim vaulcie.</p>
+    </div>
+  </section>
+
+  <section class="block who">
+    <div class="wrap">
+      <span class="eyebrow kicker">Dla kogo</span>
+      <h2>Dla ludzi, którzy myślą na głos — i mają tego dużo.</h2>
+      <div class="tags">
+        <span class="tag">Dziennikarze</span>
+        <span class="tag">Prawnicy</span>
+        <span class="tag">Researcherzy</span>
+        <span class="tag">Badacze w terenie</span>
+        <span class="tag">Podcasterzy</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="lista">
+    <div class="wrap">
+      <div class="signup">
+        <h2>Bądź pierwszy, gdy ruszy.</h2>
+        <p class="muted" style="margin-inline:auto">Kod jest otwarty. Wersja, która składa to wszystko sama — bez sklejania whisper, embeddingów i MCP — w przygotowaniu.</p>
+        <form class="form" onsubmit="return false">
+          <input type="email" placeholder="twój@email.pl" aria-label="Adres e-mail" />
+          <button class="btn btn-primary" type="submit">Zapisz mnie</button>
+        </form>
+        <span class="badge">PRO w przygotowaniu</span>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot">
+      <div class="brand">
+        <span class="chip" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 22 22" fill="none"><g fill="#C24010">
+            <rect x="1" y="9" width="1.4" height="4" rx=".2"/><rect x="3" y="6.5" width="1.4" height="9" rx=".2"/><rect x="5" y="8" width="1.4" height="6" rx=".2"/><rect x="7" y="4.5" width="1.4" height="13" rx=".2"/><rect x="9" y="3" width="1.4" height="16" rx=".2"/><rect x="11" y="2.2" width="1.4" height="17.6" rx=".2"/><rect x="13" y="3" width="1.4" height="16" rx=".2"/><rect x="15" y="4.5" width="1.4" height="13" rx=".2"/><rect x="17" y="8" width="1.4" height="6" rx=".2"/><rect x="19" y="6.5" width="1.4" height="9" rx=".2"/>
+          </g></svg>
+        </span>
+        Malinche
+      </div>
+      <div>Mówisz, reszta zostaje. <span class="dot">●</span> macOS · Apple Silicon · MIT</div>
+    </div>
+  </div>
+</footer>
+<script>
+  const h=document.querySelector("header");
+  const onScroll=()=>h.classList.toggle("stuck",window.scrollY>8);
+  addEventListener("scroll",onScroll,{passive:true});onScroll();
+</script>
+</body>
+</html>
