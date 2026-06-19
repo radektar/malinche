@@ -39,16 +39,20 @@ def update_transcriber_config(transcriber, monkeypatch, **kwargs):
 
 
 @pytest.fixture
-def transcriber(monkeypatch):
+def transcriber(monkeypatch, tmp_path):
     """Create a transcriber instance for testing.
-    
+
     Creates Transcriber with a test Config instance to avoid global state issues.
     """
     from src.config.config import Config
-    
+
     # Create a test config instance
     test_config = Config()
-    
+    # Keep the persisted Core ML verdict (coreml_status.json, written next to
+    # STATE_FILE) inside tmp so tests don't read/write the real Application
+    # Support dir.
+    test_config.STATE_FILE = tmp_path / "state.json"
+
     with patch('src.transcriber.logger'):
         # Pass config explicitly for dependency injection
         return Transcriber(config=test_config)
@@ -948,16 +952,13 @@ def test_run_whisper_transcription_disables_metal_for_cpu(
 
     captured = {}
 
-    def fake_run(*args, **kwargs):
-        captured["env"] = kwargs.get("env")
+    def fake_stream(cmd, *, env, use_coreml, audio_file):
+        captured["env"] = env
         return subprocess.CompletedProcess(
-            args=args,
-            returncode=0,
-            stdout="",
-            stderr="",
+            args=cmd, returncode=0, stdout="", stderr=""
         )
 
-    monkeypatch.setattr("src.transcriber.subprocess.run", fake_run)
+    monkeypatch.setattr(transcriber, "_run_whisper_streaming", fake_stream)
 
     _ = transcriber._run_whisper_transcription(audio_file, use_coreml=False)
 
@@ -965,6 +966,110 @@ def test_run_whisper_transcription_disables_metal_for_cpu(
     assert env is not None
     assert env.get("WHISPER_COREML") == "0"
     assert env.get("GGML_METAL_DISABLE") == "1"
+
+
+class _FakePipeProc:
+    """A fake Popen backed by a real OS pipe so select()/readline() work.
+
+    Pre-loads *payload* into the stderr pipe and closes the write end (EOF),
+    so the streaming reader consumes it line-by-line exactly like the real run.
+    """
+
+    def __init__(self, payload: str, rc: int = 0):
+        import os as _os
+
+        r, w = _os.pipe()
+        self.stderr = _os.fdopen(r, "r", encoding="utf-8", errors="replace")
+        wf = _os.fdopen(w, "w", encoding="utf-8")
+        wf.write(payload)
+        wf.close()
+        self._rc = rc
+        self.returncode = None  # None == "running" (poll())
+
+    def poll(self):
+        return self.returncode
+
+    def wait(self, timeout=None):
+        if self.returncode is None:
+            self.returncode = self._rc
+        return self.returncode
+
+    def kill(self):
+        self.returncode = -9
+
+
+def test_streaming_aborts_coreml_early_on_metal_error(transcriber, tmp_path, monkeypatch):
+    """A Metal marker in stderr must kill the GPU attempt immediately (not after
+    the full run) and surface as a failure so the caller retries on CPU."""
+    payload = (
+        "whisper_init: loading model\n"
+        "ggml_metal_device_init: tensor API disabled\n"
+        "more output that we never wait around for\n"
+    )
+    proc = _FakePipeProc(payload, rc=0)
+    monkeypatch.setattr("src.transcriber.subprocess.Popen", lambda *a, **k: proc)
+
+    result = transcriber._run_whisper_streaming(
+        ["whisper"], env=None, use_coreml=True, audio_file=tmp_path / "rec.wav"
+    )
+
+    assert result.returncode != 0  # killed → caller will fall back to CPU
+    assert "tensor API disabled" in result.stderr
+    assert proc.returncode == -9  # proc.kill() was invoked
+
+
+def test_streaming_logs_progress_heartbeat(transcriber, tmp_path, monkeypatch):
+    """With -pp whisper prints 'progress = NN%'; we must log a heartbeat so a
+    long run never looks hung."""
+    payload = "".join(
+        f"whisper_print_progress_callback: progress = {p:3d}%\n"
+        for p in (0, 10, 20, 50, 100)
+    )
+    proc = _FakePipeProc(payload, rc=0)
+    monkeypatch.setattr("src.transcriber.subprocess.Popen", lambda *a, **k: proc)
+
+    with patch("src.transcriber.logger") as mock_logger:
+        transcriber._run_whisper_streaming(
+            ["whisper"], env=None, use_coreml=False, audio_file=tmp_path / "rec.wav"
+        )
+
+    progress_logs = [
+        call.args[0]
+        for call in mock_logger.info.call_args_list
+        if call.args and "Transkrypcja" in str(call.args[0])
+    ]
+    assert progress_logs, "expected at least one progress heartbeat in the log"
+
+
+def test_whisper_thread_count_leaves_headroom(monkeypatch):
+    """Thread count must reserve cores so the UI stays responsive."""
+    monkeypatch.setattr("src.transcriber.os.cpu_count", lambda: 10)
+    assert Transcriber._whisper_thread_count() == 8
+    monkeypatch.setattr("src.transcriber.os.cpu_count", lambda: 2)
+    assert Transcriber._whisper_thread_count() == 1  # never below 1
+    monkeypatch.setattr("src.transcriber.os.cpu_count", lambda: None)
+    assert Transcriber._whisper_thread_count() >= 1
+
+
+def test_coreml_verdict_persists_across_instances(transcriber):
+    """A recorded Metal failure must skip the GPU attempt on the next launch."""
+    assert transcriber._coreml_disabled_in_session is False
+    transcriber._persist_coreml_disabled()
+    assert transcriber._coreml_flag_path().exists()
+
+    with patch("src.transcriber.logger"):
+        fresh = Transcriber(config=transcriber.config)
+    assert fresh._coreml_disabled_in_session is True
+
+
+def test_coreml_verdict_reprobes_when_model_changes(transcriber):
+    """Changing the whisper model invalidates the persisted verdict (re-probe)."""
+    transcriber._persist_coreml_disabled()
+    transcriber.config.WHISPER_MODEL = "tiny"  # different signature
+
+    with patch("src.transcriber.logger"):
+        fresh = Transcriber(config=transcriber.config)
+    assert fresh._coreml_disabled_in_session is False
 
 
 def test_process_recorder_skips_when_lock_held(transcriber, monkeypatch):
@@ -1518,7 +1623,7 @@ def test_wait_for_output_file_requires_nonempty(tmp_path):
 
 
 def test_run_whisper_transcription_uses_utf8_encoding(transcriber, tmp_path, monkeypatch):
-    """Regression: subprocess.run musi mieć encoding='utf-8' i errors='replace'.
+    """Regression: the whisper Popen musi mieć encoding='utf-8' i errors='replace'.
 
     W py2app środowisku locale.getpreferredencoding() to często ASCII, co
     powoduje UnicodeDecodeError gdy whisper-cli pisze do stderr polski tekst
@@ -1527,13 +1632,33 @@ def test_run_whisper_transcription_uses_utf8_encoding(transcriber, tmp_path, mon
     """
     captured = {}
 
-    def fake_run(*args, **kwargs):
-        captured["kwargs"] = kwargs
-        # Zwracamy zamockowaną CompletedProcess.
-        from subprocess import CompletedProcess
-        return CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+    class _FakeStderr:
+        def read(self):
+            return ""
 
-    monkeypatch.setattr("src.transcriber.subprocess.run", fake_run)
+        def close(self):
+            pass
+
+    class _FakeProc:
+        returncode = 0
+
+        def __init__(self):
+            self.stderr = _FakeStderr()
+
+        def poll(self):
+            return 0  # already finished → loop drains and exits, no select()
+
+        def wait(self, timeout=None):
+            return 0
+
+        def kill(self):
+            pass
+
+    def fake_popen(*args, **kwargs):
+        captured["kwargs"] = kwargs
+        return _FakeProc()
+
+    monkeypatch.setattr("src.transcriber.subprocess.Popen", fake_popen)
 
     audio = tmp_path / "test.mp3"
     audio.write_bytes(b"audio")
@@ -1547,7 +1672,7 @@ def test_run_whisper_transcription_uses_utf8_encoding(transcriber, tmp_path, mon
 
     assert captured["kwargs"].get("text") is True
     assert captured["kwargs"].get("encoding") == "utf-8", (
-        "subprocess.run musi mieć encoding='utf-8' aby py2app environment "
+        "whisper Popen musi mieć encoding='utf-8' aby py2app environment "
         "z ASCII locale nie wywracał się na polskich znakach w whisper stderr."
     )
     assert captured["kwargs"].get("errors") == "replace", (

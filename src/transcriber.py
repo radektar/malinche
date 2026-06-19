@@ -1,5 +1,6 @@
 """Transcription engine for Malinche."""
 
+import json
 import os
 import re
 import shutil
@@ -27,6 +28,9 @@ from src.config.features import FeatureTier
 from src.config.settings import UserSettings
 from src.markdown_frontmatter import read_frontmatter
 from src.volume_utils import find_matching_volumes
+
+# whisper-cli with -pp prints "whisper_print_progress_callback: progress =  NN%".
+_PROGRESS_RE = re.compile(r"progress\s*=\s*(\d+)\s*%")
 
 
 def send_notification(title: str, message: str, subtitle: str = "") -> None:
@@ -264,6 +268,7 @@ class Transcriber:
         self.ai_billing_callback: Optional[Callable[[Exception], None]] = None
         self._session_failed_fingerprints: set = set()
         self._coreml_disabled_in_session: bool = False
+        self._load_persisted_coreml_disabled()
         self._last_run_was_transient_failure: bool = False
         self.vault_index = VaultIndex(self.config.TRANSCRIBE_DIR)
         self.vault_index.load()
@@ -743,25 +748,28 @@ class Transcriber:
         model_path = self.config.WHISPER_CPP_MODELS_DIR / f"ggml-{self.config.WHISPER_MODEL}.bin"
         output_base = self.config.TRANSCRIBE_DIR / audio_file.stem
 
+        threads = self._whisper_thread_count()
         whisper_cmd = [
             str(self.config.WHISPER_CPP_PATH),
             "-m", str(model_path),
             "-f", str(whisper_input),
             "-otxt",
             "-of", str(output_base),
+            "-t", str(threads),
+            "-pp",  # stream progress to stderr so a long run never looks hung
         ]
-        
+
         # Add language if specified
         if self.config.WHISPER_LANGUAGE:
             whisper_cmd.extend(["-l", self.config.WHISPER_LANGUAGE])
-        
+
         # Set environment for Core ML / Metal control
         env = None
         if not use_coreml:
             # Explicitly disable Core ML / Metal backends to force pure CPU mode.
             # Using both WHISPER_COREML and GGML_METAL_DISABLE increases
             # compatibility across whisper.cpp / ggml versions.
-            base_env = dict(subprocess.os.environ)
+            base_env = dict(os.environ)
             base_env["WHISPER_COREML"] = "0"
             base_env["GGML_METAL_DISABLE"] = "1"
             env = base_env
@@ -769,28 +777,191 @@ class Transcriber:
                 "Core ML / Metal disabled for this attempt "
                 "(WHISPER_COREML=0, GGML_METAL_DISABLE=1)"
             )
-        
+
         logger.debug(
             f"Running whisper.cpp: model={self.config.WHISPER_MODEL}, "
             f"language={self.config.WHISPER_LANGUAGE}, "
             f"coreml={'enabled' if use_coreml else 'disabled'}, "
+            f"threads={threads}, "
             f"timeout={self.config.TRANSCRIPTION_TIMEOUT}s"
         )
-        
-        # encoding="utf-8" + errors="replace" są krytyczne: w py2app environment
-        # locale.getpreferredencoding() to często ASCII, a whisper-cli pisze
-        # do stderr (i ewentualnie stdout) ścieżki / komunikaty zawierające
-        # polskie znaki / nazwy plików z UTF-8. Bez tego subprocess._translate_newlines
-        # rzucał UnicodeDecodeError przy próbie zdekodowania `0xc3` (UTF-8 lead byte).
-        return subprocess.run(
-            whisper_cmd,
-            capture_output=True,
-            timeout=self.config.TRANSCRIPTION_TIMEOUT,
+
+        return self._run_whisper_streaming(
+            whisper_cmd, env=env, use_coreml=use_coreml, audio_file=audio_file
+        )
+
+    @staticmethod
+    def _whisper_thread_count() -> int:
+        """Thread count for whisper-cli, leaving headroom for the UI.
+
+        whisper-cli otherwise pins the CPU and the low-priority menu-bar process
+        gets starved enough that macOS flags it 'Not Responding'. Reserving two
+        cores keeps the app interactive during a long transcription.
+        """
+        cores = os.cpu_count() or 4
+        return max(1, cores - 2)
+
+    def _run_whisper_streaming(
+        self,
+        cmd: List[str],
+        *,
+        env: Optional[dict],
+        use_coreml: bool,
+        audio_file: Path,
+    ) -> subprocess.CompletedProcess:
+        """Run whisper-cli with live stderr streaming.
+
+        Replaces a blocking ``subprocess.run(capture_output=True)`` to fix two
+        bugs at once:
+          1. **Early Core ML/Metal abort.** whisper.cpp prints the Metal error
+             at backend init; the old post-hoc stderr check only saw it after the
+             whole run finished, wasting ~10 min before the CPU fallback. We now
+             detect the marker live and kill the process within seconds.
+          2. **Progress heartbeat.** With ``-pp`` whisper emits ``progress = NN%``
+             to stderr; we log it so a long run is visibly alive.
+
+        stdout → DEVNULL (whisper writes the TXT via ``-otxt``); this also avoids
+        a pipe-buffer deadlock while we block on stderr. Returns a
+        :class:`subprocess.CompletedProcess` (stdout always ``""``) so the caller
+        is unchanged, and raises :class:`subprocess.TimeoutExpired` on the
+        deadline to preserve the old contract.
+
+        encoding/errors are critical under py2app (ASCII locale) — whisper prints
+        UTF-8 paths / Polish chars to stderr.
+        """
+        import select
+
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
             errors="replace",
             env=env,
         )
+
+        stderr_chunks: List[str] = []
+        deadline = time.time() + max(self.config.TRANSCRIPTION_TIMEOUT, 0.0)
+        last_logged_pct = -1
+        last_heartbeat = time.time()
+        started = time.time()
+        coreml_failed = False
+
+        try:
+            while True:
+                # Check exit before blocking on select so a finished (or fast)
+                # run drains cleanly without needing a selectable fd.
+                if proc.poll() is not None:
+                    rest = proc.stderr.read()
+                    if rest:
+                        stderr_chunks.append(rest)
+                    break
+
+                remaining = deadline - time.time()
+                if remaining <= 0:
+                    proc.kill()
+                    raise subprocess.TimeoutExpired(
+                        cmd, self.config.TRANSCRIPTION_TIMEOUT
+                    )
+
+                ready, _, _ = select.select(
+                    [proc.stderr], [], [], min(1.0, remaining)
+                )
+                if not ready:
+                    continue
+                line = proc.stderr.readline()
+                if not line:
+                    break  # EOF
+
+                stderr_chunks.append(line)
+
+                if use_coreml and any(
+                    m in line for m in self._COREML_FAIL_MARKERS
+                ):
+                    coreml_failed = True
+                    logger.warning(
+                        "⚡ Core ML/Metal error detected after %.0fs — "
+                        "aborting GPU attempt, will retry on CPU",
+                        time.time() - started,
+                    )
+                    proc.kill()
+                    break
+
+                match = _PROGRESS_RE.search(line)
+                if match:
+                    pct = int(match.group(1))
+                    now = time.time()
+                    if pct >= last_logged_pct + 10 or now - last_heartbeat >= 20:
+                        logger.info(
+                            "⏳ Transkrypcja %d%% — %s",
+                            pct,
+                            audio_file.name,
+                        )
+                        last_logged_pct = pct
+                        last_heartbeat = now
+        finally:
+            try:
+                if proc.stderr is not None:
+                    proc.stderr.close()
+            except Exception:  # pragma: no cover - defensive
+                pass
+            if proc.poll() is None:
+                try:
+                    proc.wait(timeout=5)
+                except Exception:  # pragma: no cover - defensive
+                    proc.kill()
+                    proc.wait()
+            else:
+                proc.wait()
+
+        returncode = proc.returncode if proc.returncode is not None else -1
+        if coreml_failed and returncode == 0:
+            # Ensure the caller treats an early-aborted GPU run as a failure
+            # so the CPU fallback fires.
+            returncode = -1
+        return subprocess.CompletedProcess(
+            args=cmd, returncode=returncode, stdout="", stderr="".join(stderr_chunks)
+        )
+
+    def _coreml_flag_path(self) -> Path:
+        """Sidecar file recording that Core ML/Metal failed on this machine."""
+        return self.config.STATE_FILE.parent / "coreml_status.json"
+
+    def _coreml_signature(self) -> str:
+        """Identity for the persisted verdict: re-probe if whisper or model changes."""
+        try:
+            size = self.config.WHISPER_CPP_PATH.stat().st_size
+        except OSError:
+            size = 0
+        return f"{size}:{self.config.WHISPER_MODEL}"
+
+    def _load_persisted_coreml_disabled(self) -> None:
+        """Honour a previously recorded Metal failure so we don't waste a full
+        GPU attempt rediscovering it on every launch."""
+        try:
+            data = json.loads(self._coreml_flag_path().read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return
+        if data.get("disabled") and data.get("signature") == self._coreml_signature():
+            self._coreml_disabled_in_session = True
+            logger.info(
+                "Core ML disabled (persisted: Metal failed previously on this "
+                "machine for the current whisper/model)"
+            )
+
+    def _persist_coreml_disabled(self) -> None:
+        """Record the Metal failure so future launches skip the GPU attempt."""
+        try:
+            self._coreml_flag_path().parent.mkdir(parents=True, exist_ok=True)
+            self._coreml_flag_path().write_text(
+                json.dumps(
+                    {"disabled": True, "signature": self._coreml_signature()}
+                ),
+                encoding="utf-8",
+            )
+        except OSError as exc:  # pragma: no cover - defensive
+            logger.debug("Could not persist Core ML status: %s", exc)
 
     def _convert_to_wav(self, audio_file: Path) -> Optional[Path]:
         """Transcode *audio_file* to a 16 kHz mono PCM WAV for whisper-cli.
@@ -847,6 +1018,16 @@ class Transcriber:
             return None
         return wav_path
 
+    # Markers in whisper.cpp stderr that mean the Core ML / Metal backend
+    # failed and we should fall back to pure CPU. Shared by the live stream
+    # detector (early abort) and the post-hoc check.
+    _COREML_FAIL_MARKERS = (
+        "Core ML",
+        "ggml_metal",
+        "MTLLibrar",
+        "tensor API disabled",
+    )
+
     def _should_retry_without_coreml(
         self, stderr: Optional[str], use_coreml_attempted: bool
     ) -> bool:
@@ -862,13 +1043,7 @@ class Transcriber:
         if not use_coreml_attempted or not stderr:
             return False
 
-        retry_markers = (
-            "Core ML",
-            "ggml_metal",
-            "MTLLibrar",
-            "tensor API disabled",
-        )
-        return any(marker in stderr for marker in retry_markers)
+        return any(marker in stderr for marker in self._COREML_FAIL_MARKERS)
 
     @staticmethod
     def _extract_fallback_title(transcript: str, max_chars: int = 60) -> str:
@@ -994,8 +1169,12 @@ class Transcriber:
                 self._update_state(AppStatus.ERROR, audio_file.name, error_msg)
                 return None
 
-            # Try with Core ML acceleration first (if available)
-            logger.info("🔄 Attempting transcription with Core ML acceleration")
+            # Try with Core ML acceleration first (unless a prior/persisted
+            # Metal failure already took it off the table for this session).
+            if self._coreml_disabled_in_session:
+                logger.info("🔄 Starting transcription (CPU — Core ML disabled)")
+            else:
+                logger.info("🔄 Attempting transcription with Core ML acceleration")
             result = self._run_whisper_transcription(
                 audio_file, use_coreml=True, source_audio=wav_for_whisper
             )
@@ -1016,9 +1195,10 @@ class Transcriber:
 
                 if not self._coreml_disabled_in_session:
                     self._coreml_disabled_in_session = True
+                    self._persist_coreml_disabled()
                     logger.info(
-                        "Core ML disabled for the rest of this session "
-                        "(Metal failed once)"
+                        "Core ML disabled for this session and future launches "
+                        "(Metal failed on this machine)"
                     )
 
                 logger.info("🔄 Retrying transcription with CPU only")

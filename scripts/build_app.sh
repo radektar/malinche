@@ -24,12 +24,24 @@ if [[ "${ARCH}" != "arm64" ]]; then
     echo "⚠️  Warning: Building on ${ARCH}, but bundle will be for arm64 only"
 fi
 
-# Activate virtual environment if it exists
-if [ -d "venv" ]; then
-    echo "📦 Activating virtual environment..."
+# Activate virtual environment. py2app bundles under python3.12 (see BUNDLE_SITE
+# below), so the build MUST run on 3.12 — prefer venv312, then venv, then system.
+if [ -d "venv312" ]; then
+    echo "📦 Activating virtual environment (venv312)..."
+    source venv312/bin/activate
+elif [ -d "venv" ]; then
+    echo "📦 Activating virtual environment (venv)..."
     source venv/bin/activate
 else
-    echo "⚠️  Warning: venv not found, using system Python"
+    echo "⚠️  Warning: no venv found, using system Python"
+fi
+
+# Hard guard: the bundle layout is pinned to python3.12. Fail fast instead of
+# silently building an incompatible bundle on 3.9/3.14.
+if ! python3 -c 'import sys; sys.exit(0 if sys.version_info[:2] == (3, 12) else 1)'; then
+    echo "❌ Error: build requires Python 3.12 (active: $(python3 -V 2>&1))"
+    echo "   Create it with: python3.12 -m venv venv312 && source venv312/bin/activate && make install"
+    exit 1
 fi
 
 # Check if py2app is installed
@@ -112,6 +124,13 @@ echo "✅ All required Python packages verified in bundle"
 
 # Make executable
 chmod +x dist/Malinche.app/Contents/MacOS/Malinche
+
+# Remove dangling symlinks before signing. py2app leaves a vestigial
+# Resources/lib/python3.12/site.pyo -> ../../site.pyo (Python 3.12 dropped .pyo),
+# which breaks `codesign --verify --strict` ("No such file or directory") and
+# would make the installed bundle fail Gatekeeper.
+echo "🧹 Pruning dangling symlinks..."
+find dist/Malinche.app -type l ! -exec test -e {} \; -delete 2>/dev/null || true
 
 # Sign bundle (Developer ID if available, otherwise ad-hoc for local installs)
 if [ -n "${APPLE_DEVELOPER_ID:-}" ]; then
