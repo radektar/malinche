@@ -127,7 +127,11 @@
   .step .n{font-family:"Fraunces",serif;font-size:1.1rem;color:var(--terracotta);font-weight:600}
   .step h3{margin:.6rem 0 .5rem}
   .step p{color:var(--ink-soft);font-size:1rem}
-  @media(max-width:720px){.ladder{grid-template-columns:1fr;gap:1.6rem}}
+  /* step 02 is the hero — the value the landing is testing */
+  .step.core{background:var(--cream-hi);border:1px solid var(--line);border-top:2px solid var(--terracotta);border-radius:18px;padding:1.4rem 1.4rem 1.6rem;margin-top:-.6rem;box-shadow:0 16px 40px -28px rgba(120,52,20,.5)}
+  .step.core .tag{display:inline-block;font-size:.66rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--terracotta);margin-bottom:.4rem}
+  .step.core p{color:var(--ink)}
+  @media(max-width:720px){.ladder{grid-template-columns:1fr;gap:1.6rem}.step.core{margin-top:0}}
 
   /* proof — one trust block: local + your files + open source */
   .proof-sec{text-align:center}
@@ -266,22 +270,23 @@
   <section class="block" id="jak">
     <div class="wrap">
       <span class="eyebrow kicker">Jak to działa</span>
-      <h2>Nagrywasz raz. Wraca, kiedy jest potrzebne.</h2>
+      <h2>Z osobnych nagrań — jeden zbiór, który coś z siebie składa.</h2>
       <div class="ladder">
         <div class="step">
           <div class="n">01</div>
-          <h3>Zgrywasz i zapominasz</h3>
-          <p>Podłączasz dyktafon albo kartę. Whisper przepisuje lokalnie, a notatka sama się taguje i ląduje w Twoich plikach. Twoja rola się tu kończy.</p>
+          <h3>Wrzucasz, co masz</h3>
+          <p>Dyktafon, karta, nagranie z telefonu. Przepisane lokalnie, otagowane, w jednym miejscu. Twoja rola się tu kończy.</p>
         </div>
-        <div class="step">
+        <div class="step core">
+          <span class="tag">Sedno</span>
           <div class="n">02</div>
-          <h3>Pytasz — i nie pudłuje</h3>
-          <p>„Co ustaliliśmy w sprawie X?" Pytasz we własnym Claude nad całym archiwum — odpowiedź zawsze tam jest. Bez przekopywania plików.</p>
+          <h3>Zestawia i łączy</h3>
+          <p>Pytasz cały zbiór naraz, nie plik po pliku. Pokazuje wspólne wątki — i sprzeczności, których sam nie złapałbyś między dwoma nagraniami sprzed miesięcy.</p>
         </div>
         <div class="step">
           <div class="n">03</div>
-          <h3>Samo się odzywa</h3>
-          <p>„Te trzy myśli sprzed miesięcy się łączą. Zrobisz z tym coś?" Podsuwa kierunki i pomaga rozwinąć je w gotowy tekst — nie każe. Pomyłkę odrzucasz kliknięciem.</p>
+          <h3>Samo podsuwa</h3>
+          <p>„Te trzy nagrania się łączą. Zrobisz z tym coś?" Podsuwa powiązanie i pomaga rozwinąć je w tekst — nie każe. Pomyłkę odrzucasz kliknięciem.</p>
         </div>
       </div>
     </div>
