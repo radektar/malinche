@@ -69,6 +69,21 @@ równy. Hierarchia jest sztywna:
 
 ---
 
+## Anti-positioning: ożywia to, co masz — bez nowego gadżetu
+
+Malinche **korzysta z i rozszerza** sprzęt, który już masz — zwykły dyktafon,
+kartę SD, nagranie z telefonu. Nie musisz kupować urządzenia. Ono ożywia to, co
+już nagrałeś.
+
+Kontra do hardware-tethered (Plaud, Limitless†): tam najpierw kupujesz ich pudełko
+(**Plaud Note $129**, NotePin $99, NotePro $189), a potem płacisz abonament za
+AI-transkrypcję w nieskończoność (**$99,99–$239,99 / rok**, stan 06.2026). Czyli
+płacisz wiecznie, żeby pudełko przepisywało to, co twój telefon nagrywa od dekady.
+
+Ton: **deadpan, nie pitch.** Podajemy liczbę płasko i pozwalamy jej wybrzmieć
+(jak „ekogroszek to w zasadzie węgiel kamienny"). Nie „taniej!", nie „bez
+abonamentu!" — sucha obserwacja absurdu. Liczby tylko zweryfikowane i realne.
+
 ## Sygnaturowy wątek: magia vs inżynieria
 
 Stały motyw Radka (UXPin 2019 → „Harry Potter istnieje" 2025). Transkrypcja to
