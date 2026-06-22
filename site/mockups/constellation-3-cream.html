@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="pl"><head><meta charset="utf-8"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --terracotta:#C24010;--terracotta-lit:#D9542A;--jade:#057857;--gold:#D6B033;--gold-hi:#F4DD8E;
+  --cream:#F4E9CF;--cream-hi:#FAF3E2;--obsidian:#1A1A1F;--ink:#241E18;--ink-soft:#5A4E42;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{width:1200px;height:820px;position:relative;overflow:hidden;
+  background:radial-gradient(125% 115% at 64% 42%, #FBF4E0 0%, #F4E7C7 54%, #ECDBB7 100%);
+  font-family:"Inter",system-ui,sans-serif;color:var(--ink)}
+
+#graph{position:absolute;inset:0;z-index:1}
+#graph canvas{display:block}
+
+/* left scrim so copy reads over the dim mass */
+.scrim{position:absolute;inset:0;z-index:2;pointer-events:none;
+  background:linear-gradient(90deg, rgba(249,241,219,.96) 0%, rgba(249,241,219,.72) 26%, rgba(249,241,219,.16) 48%, rgba(249,241,219,0) 60%)}
+
+/* film grain */
+.grain{position:absolute;inset:0;z-index:3;pointer-events:none;opacity:.055;mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+/* greca baseline */
+.base{position:absolute;left:0;right:0;bottom:0;height:16px;z-index:3;opacity:.1;pointer-events:none;
+  background-repeat:repeat-x;background-position:center;background-size:auto 16px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='16' viewBox='0 0 56 16'%3E%3Cpath d='M4 16 V12 H12 V8 H20 V5 H36 V8 H44 V12 H52 V16 Z' fill='%23C24010'/%3E%3C/svg%3E")}
+
+.copy{position:absolute;left:84px;top:250px;width:436px;z-index:4}
+.eyebrow{font-size:14px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--terracotta);margin-bottom:22px}
+h1{font-family:"Fraunces",Georgia,serif;font-weight:500;font-size:56px;line-height:1.04;letter-spacing:-.02em;color:var(--ink)}
+h1 .accent{color:var(--terracotta)}
+.sub{margin-top:22px;font-size:18px;line-height:1.5;color:var(--ink-soft);max-width:38ch}
+
+/* hover content card */
+.card{position:absolute;z-index:5;width:250px;background:rgba(250,243,226,.97);
+  border:1px solid rgba(36,30,24,.16);border-radius:13px;padding:12px 14px;
+  box-shadow:0 18px 44px -22px rgba(120,52,20,.5);backdrop-filter:blur(5px);
+  opacity:0;transform:translateY(6px);transition:opacity .22s,transform .22s;pointer-events:none}
+.card.show{opacity:1;transform:translateY(0)}
+.card .d{font-size:12px;font-weight:600;letter-spacing:.02em;color:var(--terracotta);margin-bottom:5px}
+.card .d span{color:var(--ink-soft);font-weight:500}
+.card .t{font-family:"Fraunces",Georgia,serif;font-size:16px;line-height:1.34;color:var(--ink)}
+
+/* conclusion card */
+.concl{position:absolute;z-index:6;width:298px;background:rgba(16,14,20,.96);
+  border:1px solid rgba(214,176,51,.42);border-radius:14px;padding:14px 16px;
+  box-shadow:0 22px 60px -22px rgba(0,0,0,.85);
+  opacity:0;transform:translateY(8px);transition:opacity .5s,transform .5s;pointer-events:none}
+.concl.show{opacity:1;transform:translateY(0)}
+.concl .h{font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--gold);margin-bottom:7px;
+  display:flex;align-items:center;gap:.45rem}
+.concl .h::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 3px rgba(214,176,51,.2)}
+.concl .t{font-family:"Fraunces",Georgia,serif;font-size:17px;line-height:1.36;color:var(--cream)}
+@media(prefers-reduced-motion:reduce){.card,.concl{transition:none}}
+</style></head>
+<body>
+  <div id="graph"></div>
+  <div class="scrim"></div>
+  <div class="grain"></div>
+  <div class="base"></div>
+
+  <div class="copy">
+    <div class="eyebrow">Jeden system, nie stos plików</div>
+    <h1>Masz transkrypty wszystkiego. <span class="accent">I nic z nich nie wynika.</span></h1>
+    <p class="sub">Aż system pokazuje, jak to samo założenie po cichu zmieniło się przez pół roku.</p>
+  </div>
+
+  <div class="concl" id="concl">
+    <div class="h">Hipoteza, którą system wysuwa</div>
+    <div class="t">„Priorytet przesunął się z ceny na termin — między styczniem a majem. Twoja teza wymaga rewizji."</div>
+  </div>
+
+  <script src="vendor/force-graph.min.js"></script>
+  <script>
+  (function(){
+    var W=1200,H=820;
+    var prefersReduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    // ---------- seeded PRNG (deterministic layout) ----------
+    var seed=20260621;
+    function rnd(){ seed=(seed*1103515245+12345)&0x7fffffff; return seed/0x7fffffff; }
+    function rr(a,b){ return a+(b-a)*rnd(); }
+
+    // ---------- narrative content ----------
+    var CONTENT=[
+      {d:"8 sty", src:"wywiad — uczestnik A",  t:"„Decyduje cena. Reszta się nie liczy."},
+      {d:"22 lut",src:"wywiad — uczestnik B",  t:"„Budżet jest święty — najtaniej, jak się da."},
+      {d:"30 mar",src:"nagranie — warsztat",   t:"„Nagle wszyscy mówią o terminie, nie o cenie."},
+      {d:"14 maj",src:"dyktando — podsumowanie",t:"„Założenie o cenie chyba upadło. Liczy się czas."}
+    ];
+    // community node anchors (graph coords, origin = cloud-ish centre). Scattered across the mass.
+    // ci>=0 carry a card; ci=-1 are silent junctions. igniteT = act-2 ignition time (ms).
+    var COMMP=[
+      {fx:-80, fy:-150, ci:0,  igniteT:3700},
+      {fx: 175,fy:-128, ci:1,  igniteT:4320},
+      {fx:  6, fy:  46, ci:2,  igniteT:4940},
+      {fx: 212,fy:  -6, ci:3,  igniteT:5560},
+      {fx:  64,fy: -96, ci:-1, igniteT:4150},
+      {fx: 150,fy: -44, ci:-1, igniteT:4820}
+    ];
+
+    // ---------- build graph data ----------
+    var GX=0, GY=0;                   // gravity centre (cloud centred on origin; camera leans it right)
+    var nodes=[], links=[];
+    var commNodes=[];
+    for(var i=0;i<COMMP.length;i++){
+      var c=COMMP[i];
+      var n={id:"c"+i, kind:"comm", ci:c.ci, igniteT:c.igniteT, fx:c.fx, fy:c.fy, x:c.fx, y:c.fy, _hover:false};
+      nodes.push(n); commNodes.push(n);
+    }
+    var MASS=496;
+    var hubCount=8, hubs=[];
+    // place mass nodes in a seeded disk around gravity centre
+    for(var i=0;i<MASS;i++){
+      var ang=rnd()*6.2832, rad=Math.sqrt(rnd())*360;
+      nodes.push({id:"m"+i, kind:"mass", deg:0, x:GX+Math.cos(ang)*rad, y:GY+Math.sin(ang)*rad});
+    }
+    function massNode(k){ return nodes[COMMP.length + k]; }
+    // pick hubs
+    var taken={};
+    while(hubs.length<hubCount){ var h=Math.floor(rnd()*MASS); if(!taken[h]){taken[h]=1;hubs.push(h);} }
+    // connect leaves: 48% to a hub, 15% to a random mass node, rest isolated
+    for(var k=0;k<MASS;k++){
+      if(taken[k]) continue;
+      var u=rnd();
+      if(u<0.48){
+        var hb=hubs[Math.floor(rnd()*hubs.length)];
+        links.push({source:"m"+k, target:"m"+hb});
+      } else if(u<0.63){
+        var tgt=Math.floor(rnd()*MASS);
+        if(tgt!==k && !taken[tgt]) links.push({source:"m"+k, target:"m"+tgt});
+      }
+    }
+    // a few hub-to-hub struts
+    for(var a=0;a<hubs.length;a++){ for(var b=a+1;b<hubs.length;b++){ if(rnd()<0.18) links.push({source:"m"+hubs[a], target:"m"+hubs[b]}); } }
+    // small dense cliques scattered (organic local clusters)
+    for(var cl=0;cl<4;cl++){
+      var anchor=Math.floor(rnd()*MASS), members=[anchor];
+      for(var m=0;m<3;m++){ var mm=Math.floor(rnd()*MASS); if(mm!==anchor){ members.push(mm); links.push({source:"m"+anchor,target:"m"+mm}); } }
+      for(var p=1;p<members.length;p++){ if(rnd()<0.5) links.push({source:"m"+members[p],target:"m"+members[(p%(members.length-1))+1]}); }
+    }
+    // degree (mass only)
+    var degById={};
+    links.forEach(function(l){ degById[l.source]=(degById[l.source]||0)+1; degById[l.target]=(degById[l.target]||0)+1; });
+    nodes.forEach(function(n){ if(n.kind==="mass") n.deg=degById[n.id]||0; });
+    // adjacency for hover highlight
+    var adj={};
+    links.forEach(function(l){ (adj[l.source]=adj[l.source]||{})[l.target]=1; (adj[l.target]=adj[l.target]||{})[l.source]=1; });
+
+    // ---------- custom inward gravity force (d3 interface, no dependency) ----------
+    function gravity(cx,cy,strength){
+      var ns;
+      function f(alpha){
+        for(var i=0;i<ns.length;i++){ var n=ns[i];
+          if(n.fx!=null) continue;
+          n.vx += (cx-n.x)*strength*alpha;
+          n.vy += (cy-n.y)*strength*alpha;
+        }
+      }
+      f.initialize=function(_){ ns=_; };
+      return f;
+    }
+    // hard safety clamp + camera lock each tick (defeats force-graph's initial auto-fit)
+    function clampTick(){
+      for(var i=0;i<nodes.length;i++){ var n=nodes[i]; if(n.fx!=null) continue;
+        if(n.x<-360)n.x=-360; else if(n.x>360)n.x=360;
+        if(n.y<-320)n.y=-320; else if(n.y>320)n.y=320;
+      }
+      if(Math.abs(graph.zoom()-1)>0.0005){ graph.zoom(1,0); graph.centerAt(-140,0,0); }
+    }
+
+    // ---------- timing ----------
+    var START = (typeof performance!=="undefined"?performance.now():0);
+    if(prefersReduce) START -= 100000;           // jump to final state
+    function T(){ return (typeof performance!=="undefined"?performance.now():0) - START; }
+    function clamp(v,lo,hi){ return v<lo?lo:(v>hi?hi:v); }
+    function ease(p){ return p<0?0:(p>1?1:(p*p*(3-2*p))); }
+    var T_BLOOM=6700, T_CONCL=7100, T_AUTOCARD=7700;
+
+    // ---------- init force-graph ----------
+    var graph = ForceGraph()(document.getElementById("graph"))
+      .width(W).height(H)
+      .backgroundColor("rgba(0,0,0,0)")
+      .nodeLabel("")
+      .enableZoomInteraction(false).enablePanInteraction(false).enableNodeDrag(false)
+      .cooldownTime(prefersReduce?0:17000)
+      .warmupTicks(prefersReduce?420:0)
+      .d3VelocityDecay(0.42)
+      .nodeCanvasObject(drawNode)
+      .nodePointerAreaPaint(function(node,color,ctx,scale){
+        ctx.fillStyle=color; var r=(node.kind==="comm"?15:4.5)/scale;
+        ctx.beginPath(); ctx.arc(node.x,node.y,r,0,6.2832); ctx.fill();
+      })
+      .linkCanvasObject(drawLink)
+      .onRenderFramePost(overlay)
+      .onEngineTick(clampTick)
+      .onEngineStop(function(){ graph.zoom(1,0).centerAt(-140,0,0); })
+      .onNodeHover(onHover);
+
+    graph.d3Force("center", null);
+    graph.d3Force("charge").strength(-42).distanceMax(340);
+    graph.d3Force("link").distance(17).strength(0.08);
+    graph.d3Force("gravity", gravity(GX,GY,0.135));
+    graph.graphData({nodes:nodes, links:links});
+    graph.zoom(1,0).centerAt(-140,0,0);          // lock camera: k=1, cloud leaned right
+
+    // ---------- node renderer ----------
+    function drawNode(node,ctx,scale){
+      if(node.kind==="comm"){ drawComm(node,ctx,scale); return; }
+      var deg=node.deg||0;
+      var r=(2.0+Math.min(deg,6)*0.7)/scale;
+      var a=0.24+Math.min(deg,6)*0.085;
+      if(hoverNode){
+        if(node===hoverNode) a=Math.min(a+0.55,0.92);
+        else if(adj[hoverNode.id] && adj[hoverNode.id][node.id]) a=Math.min(a+0.38,0.8);
+      }
+      ctx.beginPath(); ctx.arc(node.x,node.y,r,0,6.2832);
+      ctx.fillStyle="rgba(96,74,56,"+a.toFixed(3)+")"; ctx.fill();
+    }
+    function drawComm(node,ctx,scale){
+      var t=T();
+      var prog=ease((t-node.igniteT)/620);
+      if(prog<=0){  // pre-ignition: indistinguishable from the mass
+        ctx.beginPath(); ctx.arc(node.x,node.y,2.6/scale,0,6.2832);
+        ctx.fillStyle="rgba(96,74,56,0.5)"; ctx.fill(); return;
+      }
+      var breath=1+0.11*Math.sin(t/680 + node.x);
+      var base=(node.ci>=0?5.4:4.2);
+      var r=base*breath/scale;
+      ctx.save();
+      ctx.globalAlpha=prog;
+      // warm halo (subtler on cream)
+      var gr=ctx.createRadialGradient(node.x,node.y,0,node.x,node.y,base*2.8/scale);
+      gr.addColorStop(0,"rgba(194,64,16,0.30)");
+      gr.addColorStop(0.55,"rgba(194,64,16,0.09)");
+      gr.addColorStop(1,"rgba(194,64,16,0)");
+      ctx.fillStyle=gr; ctx.beginPath(); ctx.arc(node.x,node.y,base*2.8/scale,0,6.2832); ctx.fill();
+      // halo ring
+      ctx.strokeStyle="rgba(194,64,16,"+(0.55*prog)+")"; ctx.lineWidth=1.1/scale;
+      ctx.beginPath(); ctx.arc(node.x,node.y,(base+4)*breath/scale,0,6.2832); ctx.stroke();
+      // core (with soft drop to lift off parchment) + centre
+      ctx.shadowColor="rgba(120,40,10,0.45)"; ctx.shadowBlur=5/scale;
+      ctx.fillStyle="#B83C0F"; ctx.beginPath(); ctx.arc(node.x,node.y,r,0,6.2832); ctx.fill();
+      ctx.shadowBlur=0;
+      ctx.fillStyle="#FFF6E6"; ctx.beginPath(); ctx.arc(node.x,node.y,r*0.42,0,6.2832); ctx.fill();
+      ctx.restore();
+    }
+
+    // ---------- link renderer (faint mass edges) ----------
+    function drawLink(link,ctx,scale){
+      var a=0.12;
+      if(hoverNode && (link.source===hoverNode||link.target===hoverNode)) a=0.42;
+      ctx.beginPath(); ctx.moveTo(link.source.x,link.source.y); ctx.lineTo(link.target.x,link.target.y);
+      ctx.strokeStyle="rgba(120,74,40,"+a+")"; ctx.lineWidth=(a>0.2?1.0:0.7)/scale; ctx.stroke();
+    }
+
+    // ---------- synthesis arcs (date order) ----------
+    // pairs reference commNodes indices: 0..3 content (8sty..14maj), 4,5 junctions
+    var ARCS=[
+      {a:0,b:4,start:4300}, {a:4,b:1,start:4500},
+      {a:1,b:5,start:5050}, {a:5,b:2,start:5250},
+      {a:2,b:3,start:5650}, {a:0,b:2,start:5900}
+    ];
+    function qbezPartial(ctx,x0,y0,cx,cy,x1,y1,p){
+      var steps=26, last=Math.max(1,Math.ceil(steps*p));
+      ctx.beginPath();
+      for(var i=0;i<=last;i++){
+        var u=i/steps; if(u>p)u=p; var mu=1-u;
+        var x=mu*mu*x0+2*mu*u*cx+u*u*x1, y=mu*mu*y0+2*mu*u*cy+u*u*y1;
+        if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      ctx.stroke();
+    }
+
+    var hoverNode=null;
+    function onHover(node){
+      hoverNode=node;
+      commNodes.forEach(function(n){ n._hover=false; });
+      if(node && node.kind==="comm" && node.ci>=0) node._hover=true;
+      document.body.style.cursor = node ? "pointer" : "default";
+    }
+
+    // ---------- HTML cards ----------
+    var cardEls=[];
+    CONTENT.forEach(function(c){
+      var el=document.createElement("div"); el.className="card";
+      el.innerHTML='<div class="d">'+c.d+' · <span>'+c.src+'</span></div><div class="t">'+c.t+'</div>';
+      document.body.appendChild(el); cardEls.push(el);
+    });
+    var conclEl=document.getElementById("concl");
+
+    // ---------- overlay (GRAPH-space ctx): synthesis arcs + bloom; cards via DOM ----------
+    function overlay(ctx, scale){
+      scale = scale || 1; var SC=1/scale;
+      var t=T();
+      // community centroid + bloom anchor — all in GRAPH coords
+      var ccx=0,ccy=0; for(var i=0;i<commNodes.length;i++){ ccx+=commNodes[i].x; ccy+=commNodes[i].y; }
+      ccx/=commNodes.length; ccy/=commNodes.length;
+      var bgx=clamp(ccx,-40,300), bgy=clamp(ccy-150,-320,-90);
+
+      // synthesis arcs, bowing toward the bloom anchor
+      ctx.save(); ctx.lineCap="round";
+      ctx.shadowColor="rgba(154,48,9,0.35)"; ctx.shadowBlur=7;
+      for(var i=0;i<ARCS.length;i++){
+        var arc=ARCS[i]; var p=ease((t-arc.start)/640); if(p<=0) continue;
+        var A=commNodes[arc.a], B=commNodes[arc.b];
+        var mx=(A.x+B.x)/2, my=(A.y+B.y)/2;
+        var cx=mx+(bgx-mx)*0.32, cy=my+(bgy-my)*0.32;
+        ctx.strokeStyle="rgba(178,58,14,"+(0.92*p).toFixed(3)+")"; ctx.lineWidth=2.0*SC;
+        qbezPartial(ctx,A.x,A.y,cx,cy,B.x,B.y,p);
+      }
+      ctx.restore();
+
+      // bloom
+      var bp=ease((t-T_BLOOM)/950);
+      if(bp>0){
+        ctx.save(); ctx.globalAlpha=bp; ctx.lineCap="round";
+        // gold filaments from the two newest content nodes up to the bloom
+        ctx.strokeStyle="rgba(180,140,30,"+(0.55*bp)+")"; ctx.lineWidth=1.3*SC;
+        [2,3].forEach(function(idx){ var nn=commNodes[idx]; ctx.beginPath(); ctx.moveTo(nn.x,nn.y); ctx.lineTo(bgx,bgy); ctx.stroke(); });
+        // glow
+        var g=ctx.createRadialGradient(bgx,bgy,0,bgx,bgy,50*SC);
+        g.addColorStop(0,"rgba(232,194,74,0.92)"); g.addColorStop(0.5,"rgba(201,150,31,0.30)"); g.addColorStop(1,"rgba(201,150,31,0)");
+        ctx.fillStyle=g; ctx.beginPath(); ctx.arc(bgx,bgy,50*SC,0,6.2832); ctx.fill();
+        // rings — inner gold, outer bronze for definition on parchment
+        ctx.strokeStyle="rgba(201,150,31,"+(0.6*bp)+")"; ctx.lineWidth=1.3*SC;
+        ctx.beginPath(); ctx.arc(bgx,bgy,34*bp*SC,0,6.2832); ctx.stroke();
+        ctx.strokeStyle="rgba(120,84,18,"+(0.3*bp)+")"; ctx.lineWidth=1.0*SC;
+        ctx.beginPath(); ctx.arc(bgx,bgy,50*bp*SC,0,6.2832); ctx.stroke();
+        // core (soft drop to lift off parchment)
+        ctx.shadowColor="rgba(120,84,18,0.5)"; ctx.shadowBlur=6*SC;
+        ctx.fillStyle="#D6A82A"; ctx.beginPath(); ctx.arc(bgx,bgy,6.0*bp*SC,0,6.2832); ctx.fill();
+        ctx.shadowBlur=0;
+        ctx.fillStyle="#FFF6E6"; ctx.beginPath(); ctx.arc(bgx,bgy,2.6*bp*SC,0,6.2832); ctx.fill();
+        ctx.restore();
+      }
+
+      // ---- DOM cards (screen px via graph2ScreenCoords) ----
+      var activeCi=-1, hov=null;
+      for(var i=0;i<commNodes.length;i++){ if(commNodes[i]._hover && commNodes[i].ci>=0){ hov=commNodes[i]; break; } }
+      if(hov) activeCi=hov.ci; else if(t>=T_AUTOCARD) activeCi=3;
+      for(var ci=0;ci<CONTENT.length;ci++){
+        var el=cardEls[ci];
+        if(ci===activeCi){
+          var cn=null; for(var k=0;k<commNodes.length;k++){ if(commNodes[k].ci===ci){ cn=commNodes[k]; break; } }
+          if(cn){ var sp=graph.graph2ScreenCoords(cn.x,cn.y), cw=250;
+            el.style.left=clamp(sp.x-cw/2, 540, W-cw-14)+"px";
+            el.style.top =clamp(sp.y+16, 96, 660)+"px";
+            el.classList.add("show");
+          }
+        } else el.classList.remove("show");
+      }
+      // conclusion card to the lower-right of the bloom (never covering it)
+      if(t>=T_CONCL){ var bs=graph.graph2ScreenCoords(bgx,bgy);
+        conclEl.style.left=clamp(bs.x+62, 560, W-298-16)+"px";
+        conclEl.style.top =clamp(bs.y+18, 70, 250)+"px";
+        conclEl.classList.add("show");
+      }
+    }
+
+  })();
+  </script>
+</body></html>

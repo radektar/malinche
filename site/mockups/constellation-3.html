@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="pl"><head><meta charset="utf-8"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --terracotta:#C24010;--terracotta-deep:#9A3009;--jade:#057857;--gold:#D6B033;
+  --cream:#F4E9CF;--cream-hi:#FAF3E2;--ink:#241E18;--ink-soft:#5A4E42;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1200px;height:820px;position:relative;overflow:hidden;
+  background:radial-gradient(125% 115% at 66% 42%,#FBF4E0 0%,#F4E7C7 54%,#ECDBB7 100%);
+  -webkit-font-smoothing:antialiased;font-family:"Inter",system-ui,sans-serif;color:var(--ink)}
+body::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.055;mix-blend-mode:multiply;z-index:5;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+.base{position:absolute;left:0;right:0;bottom:0;height:18px;opacity:.09;z-index:1;
+  background-repeat:repeat-x;background-position:center;background-size:auto 18px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='18' viewBox='0 0 56 18'%3E%3Cpath d='M4 18 V13 H12 V9 H20 V5 H36 V9 H44 V13 H52 V18 Z' fill='%23C24010'/%3E%3C/svg%3E")}
+
+.copy{position:absolute;left:84px;top:258px;width:430px;z-index:4}
+.eyebrow{font-size:14px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--terracotta);margin-bottom:22px}
+h1{font-family:"Fraunces",Georgia,serif;font-weight:500;font-size:56px;line-height:1.04;letter-spacing:-.02em;color:var(--ink)}
+h1 .accent{color:var(--terracotta)}
+.sub{margin-top:22px;font-size:18px;line-height:1.5;color:var(--ink-soft);max-width:38ch}
+
+svg{position:absolute;inset:0;display:block;z-index:2}
+
+.cards{position:absolute;inset:0;z-index:3;pointer-events:none}
+.card{position:absolute;width:248px;background:var(--cream-hi);border:1px solid rgba(36,30,24,.16);
+  border-radius:13px;padding:12px 14px;box-shadow:0 18px 44px -22px rgba(120,52,20,.55);
+  opacity:0;transform:translateY(6px);transition:opacity .18s,transform .18s}
+.card.show{opacity:1;transform:translateY(0)}
+.card .d{font-size:12px;font-weight:600;letter-spacing:.02em;color:var(--terracotta);margin-bottom:5px}
+.card .d span{color:var(--ink-soft);font-weight:500}
+.card .t{font-family:"Fraunces",Georgia,serif;font-size:16px;line-height:1.34;color:var(--ink)}
+
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.anFade{animation:fade .8s ease both}
+@media(prefers-reduced-motion:reduce){.anFade{animation:none}}
+</style></head>
+<body>
+  <div class="copy">
+    <div class="eyebrow">Jeden system, nie stos plików</div>
+    <h1>Masz transkrypty wszystkiego. <span class="accent">I nic z nich nie wynika.</span></h1>
+    <p class="sub">Aż system pokazuje, jak to samo założenie po cichu zmieniło się przez pół roku.</p>
+  </div>
+
+  <svg id="scene" viewBox="0 0 1200 820" fill="none">
+    <defs>
+      <radialGradient id="focus" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#FFFBF0" stop-opacity=".6"/>
+        <stop offset="100%" stop-color="#FFFBF0" stop-opacity="0"/>
+      </radialGradient>
+      <filter id="soft" x="-80%" y="-80%" width="260%" height="260%">
+        <feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#7A3414" flood-opacity=".20"/>
+      </filter>
+      <radialGradient id="goldGlow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#F4DD8E" stop-opacity=".95"/>
+        <stop offset="55%" stop-color="#D6B033" stop-opacity=".32"/>
+        <stop offset="100%" stop-color="#D6B033" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+    <ellipse id="halo" cx="820" cy="400" rx="170" ry="150" fill="url(#focus)" opacity="0"/>
+    <g id="massEdges" stroke="#9A3009" class="anFade"></g>
+    <g id="massNodes" fill="#9A3009" class="anFade"></g>
+    <g id="commEdges" stroke="#C24010" stroke-linecap="round" class="anFade" style="animation-delay:.5s"></g>
+    <g id="commNodes" class="anFade" style="animation-delay:.7s"></g>
+    <g id="bloom" class="anFade" style="animation-delay:1.4s"></g>
+  </svg>
+
+  <div class="cards" id="cards"></div>
+  <div class="base"></div>
+
+  <script>
+  (function(){
+    var seed=20260621;
+    function rnd(){ seed=(seed*1103515245+12345)&0x7fffffff; return seed/0x7fffffff; }
+    var ns="http://www.w3.org/2000/svg";
+    function el(t,a,p){ var e=document.createElementNS(ns,t); for(var k in a) e.setAttribute(k,a[k]); if(p)p.appendChild(e); return e; }
+    function clamp(v,lo,hi){ return v<lo?lo:(v>hi?hi:v); }
+
+    // ---- content for the discovered community (a coherent drift, cena -> termin) ----
+    var CONTENT=[
+      {d:"8 sty",src:"wywiad — uczestnik A",t:"„Decyduje cena. Reszta się nie liczy."},
+      {d:"22 lut",src:"wywiad — uczestnik B",t:"„Budżet jest święty — najtaniej, jak się da."},
+      {d:"30 mar",src:"nagranie — warsztat",t:"„Nagle wszyscy mówią o terminie, nie o cenie."},
+      {d:"14 maj",src:"dyktando — podsumowanie",t:"„Założenie o cenie chyba upadło. Liczy się czas."}
+    ];
+    var COMM=6;            // community nodes (0..3 carry content, 4..5 are junctions)
+    var MASS=118;          // the archive
+    var N=COMM+MASS;
+
+    // ---- nodes ----
+    var nx=[],ny=[],vx=[],vy=[],grp=[];
+    var cx0=884, cy0=412;
+    for(var i=0;i<N;i++){ nx[i]=cx0+(rnd()-.5)*460; ny[i]=cy0+(rnd()-.5)*380; vx[i]=0; vy[i]=0; grp[i]=i<COMM?1:0; }
+
+    // ---- edges ----
+    var E=[]; // [i,j,rest]
+    // community: dense (near-clique) with short rest -> tight cluster
+    for(var i=0;i<COMM;i++) for(var j=i+1;j<COMM;j++){ if(rnd()<0.72) E.push([i,j,24]); }
+    // mass: a few hubs, leaves attach to a hub -> organic clusters, many leaves/isolated
+    var hubs=[]; for(var h=0;h<7;h++) hubs.push(COMM+Math.floor(rnd()*MASS));
+    for(var m=COMM;m<N;m++){
+      if(hubs.indexOf(m)>=0) continue;
+      var r=rnd();
+      if(r<0.50) E.push([m, hubs[Math.floor(rnd()*hubs.length)], 40]);
+      else if(r<0.66) E.push([m, COMM+Math.floor(rnd()*MASS), 46]);
+      // else isolated (drifts to periphery)
+    }
+    for(var h=0;h<hubs.length-1;h++){ if(rnd()<0.5) E.push([hubs[h],hubs[h+1],58]); }
+    // embed the community into the archive
+    E.push([0, hubs[1], 50]); E.push([3, hubs[4], 50]);
+
+    // degree (for sizing)
+    var deg=new Array(N).fill(0);
+    for(var e=0;e<E.length;e++){ deg[E[e][0]]++; deg[E[e][1]]++; }
+
+    // ---- force-directed solver ----
+    var REP=680, SPRING=0.035, GRAV=0.013, DAMP=0.85, IT=360;
+    for(var it=0;it<IT;it++){
+      for(var i=0;i<N;i++){
+        for(var j=i+1;j<N;j++){
+          var dx=nx[i]-nx[j], dy=ny[i]-ny[j], d2=dx*dx+dy*dy+0.01, d=Math.sqrt(d2);
+          var f=REP/d2; var fx=dx/d*f, fy=dy/d*f;
+          vx[i]+=fx; vy[i]+=fy; vx[j]-=fx; vy[j]-=fy;
+        }
+      }
+      for(var e=0;e<E.length;e++){
+        var a=E[e][0], b=E[e][1], rest=E[e][2];
+        var dx=nx[b]-nx[a], dy=ny[b]-ny[a], d=Math.sqrt(dx*dx+dy*dy)+0.01;
+        var f=SPRING*(d-rest); var fx=dx/d*f, fy=dy/d*f;
+        vx[a]+=fx; vy[a]+=fy; vx[b]-=fx; vy[b]-=fy;
+      }
+      for(var i=0;i<N;i++){
+        var gv = grp[i]?0.05:GRAV;          // anchor the community to the centre of the mass
+        vx[i]+=(cx0-nx[i])*gv; vy[i]+=(cy0-ny[i])*gv;
+        vx[i]*=DAMP; vy[i]*=DAMP;
+        nx[i]+=vx[i]; ny[i]+=vy[i];
+        nx[i]=clamp(nx[i],566,1168); ny[i]=clamp(ny[i],132,694);
+      }
+    }
+
+    // community centroid + halo + focus
+    var ccx=0,ccy=0; for(var i=0;i<COMM;i++){ ccx+=nx[i]; ccy+=ny[i]; } ccx/=COMM; ccy/=COMM;
+    var halo=document.getElementById("halo"); halo.setAttribute("cx",ccx.toFixed(0)); halo.setAttribute("cy",ccy.toFixed(0));
+    halo.setAttribute("class","anFade"); halo.style.animationDelay=".5s"; halo.setAttribute("opacity","1");
+
+    // ---- render edges ----
+    var meG=document.getElementById("massEdges");
+    var ceG=document.getElementById("commEdges");
+    for(var e=0;e<E.length;e++){
+      var a=E[e][0], b=E[e][1], comm=(a<COMM&&b<COMM);
+      var semi=( (a<COMM)!=(b<COMM) );
+      if(comm) el("line",{x1:nx[a].toFixed(1),y1:ny[a].toFixed(1),x2:nx[b].toFixed(1),y2:ny[b].toFixed(1),"stroke-width":1.7,opacity:.82},ceG);
+      else if(semi) el("line",{x1:nx[a].toFixed(1),y1:ny[a].toFixed(1),x2:nx[b].toFixed(1),y2:ny[b].toFixed(1),stroke:"#C24010","stroke-width":1.2,opacity:.30},ceG);
+      else el("line",{x1:nx[a].toFixed(1),y1:ny[a].toFixed(1),x2:nx[b].toFixed(1),y2:ny[b].toFixed(1),"stroke-width":1.1,opacity:.16},meG);
+    }
+
+    // ---- render mass nodes (sized by degree, dim) ----
+    var mnG=document.getElementById("massNodes");
+    for(var i=COMM;i<N;i++){
+      var r=2.1+Math.min(deg[i],6)*0.5;
+      el("circle",{cx:nx[i].toFixed(1),cy:ny[i].toFixed(1),r:r.toFixed(2),opacity:(0.16+Math.min(deg[i],5)*0.03).toFixed(3)},mnG);
+    }
+
+    // ---- render community nodes (lit) + hover cards ----
+    var cnG=document.getElementById("commNodes"), cardsL=document.getElementById("cards");
+    for(var i=0;i<COMM;i++){
+      var r=4.6+Math.min(deg[i],6)*0.6;
+      el("circle",{cx:nx[i].toFixed(1),cy:ny[i].toFixed(1),r:(r+5).toFixed(1),stroke:"#C24010","stroke-width":1.2,opacity:.28,fill:"none"},cnG);
+      var g=el("g",{},cnG);
+      el("circle",{cx:nx[i].toFixed(1),cy:ny[i].toFixed(1),r:r.toFixed(1),fill:"#C24010",filter:"url(#soft)"},g);
+      el("circle",{cx:nx[i].toFixed(1),cy:ny[i].toFixed(1),r:"2",fill:"#FAF3E2"},g);
+      if(i<CONTENT.length){
+        var c=CONTENT[i], cw=248, left=clamp(nx[i]-cw/2,520,1200-cw-12), top=clamp(ny[i]-128,90,640);
+        var card=document.createElement("div"); card.className="card";
+        card.style.left=left+"px"; card.style.top=top+"px";
+        card.innerHTML='<div class="d">'+c.d+' · <span>'+c.src+'</span></div><div class="t">'+c.t+'</div>';
+        cardsL.appendChild(card);
+        (function(cardRef){ g.addEventListener("mouseenter",function(){cardRef.classList.add("show");}); g.addEventListener("mouseleave",function(){cardRef.classList.remove("show");}); })(card);
+        if(i===2) card.classList.add("show"); // pin one for the static preview
+      }
+    }
+
+    // ---- bloom: hypothesis rising from the community ----
+    var bx=clamp(ccx,620,1080), by=clamp(ccy-150,150,300), bloom=document.getElementById("bloom");
+    el("line",{x1:nx[0].toFixed(1),y1:ny[0].toFixed(1),x2:bx,y2:by,stroke:"#D6B033","stroke-width":1.4,"stroke-linecap":"round",opacity:.5},bloom);
+    el("line",{x1:nx[3].toFixed(1),y1:ny[3].toFixed(1),x2:bx,y2:by,stroke:"#D6B033","stroke-width":1.4,"stroke-linecap":"round",opacity:.5},bloom);
+    el("circle",{cx:bx,cy:by,r:34,stroke:"#D6B033","stroke-width":1.2,opacity:.16,fill:"none"},bloom);
+    el("circle",{cx:bx,cy:by,r:22,stroke:"#D6B033","stroke-width":1.3,opacity:.36,fill:"none"},bloom);
+    el("circle",{cx:bx,cy:by,r:27,fill:"url(#goldGlow)"},bloom);
+    el("circle",{cx:bx,cy:by,r:5.4,fill:"#F4DD8E"},bloom);
+    el("circle",{cx:bx,cy:by,r:2.3,fill:"#FFFBF0"},bloom);
+
+    var concl=document.createElement("div"); concl.className="card show";
+    var cl=clamp(bx-336,540,860), ctop=clamp(by-152,66,232); concl.style.left=cl+"px"; concl.style.top=ctop+"px"; concl.style.width="300px";
+    concl.style.background="#1A1A1F"; concl.style.borderColor="rgba(214,176,51,.4)";
+    concl.innerHTML='<div class="d" style="color:#D6B033">Hipoteza, którą system wysuwa</div><div class="t" style="color:#F4E9CF">„Priorytet przesunął się z ceny na termin — między styczniem a majem. Twoja teza wymaga rewizji."</div>';
+    cardsL.appendChild(concl);
+    el("line",{x1:(cl+300).toFixed(0),y1:(ctop+44),x2:bx-14,y2:by-6,stroke:"#D6B033","stroke-width":1.2,opacity:.45},bloom);
+  })();
+  </script>
+</body></html>

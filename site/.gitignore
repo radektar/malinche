@@ -1,1 +1,4 @@
 .vercel
+
+# render artifacts (screenshots from headless Chrome) — regenerable
+out/
