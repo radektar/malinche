@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="pl"><head><meta charset="utf-8"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --terracotta:#C24010;--terracotta-deep:#9A3009;--jade:#057857;--gold:#D6B033;
+  --cream:#F4E9CF;--cream-hi:#FAF3E2;--ink:#241E18;--ink-soft:#5A4E42;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{width:1200px;height:820px;position:relative;overflow:hidden;
+  background:radial-gradient(125% 115% at 66% 40%,#FBF4E0 0%,#F4E7C7 54%,#ECDBB7 100%);
+  -webkit-font-smoothing:antialiased;font-family:"Inter",system-ui,sans-serif;color:var(--ink)}
+body::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.055;mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+.base{position:absolute;left:0;right:0;bottom:0;height:18px;opacity:.09;
+  background-repeat:repeat-x;background-position:center;background-size:auto 18px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='18' viewBox='0 0 56 18'%3E%3Cpath d='M4 18 V13 H12 V9 H20 V5 H36 V9 H44 V13 H52 V18 Z' fill='%23C24010'/%3E%3C/svg%3E")}
+
+.copy{position:absolute;left:84px;top:262px;width:430px;z-index:3}
+.eyebrow{font-size:14px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--terracotta);margin-bottom:22px}
+h1{font-family:"Fraunces",Georgia,serif;font-weight:500;font-size:56px;line-height:1.04;letter-spacing:-.02em;color:var(--ink)}
+h1 .accent{color:var(--terracotta)}
+.sub{margin-top:22px;font-size:18px;line-height:1.5;color:var(--ink-soft);max-width:37ch}
+
+svg{position:absolute;inset:0;display:block;z-index:2}
+</style></head>
+<body>
+  <div class="copy">
+    <div class="eyebrow">Jeden system, nie stos plików</div>
+    <h1>Masz transkrypty wszystkiego. <span class="accent">I nic z nich nie wynika.</span></h1>
+    <p class="sub">Aż z nagrań sprzed miesięcy sam składa się myśl, której nie szukałeś.</p>
+  </div>
+
+  <svg id="scene" viewBox="0 0 1200 820" fill="none">
+    <defs>
+      <radialGradient id="focus" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#FFFBF0" stop-opacity=".55"/>
+        <stop offset="100%" stop-color="#FFFBF0" stop-opacity="0"/>
+      </radialGradient>
+      <filter id="soft" x="-80%" y="-80%" width="260%" height="260%">
+        <feDropShadow dx="0" dy="4" stdDeviation="7" flood-color="#7A3414" flood-opacity=".18"/>
+      </filter>
+      <radialGradient id="goldGlow" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#F4DD8E" stop-opacity=".95"/>
+        <stop offset="55%" stop-color="#D6B033" stop-opacity=".32"/>
+        <stop offset="100%" stop-color="#D6B033" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+
+    <ellipse cx="840" cy="372" rx="370" ry="310" fill="url(#focus)"/>
+    <g id="corpus" fill="#9A3009"></g>
+    <g id="tendrils"></g>
+    <g id="meshEdges" stroke="#C24010" stroke-linecap="round"></g>
+    <g id="meshNodes" fill="#C24010"></g>
+    <g id="meshWave"></g>
+    <g id="bloom"></g>
+  </svg>
+  <div class="base"></div>
+
+  <script>
+  (function(){
+    var seed = 20260621;
+    function rnd(){ seed = (seed*1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+    var ns="http://www.w3.org/2000/svg";
+    function el(tag,a,parent){ var e=document.createElementNS(ns,tag); for(var k in a) e.setAttribute(k,a[k]); parent.appendChild(e); return e; }
+    function clamp(v,lo,hi){ return v<lo?lo:(v>hi?hi:v); }
+
+    // ---- mesh region ----
+    var cx=850, cy=388, rx=180, ry=144;
+    var mesh=[], tries=0;
+    while(mesh.length<15 && tries<5000){
+      tries++;
+      var x=cx+(rnd()*2-1)*rx, y=cy+(rnd()*2-1)*ry;
+      var nx=(x-cx)/rx, ny=(y-cy)/ry; if(nx*nx+ny*ny>1) continue;
+      var ok=true;
+      for(var i=0;i<mesh.length;i++){ var dx=x-mesh[i][0],dy=y-mesh[i][1]; if(dx*dx+dy*dy<38*38){ok=false;break;} }
+      if(ok) mesh.push([x,y]);
+    }
+    // centroid
+    var mx=0,my=0; for(var i=0;i<mesh.length;i++){ mx+=mesh[i][0]; my+=mesh[i][1]; } mx/=mesh.length; my/=mesh.length;
+
+    // ---- corpus: dozens of dim recordings, avoid the mesh region ----
+    var corpus=document.getElementById("corpus");
+    var cpts=[], cN=46, ct=0;
+    while(cpts.length<cN && ct<6000){
+      ct++;
+      var x=545+rnd()*615, y=252+rnd()*378;
+      var nx=(x-cx)/(rx+14), ny=(y-cy)/(ry+14); if(nx*nx+ny*ny<1) continue; // keep field clear of mesh
+      var ok=true;
+      for(var j=0;j<cpts.length;j++){ var ex=x-cpts[j][0],ey=y-cpts[j][1]; if(ex*ex+ey*ey<17*17){ok=false;break;} }
+      if(!ok) continue;
+      cpts.push([x,y]);
+      var t=(x-545)/615;
+      el("circle",{cx:x.toFixed(1),cy:y.toFixed(1),r:(2+rnd()*1.4).toFixed(2),opacity:(0.10+t*0.11).toFixed(3)},corpus);
+    }
+
+    // ---- mesh edges: nearest neighbours -> organic web ----
+    var edgesG=document.getElementById("meshEdges");
+    var seen={};
+    for(var i=0;i<mesh.length;i++){
+      var d=[];
+      for(var k=0;k<mesh.length;k++){ if(k===i) continue; var dx=mesh[i][0]-mesh[k][0],dy=mesh[i][1]-mesh[k][1]; d.push([dx*dx+dy*dy,k]); }
+      d.sort(function(a,b){return a[0]-b[0];});
+      var deg = 3 + (rnd()<0.4?1:0);          // 3 or 4 links -> denser tissue
+      for(var n=0;n<deg && n<d.length;n++){
+        var j=d[n][1]; var len=Math.sqrt(d[n][0]);
+        if(len>150 && n>=2) continue;          // cut long spidery edges, keep core dense
+        var key=i<j?i+"-"+j:j+"-"+i;
+        if(seen[key]) continue; seen[key]=1;
+        el("line",{x1:mesh[i][0].toFixed(1),y1:mesh[i][1].toFixed(1),x2:mesh[j][0].toFixed(1),y2:mesh[j][1].toFixed(1),
+          "stroke-width":1.6,opacity:clamp(0.84-len/440,0.42,0.84).toFixed(2)},edgesG);
+      }
+    }
+
+    // ---- tendrils: reach to distant archive points (different periods) ----
+    var tg=document.getElementById("tendrils");
+    var targets=[[574,556],[1104,358],[846,636]];
+    for(var ti=0;ti<targets.length;ti++){
+      // nearest mesh node
+      var best=0,bd=1e9;
+      for(var k=0;k<mesh.length;k++){ var dx=targets[ti][0]-mesh[k][0],dy=targets[ti][1]-mesh[k][1]; var dd=dx*dx+dy*dy; if(dd<bd){bd=dd;best=k;} }
+      el("line",{x1:mesh[best][0].toFixed(1),y1:mesh[best][1].toFixed(1),x2:targets[ti][0],y2:targets[ti][1],
+        stroke:"#C24010","stroke-width":1.4,"stroke-linecap":"round",opacity:.28},tg);
+      el("circle",{cx:targets[ti][0],cy:targets[ti][1],r:3,fill:"#C24010",opacity:.40},tg);
+    }
+
+    // ---- mesh nodes (brighter at the core, fading outward) ----
+    var nodesG=document.getElementById("meshNodes");
+    for(var i=0;i<mesh.length;i++){
+      var dx=mesh[i][0]-mx,dy=mesh[i][1]-my; var d=Math.sqrt(dx*dx+dy*dy);
+      var op=clamp(1-d/300,0.55,1);
+      el("circle",{cx:mesh[i][0].toFixed(1),cy:mesh[i][1].toFixed(1),r:4.4,opacity:op.toFixed(2)},nodesG);
+      el("circle",{cx:mesh[i][0].toFixed(1),cy:mesh[i][1].toFixed(1),r:1.5,fill:"#FAF3E2",opacity:op.toFixed(2)},nodesG);
+    }
+
+    // ---- two recording glyphs: leftmost & rightmost mesh nodes ----
+    var waveG=document.getElementById("meshWave");
+    function wave(x,y){
+      el("circle",{cx:x,cy:y,r:12,fill:"#FAF3E2",filter:"url(#soft)"},waveG);
+      var g=el("g",{transform:"translate("+(x-9)+","+(y-8)+")",fill:"#C24010"},waveG);
+      var hs=[6,12,16,10,4], xs=[0,4,8,12,16], ys=[5,2,0,3,6];
+      for(var b=0;b<5;b++) el("rect",{x:xs[b],y:ys[b],width:1.8,height:hs[b],rx:.6},g);
+    }
+    var li=0,ri=0; for(var i=0;i<mesh.length;i++){ if(mesh[i][0]<mesh[li][0])li=i; if(mesh[i][0]>mesh[ri][0])ri=i; }
+    wave(mesh[li][0],mesh[li][1]); wave(mesh[ri][0],mesh[ri][1]);
+
+    // ---- the hypothesis: a new thought blooming from the densest part, rising above ----
+    var ti2=0; for(var i=0;i<mesh.length;i++){ if(mesh[i][1]<mesh[ti2][1])ti2=i; }   // topmost node
+    var bx=clamp((mesh[ti2][0]+mx)/2,560,1080), by=clamp(mesh[ti2][1]-82,150,300);
+    var bloom=document.getElementById("bloom");
+    // gold filaments from the two topmost nodes up to the bloom
+    var order=mesh.map(function(p,idx){return [p[1],idx];}).sort(function(a,b){return a[0]-b[0];});
+    for(var f=0;f<2;f++){ var idx=order[f][1];
+      el("line",{x1:mesh[idx][0].toFixed(1),y1:mesh[idx][1].toFixed(1),x2:bx,y2:by,stroke:"#D6B033","stroke-width":1.4,"stroke-linecap":"round",opacity:.5},bloom);
+    }
+    el("circle",{cx:bx,cy:by,r:36,stroke:"#D6B033","stroke-width":1.2,opacity:.16,fill:"none"},bloom);
+    el("circle",{cx:bx,cy:by,r:23,stroke:"#D6B033","stroke-width":1.3,opacity:.36,fill:"none"},bloom);
+    el("circle",{cx:bx,cy:by,r:28,fill:"url(#goldGlow)"},bloom);
+    el("circle",{cx:bx,cy:by,r:5.6,fill:"#F4DD8E"},bloom);
+    el("circle",{cx:bx,cy:by,r:2.4,fill:"#FFFBF0"},bloom);
+  })();
+  </script>
+</body></html>

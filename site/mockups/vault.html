@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="pl"><head><meta charset="utf-8"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --terracotta:#C24010;--jade:#057857;--gold:#D6B033;
+  --cream:#F4E9CF;--cream-hi:#FAF3E2;--ink:#241E18;--ink-soft:#5A4E42;--line:rgba(36,30,24,.14);
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Inter",system-ui,sans-serif;color:var(--ink);
+  width:1040px;height:640px;display:grid;place-items:center;
+  background:radial-gradient(120% 120% at 70% 0%,#F8EFD6,#EEE0BF 70%,#E7D5B2);
+  -webkit-font-smoothing:antialiased}
+.win{width:840px;background:#fff;border-radius:18px;overflow:hidden;
+  box-shadow:0 40px 90px -40px rgba(120,52,20,.55),inset 0 0 0 1px rgba(120,52,20,.06)}
+.bar{display:flex;align-items:center;gap:.55rem;padding:.8rem 1.1rem;background:linear-gradient(180deg,#FBF4E4,#F6ECD6);border-bottom:1px solid var(--line)}
+.dot{width:11px;height:11px;border-radius:50%}.d1{background:#E1604B}.d2{background:#E6B23C}.d3{background:#4FB477}
+.bar .path{margin-left:.6rem;font-family:var(--mono);font-size:.78rem;color:var(--ink-soft)}
+.body{display:grid;grid-template-columns:200px 1fr;min-height:480px}
+/* file list */
+.side{border-right:1px solid var(--line);padding:.9rem .7rem;background:#FCF7EA}
+.side .h{font-size:.66rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft);padding:.3rem .5rem .55rem}
+.file{display:flex;align-items:center;gap:.5rem;font-size:.86rem;color:var(--ink-soft);padding:.42rem .5rem;border-radius:8px}
+.file.on{background:var(--cream-hi);color:var(--ink);font-weight:600;box-shadow:inset 0 0 0 1px var(--line)}
+.file .mi{width:13px;height:13px;flex:0 0 auto;color:var(--terracotta)}
+/* note */
+.note{padding:1.4rem 1.6rem}
+.fm{font-family:var(--mono);font-size:.82rem;line-height:1.7;background:var(--cream-hi);border:1px solid var(--line);
+  border-radius:12px;padding:.9rem 1.1rem;color:var(--ink-soft)}
+.fm .k{color:var(--terracotta)}
+.fm .v{color:var(--ink)}
+.fm .tag{color:var(--jade)}
+.note h1{font-family:"Fraunces",Georgia,serif;font-weight:500;font-size:1.7rem;letter-spacing:-.01em;margin:1.2rem 0 .2rem}
+.note .meta{font-size:.82rem;color:var(--ink-soft);margin-bottom:1rem}
+.note p{font-size:.97rem;line-height:1.6;color:var(--ink);max-width:52ch;margin-bottom:.7rem}
+.note .ts{color:var(--terracotta);font-weight:600;font-family:var(--mono);font-size:.85rem}
+.badge{display:inline-flex;align-items:center;gap:.4rem;margin-top:1.1rem;font-size:.78rem;font-weight:600;color:var(--jade)}
+.badge::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--jade)}
+</style></head>
+<body>
+  <div class="win">
+    <div class="bar">
+      <span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span>
+      <span class="path">~/Vault/Malinche/wywiad-kowalski-12-03.md</span>
+    </div>
+    <div class="body">
+      <aside class="side">
+        <div class="h">Twój zbiór</div>
+        <div class="file on"><svg class="mi" viewBox="0 0 16 16" fill="currentColor"><path d="M3 1h6l4 4v10H3z" opacity=".25"/><path d="M3 1h6l4 4v10H3V1zm6 0v4h4" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>wywiad-kowalski-12-03</div>
+        <div class="file"><svg class="mi" viewBox="0 0 16 16" fill="currentColor"><path d="M3 1h6l4 4v10H3V1zm6 0v4h4" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>telefon-kowalski-04-05</div>
+        <div class="file"><svg class="mi" viewBox="0 0 16 16" fill="currentColor"><path d="M3 1h6l4 4v10H3V1zm6 0v4h4" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>spacer-pomysl-21-05</div>
+        <div class="file"><svg class="mi" viewBox="0 0 16 16" fill="currentColor"><path d="M3 1h6l4 4v10H3V1zm6 0v4h4" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>notatka-obora-03-08</div>
+      </aside>
+      <section class="note">
+        <div class="fm">
+<span class="k">tytuł:</span> <span class="v">Wywiad — Kowalski</span><br>
+<span class="k">data:</span> <span class="v">2026-03-12</span><br>
+<span class="k">źródło:</span> <span class="v">dyktafon · 00:42:17</span><br>
+<span class="k">tagi:</span> <span class="tag">[projekt-atrium, termin, wywiad]</span>
+        </div>
+        <h1>Wywiad — Kowalski</h1>
+        <div class="meta">Przepisane lokalnie · 12 marca 2026 · 7 312 słów</div>
+        <p><span class="ts">00:03:18</span> &nbsp;…co do harmonogramu — trzymamy się końca drugiego kwartału, bez poślizgu. Tak to zapisz.</p>
+        <p><span class="ts">00:11:42</span> &nbsp;Budżet osobno, ale termin jest twardy. Reszta się dopnie.</p>
+        <div class="badge">Czysty Markdown — w folderze, który posiadasz</div>
+      </section>
+    </div>
+  </div>
+</body></html>
