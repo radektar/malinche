@@ -127,6 +127,18 @@ class MalincheMenuApp(rumps.App):
         )
         self.menu.add(self.import_item)
 
+        # Synthesis — open the latest connection digest note in the vault.
+        self.digest_item = rumps.MenuItem(
+            "Open latest digest…",
+            callback=self._open_latest_digest,
+        )
+        self.menu.add(self.digest_item)
+        self.gen_digest_item = rumps.MenuItem(
+            "Generate digest now…",
+            callback=self._generate_digest_now,
+        )
+        self.menu.add(self.gen_digest_item)
+
         # Retranscribe submenu (lazy populated by refresh timer)
         self.retranscribe_menu = rumps.MenuItem("Retranscribe file…")
         self.menu.add(self.retranscribe_menu)
@@ -924,6 +936,12 @@ class MalincheMenuApp(rumps.App):
 
         self._update_icon(state.status)
 
+        # Surface a freshly written synthesis digest once (calm, never pesters).
+        digest = state.digest_ready
+        if digest:
+            state.digest_ready = None
+            send_notification("Malinche", "New synthesis digest ready", digest)
+
     def _open_logs(self, _):
         """Open the in-app log viewer (newest entries first, with live tail)."""
         log_file = config.LOG_FILE
@@ -938,6 +956,55 @@ class MalincheMenuApp(rumps.App):
         except Exception as exc:
             logger.error("Failed to open log viewer: %s", exc)
             rumps.alert("Error", f"Could not open log viewer: {exc}", "OK")
+
+    def _open_latest_digest(self, _):
+        """Open the most recent synthesis digest note in the default app."""
+        import subprocess
+        from pathlib import Path
+
+        from src.connections.scheduler import get_scheduler
+
+        path_str = get_scheduler().last_digest_path
+        path = Path(path_str) if path_str else None
+        if path is None or not path.exists():
+            folder = Path(config.TRANSCRIBE_DIR) / config.DIGEST_DIR_NAME
+            digests = sorted(folder.glob("*.md")) if folder.exists() else []
+            path = digests[-1] if digests else None
+        if path is None or not path.exists():
+            rumps.alert("Malinche", "No synthesis digest yet.", ok="OK")
+            return
+        try:
+            subprocess.Popen(["open", str(path)])
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Failed to open digest: %s", exc)
+            rumps.alert("Error", f"Could not open digest: {exc}", ok="OK")
+
+    def _generate_digest_now(self, _):
+        """Force a synthesis digest now (runs in the background, BYOK/PRO)."""
+        import threading
+
+        if not self.transcriber:
+            return
+
+        def _run():
+            try:
+                from src.connections import run_digest_if_due
+
+                path = run_digest_if_due(self.transcriber, force=True)
+                if path is None:
+                    send_notification(
+                        "Malinche",
+                        "No new connections",
+                        "Nothing connected this time (or AI key not set).",
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.error("Manual digest failed: %s", exc)
+                send_notification("Malinche", "Digest failed", str(exc))
+
+        threading.Thread(target=_run, name="ManualDigest", daemon=True).start()
+        send_notification(
+            "Malinche", "Generating synthesis digest…", "Reading your notes…"
+        )
 
     def _reset_memory(self, _):
         """Reset transcription memory to a specific date."""

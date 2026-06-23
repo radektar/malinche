@@ -15,11 +15,11 @@ from src.config.defaults import defaults
 @dataclass
 class Config:
     """Backward-compatible configuration wrapper for Malinche.
-    
+
     This class maintains the old Config interface while using UserSettings
     internally. This allows existing code to continue working while we
     transition to the new configuration system.
-    
+
     Attributes:
         RECORDER_NAMES: List of possible volume names (from watched_volumes or defaults)
         TRANSCRIBE_DIR: Directory where transcriptions are saved (from output_dir)
@@ -44,36 +44,40 @@ class Config:
         DELETE_TEMP_TXT: Whether to delete temporary TXT files after MD creation
         LOCAL_RECORDINGS_DIR: Local staging directory for copied recorder files
     """
-    
+
     # Recorder detection
     RECORDER_NAMES: List[str] = None
-    
+
     # Directories
     TRANSCRIBE_DIR: Path = None
     LOG_DIR: Path = None
     LOCAL_RECORDINGS_DIR: Path = None  # Local staging area for recorder files
     PROCESS_LOCK_FILE: Path = None  # Lock file preventing overlapping runs
-    
+
     # Files
     STATE_FILE: Path = None
     LOG_FILE: Path = None
-    
+    DIGEST_LOCK_FILE: Path = None  # Lock serialising connection-synthesis digest runs
+    CONNECTIONS_STATE_FILE: Path = None  # digest scheduler state (own file)
+
     # Whisper configuration
-    WHISPER_MODEL: str = "small"  # Balanced speed/accuracy: tiny, base, small, medium, large
+    WHISPER_MODEL: str = (
+        "small"  # Balanced speed/accuracy: tiny, base, small, medium, large
+    )
     WHISPER_LANGUAGE: str = "pl"  # Polish default, can be "en" or None for auto-detect
     WHISPER_DEVICE: str = "cpu"  # Use CPU (whisper.cpp handles Core ML acceleration)
     WHISPER_CPP_PATH: Path = None  # Path to whisper.cpp binary
     WHISPER_CPP_MODELS_DIR: Path = None  # Path to whisper.cpp models directory
     FFMPEG_PATH: Path = None  # Path to ffmpeg binary (Faza 2)
-    
+
     # Timeouts and intervals (seconds)
     TRANSCRIPTION_TIMEOUT: int = 3600  # 60 minutes (increased from 30)
     PERIODIC_CHECK_INTERVAL: int = 30  # 30 seconds
     MOUNT_MONITOR_DELAY: int = 1  # 1 second
-    
+
     # Audio formats
     AUDIO_EXTENSIONS: set = None
-    
+
     # LLM/Summarization configuration
     ENABLE_SUMMARIZATION: bool = True
     LLM_PROVIDER: str = "claude"
@@ -89,7 +93,27 @@ class Config:
     MAX_EXISTING_TAGS_IN_PROMPT: int = 150
     MAX_TAGGER_SUMMARY_CHARS: int = 3000
     MAX_TAGGER_TRANSCRIPT_CHARS: int = 1500
-    
+
+    # Connection synthesis ("Zestawianie") configuration
+    ENABLE_CONNECTION_SYNTHESIS: bool = True
+    # Per-stage model overrides (None -> fall back to LLM_MODEL via model_router).
+    LLM_MODEL_SUMMARY: Optional[str] = None
+    LLM_MODEL_TAGS: Optional[str] = None
+    LLM_MODEL_SYNTHESIS: Optional[str] = None
+    LLM_MODEL_JUDGE: Optional[str] = None
+    # Candidate-assembly + synthesis budgets (bound the prompt regardless of corpus size).
+    MAX_SYNTHESIS_NOTE_CHARS: int = 1200
+    MAX_SYNTHESIS_NOTES: int = 25
+    MAX_SYNTHESIS_PROMPT_CHARS: int = 30000
+    SYNTHESIS_MAX_TOKENS: int = 2048
+    SYNTHESIS_TIMEOUT: float = 60.0
+    # Digest scheduling: weekly calm container + pattern-triggered escalation.
+    CONNECTIONS_DIGEST_INTERVAL_DAYS: int = 7
+    CONNECTIONS_PATTERN_TRIGGER_MIN: int = 6
+    CONNECTIONS_MIN_GAP_DAYS: int = 2
+    # Sub-folder (inside TRANSCRIBE_DIR) where digest notes are written.
+    DIGEST_DIR_NAME: str = "Malinche Digests"
+
     # Markdown template
     MD_TEMPLATE: str = """---
 title: "{title}"
@@ -112,13 +136,13 @@ tags: [{tags}]
 
 {transcript}
 """
-    
+
     def __post_init__(self):
         """Initialize default values after dataclass initialization.
-        
+
         This method loads UserSettings and maps values to the old Config interface
         for backward compatibility.
-        
+
         Note: Migration should be performed explicitly before creating Config instances
         (e.g., in main() or app startup). This ensures deterministic behavior and
         prevents side effects during initialization.
@@ -126,7 +150,7 @@ tags: [{tags}]
         # Load user settings (migration should have been performed already)
         # This makes Config deterministic and testable
         self._user_settings = UserSettings.load()
-        
+
         # Map UserSettings to old Config attributes.
         #
         # ``RECORDER_NAMES`` is a legacy field that previously forced detection
@@ -144,7 +168,7 @@ tags: [{tags}]
                 self.RECORDER_NAMES = list(self._user_settings.watched_volumes)
             else:
                 self.RECORDER_NAMES = []
-        
+
         if self.TRANSCRIBE_DIR is None:
             # UserSettings stores output_dir as str (JSON), but legacy Config expects Path
             out_dir = self._user_settings.output_dir
@@ -152,39 +176,43 @@ tags: [{tags}]
                 self.TRANSCRIBE_DIR = out_dir
             else:
                 self.TRANSCRIBE_DIR = Path(str(out_dir)).expanduser()
-        
+
         support_dir = Path.home() / "Library" / "Application Support" / "Malinche"
 
         if self.LOG_DIR is None:
             self.LOG_DIR = support_dir / "logs"
-        
+
         if self.STATE_FILE is None:
             self.STATE_FILE = support_dir / "state.json"
-        
+
         if self.LOG_FILE is None:
             self.LOG_FILE = self.LOG_DIR / "malinche.log"
-        
+
         if self.LOCAL_RECORDINGS_DIR is None:
             self.LOCAL_RECORDINGS_DIR = support_dir / "recordings"
-        
+
         if self.PROCESS_LOCK_FILE is None:
             self.PROCESS_LOCK_FILE = support_dir / "runtime" / "transcriber.lock"
-        
+
+        if self.DIGEST_LOCK_FILE is None:
+            self.DIGEST_LOCK_FILE = support_dir / "runtime" / "digest.lock"
+
+        if self.CONNECTIONS_STATE_FILE is None:
+            self.CONNECTIONS_STATE_FILE = support_dir / "connections_state.json"
+
         if self.AUDIO_EXTENSIONS is None:
             self.AUDIO_EXTENSIONS = defaults.AUDIO_EXTENSIONS
-        
+
         # Map whisper settings from UserSettings
         # Always use UserSettings values (they are the source of truth)
         self.WHISPER_MODEL = self._user_settings.whisper_model
         self.WHISPER_LANGUAGE = self._user_settings.language or "pl"
-        
+
         if self.WHISPER_CPP_PATH is None:
             # Nowa lokalizacja: ~/Library/Application Support/Malinche/bin/
-            support_dir = (
-                Path.home() / "Library" / "Application Support" / "Malinche"
-            )
+            support_dir = Path.home() / "Library" / "Application Support" / "Malinche"
             new_whisper_path = support_dir / "bin" / "whisper-cli"
-            
+
             # Sprawdź nową lokalizację (Faza 2)
             if new_whisper_path.exists():
                 self.WHISPER_CPP_PATH = new_whisper_path
@@ -202,10 +230,10 @@ tags: [{tags}]
                 else:
                     # Default - nowa lokalizacja (będzie pobrana przez downloader)
                     self.WHISPER_CPP_PATH = new_whisper_path
-        
+
         if self.WHISPER_CPP_MODELS_DIR is None:
             self.WHISPER_CPP_MODELS_DIR = support_dir / "models"
-        
+
         if self.FFMPEG_PATH is None:
             malinche_ffmpeg_path = support_dir / "bin" / "ffmpeg"
             # Fallback do systemowego ffmpeg (dev environment).
@@ -215,7 +243,7 @@ tags: [{tags}]
             else:
                 # Default - new location (downloaded by DependencyDownloader)
                 self.FFMPEG_PATH = malinche_ffmpeg_path
-        
+
         # Load LLM API key from UserSettings only
         # Environment variables should be migrated to UserSettings via perform_migration_if_needed()
         # This ensures deterministic behavior and prevents runtime ENV reading
@@ -233,7 +261,7 @@ tags: [{tags}]
         # If enable_ai_summaries is False, don't enable summarization even if API key exists.
         # Exception: Ollama always enables summarization (no API key required).
         enable_summarization = bool(self._user_settings.enable_ai_summaries)
-        
+
         # Only enable summarization if user explicitly enabled it in settings
         # If enable_ai_summaries is False, summarization stays False regardless of API key
         if enable_summarization:
@@ -250,7 +278,7 @@ tags: [{tags}]
         # Tagging requires summarization to be enabled (shared LLM availability).
         if self.ENABLE_LLM_TAGGING and not self.ENABLE_SUMMARIZATION:
             self.ENABLE_LLM_TAGGING = False
-    
+
     def ensure_directories(self) -> None:
         """Create necessary directories if they don't exist."""
         self.TRANSCRIBE_DIR.mkdir(parents=True, exist_ok=True)
@@ -268,7 +296,7 @@ _config_instance: Optional[Config] = None
 
 def get_config() -> Config:
     """Get the global Config instance, creating it if necessary.
-    
+
     Note: In production, migration should be performed before calling this.
     For testing, you can set _config_instance directly.
     """
@@ -282,18 +310,17 @@ def get_config() -> Config:
 # This allows existing code using `from src.config import config` to continue working
 class _ConfigProxy:
     """Proxy for global config instance to maintain backward compatibility."""
-    
+
     def __getattr__(self, name: str):
         return getattr(get_config(), name)
-    
+
     def __setattr__(self, name: str, value):
         # Allow setting attributes on the actual config instance
         setattr(get_config(), name, value)
-    
+
     def ensure_directories(self) -> None:
         """Forward ensure_directories call to config instance."""
         get_config().ensure_directories()
 
 
 config = _ConfigProxy()
-

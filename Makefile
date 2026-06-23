@@ -58,6 +58,10 @@ test-coverage:
 	pytest tests/ --cov=src --cov-report=html --cov-report=term
 	@echo "Coverage report: htmlcov/index.html"
 
+eval-synthesis:
+	@echo "Comparing synthesis models on gold cases (needs a Claude key in settings)..."
+	python scripts/eval_synthesis.py
+
 lint:
 	@echo "Running linters..."
 	flake8 src/

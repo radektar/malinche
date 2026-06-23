@@ -118,6 +118,18 @@ class MalincheTranscriber:
                             )
                     self.transcriber.process_recorder()
 
+                    # Opportunistic connection-synthesis digest. Returns in
+                    # microseconds unless a digest is actually due; transcription
+                    # always runs first so it keeps priority on the tick.
+                    try:
+                        from src.connections import run_digest_if_due
+
+                        run_digest_if_due(self.transcriber)
+                    except Exception as digest_error:  # noqa: BLE001
+                        logger.error(
+                            "Error in digest run: %s", digest_error, exc_info=True
+                        )
+
             except Exception as e:
                 logger.error(f"Error in periodic check: {e}", exc_info=True)
                 self.state.status = AppStatus.ERROR

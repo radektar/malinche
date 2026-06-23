@@ -1916,6 +1916,16 @@ Brak podsumowania AI. Możliwe przyczyny:
                 version=version,
             )
 
+            # Connection synthesis is opportunistic and must NEVER disturb
+            # transcription — enqueue (a cheap in-memory counter bump, no API,
+            # no IO) and swallow anything that goes wrong.
+            try:
+                from src.connections import enqueue_connection_analysis
+
+                enqueue_connection_analysis(self)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("connection enqueue skipped: %s", exc)
+
         return success
 
     def stage_audio_file(self, source: Path) -> Path:

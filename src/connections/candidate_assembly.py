@@ -1,0 +1,297 @@
+"""Assemble a bounded, relevance-ranked set of notes for one synthesis pass.
+
+No embeddings: we combine three cheap, local signals —
+  1. the *recency window* (new material since the last digest — always kept),
+  2. *tag bridges* (older notes sharing normalized tags with the window),
+  3. *lexical overlap* via a compact in-process BM25 over note summaries —
+then bound the result to a token budget. Deliberately dependency-light (no
+scipy / scikit-learn): the corpus is hundreds of short notes, where a small
+BM25 is plenty. ``bm25s`` is the documented drop-in if scale ever demands it.
+
+We always feed *summaries*, never full transcripts — and when a note has no
+summary block (AI summaries were off when it was transcribed) we fall back to a
+head/tail excerpt of its body.
+"""
+
+from __future__ import annotations
+
+import math
+import re
+from collections import Counter
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Dict, List, Optional, Set
+
+from src.config import config
+from src.connections.dismissals import DismissalStore
+from src.logger import logger
+from src.summarizer import _EN_STOPWORDS, _PL_STOPWORDS
+from src.tag_index import TagIndex
+
+_TRANSCRIPT_MARKER = "## Transkrypcja"
+_STOPWORDS = set(_PL_STOPWORDS) | set(_EN_STOPWORDS)
+_TOKEN_RE = re.compile(r"[a-z0-9ąćęłńóśźż]+", re.IGNORECASE)
+_BM25_K1 = 1.5
+_BM25_B = 0.75
+
+
+@dataclass
+class NoteRef:
+    """A single transcript note, reduced to what synthesis needs."""
+
+    md_path: Path
+    basename: str  # filename without .md — the Obsidian [[wikilink]] target
+    title: str
+    date: str  # YYYY-MM-DD (frontmatter `date`, else `recording_date`)
+    tags: List[str]
+    norm_tags: Set[str]
+    summary_md: str  # summary block, or a head/tail excerpt when none exists
+    fingerprint: str
+
+
+@dataclass
+class CandidateSet:
+    """Ranked candidate notes plus the 'new this week' subset."""
+
+    notes: List[NoteRef]
+    window_basenames: Set[str]
+
+
+# --------------------------------------------------------------------------- #
+# Parsing helpers
+# --------------------------------------------------------------------------- #
+def _frontmatter(full: str) -> Dict[str, str]:
+    """Flat key/value frontmatter parse from already-read text.
+
+    Mirrors :func:`src.markdown_frontmatter.read_frontmatter` but works on the
+    text we already hold, avoiding a second disk read per note.
+    """
+    data: Dict[str, str] = {}
+    lines = full.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return data
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        data[key.strip()] = value.strip().strip('"')
+    return data
+
+
+def _parse_tags(raw: str) -> List[str]:
+    raw = raw.strip()
+    if raw.startswith("[") and raw.endswith("]"):
+        raw = raw[1:-1]
+    return [t.strip().strip('"').strip("'") for t in raw.split(",") if t.strip()]
+
+
+def _body_after_frontmatter(full: str) -> str:
+    if full.startswith("---"):
+        parts = full.split("---", 2)
+        if len(parts) == 3:
+            return parts[2]
+    return full
+
+
+def _excerpt(text: str, max_chars: int) -> str:
+    text = text.strip()
+    if len(text) <= max_chars * 2:
+        return text
+    return text[:max_chars] + "\n...\n" + text[-max_chars:]
+
+
+def _summary_or_excerpt(full: str, max_chars: int) -> str:
+    """Summary block if present, else a bounded excerpt of the transcript."""
+    body = _body_after_frontmatter(full)
+    if _TRANSCRIPT_MARKER in body:
+        pre, _, post = body.partition(_TRANSCRIPT_MARKER)
+        if pre.strip():
+            return pre.strip()[: max_chars * 2]
+        return _excerpt(post, max_chars)
+    return _excerpt(body, max_chars)
+
+
+def _tokenize(text: str) -> List[str]:
+    tokens: List[str] = []
+    for raw in _TOKEN_RE.findall(text.lower()):
+        tok = TagIndex.normalize_tag(raw)
+        if not tok or len(tok) < 3 or tok in _STOPWORDS:
+            continue
+        tokens.append(tok)
+    return tokens
+
+
+# --------------------------------------------------------------------------- #
+# Corpus loading + ranking
+# --------------------------------------------------------------------------- #
+def load_corpus(vault_dir: Path) -> List[NoteRef]:
+    """Load top-level transcript notes (digests live in a subfolder, excluded)."""
+    notes: List[NoteRef] = []
+    note_chars = config.MAX_SYNTHESIS_NOTE_CHARS
+    for md_path in sorted(Path(vault_dir).glob("*.md")):
+        try:
+            full = md_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            logger.debug("skip unreadable note %s: %s", md_path, exc)
+            continue
+        fm = _frontmatter(full)
+        if fm.get("type") == "malinche-digest":
+            continue
+        tags = _parse_tags(fm.get("tags", ""))
+        notes.append(
+            NoteRef(
+                md_path=md_path,
+                basename=md_path.stem,
+                title=fm.get("title") or md_path.stem,
+                date=(fm.get("date") or fm.get("recording_date") or "")[:10],
+                tags=tags,
+                norm_tags={TagIndex.normalize_tag(t) for t in tags if t},
+                summary_md=_summary_or_excerpt(full, note_chars),
+                fingerprint=fm.get("fingerprint", ""),
+            )
+        )
+    return notes
+
+
+def _bm25_ranked(window: List[NoteRef], older: List[NoteRef]) -> List[NoteRef]:
+    """Rank *older* notes by BM25 relevance to the *window* notes' text."""
+    if not older:
+        return []
+    docs = [(_tokenize(n.summary_md), n) for n in older]
+    n_docs = len(docs)
+    doc_freq: Counter = Counter()
+    total_len = 0
+    for toks, _ in docs:
+        total_len += len(toks)
+        for term in set(toks):
+            doc_freq[term] += 1
+    avgdl = (total_len / n_docs) if n_docs else 0.0
+    if avgdl == 0:
+        return []
+
+    query: Set[str] = set()
+    for note in window:
+        query |= set(_tokenize(note.summary_md))
+    if not query:
+        return []
+
+    scored: List[tuple] = []
+    for toks, note in docs:
+        if not toks:
+            continue
+        tf = Counter(toks)
+        dl = len(toks)
+        score = 0.0
+        for term in query:
+            freq = tf.get(term, 0)
+            if not freq:
+                continue
+            idf = math.log(1 + (n_docs - doc_freq[term] + 0.5) / (doc_freq[term] + 0.5))
+            denom = freq + _BM25_K1 * (1 - _BM25_B + _BM25_B * dl / avgdl)
+            score += idf * (freq * (_BM25_K1 + 1)) / denom
+        if score > 0:
+            scored.append((score, note))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [note for _, note in scored]
+
+
+def _interleave(first: List[NoteRef], second: List[NoteRef]) -> List[NoteRef]:
+    out: List[NoteRef] = []
+    i = j = 0
+    while i < len(first) or j < len(second):
+        if i < len(first):
+            out.append(first[i])
+            i += 1
+        if j < len(second):
+            out.append(second[j])
+            j += 1
+    return out
+
+
+def _enforce_char_budget(
+    notes: List[NoteRef], window_basenames: Set[str]
+) -> List[NoteRef]:
+    """Drop lowest-ranked *non-window* notes until under the prompt budget."""
+    budget = config.MAX_SYNTHESIS_PROMPT_CHARS
+    order = {n.basename: i for i, n in enumerate(notes)}
+    total = 0
+    kept: List[NoteRef] = []
+    # Window notes are guaranteed in first; consider them before neighbours.
+    ordered = [n for n in notes if n.basename in window_basenames] + [
+        n for n in notes if n.basename not in window_basenames
+    ]
+    for note in ordered:
+        size = len(note.summary_md)
+        if kept and note.basename not in window_basenames and total + size > budget:
+            continue
+        total += size
+        kept.append(note)
+    kept.sort(key=lambda n: order[n.basename])
+    return kept
+
+
+def assemble_candidates(
+    vault_dir: Path,
+    last_digest_at: Optional[str],
+    dismissals: DismissalStore,
+    first_run_window: int = 15,
+) -> CandidateSet:
+    """Build the candidate set for one synthesis pass.
+
+    Args:
+        vault_dir: the transcript folder (``config.TRANSCRIBE_DIR``).
+        last_digest_at: ISO timestamp of the last digest, or ``None`` (first run).
+        dismissals: store used to drop muted notes (connection-level filtering
+            happens later, on the synthesis output).
+        first_run_window: how many recent notes seed the very first digest.
+    """
+    corpus = [
+        n for n in load_corpus(vault_dir) if not dismissals.note_muted(n.basename)
+    ]
+    if not corpus:
+        return CandidateSet([], set())
+
+    if last_digest_at:
+        cutoff = last_digest_at[:10]
+        window = [n for n in corpus if n.date and n.date >= cutoff]
+    else:
+        window = sorted(corpus, key=lambda n: n.date, reverse=True)[:first_run_window]
+
+    if not window:
+        return CandidateSet([], set())
+    window_basenames = {n.basename for n in window}
+    older = [n for n in corpus if n.basename not in window_basenames]
+
+    window_tags: Set[str] = set()
+    for note in window:
+        window_tags |= note.norm_tags
+
+    def shared(note: NoteRef) -> int:
+        return len(note.norm_tags & window_tags)
+
+    tag_neighbors = sorted(
+        [n for n in older if shared(n) > 0],
+        key=lambda n: (shared(n), n.date),
+        reverse=True,
+    )
+    lexical_neighbors = _bm25_ranked(window, older)
+
+    ranked: List[NoteRef] = list(window)
+    seen = set(window_basenames)
+    for note in _interleave(tag_neighbors, lexical_neighbors):
+        if note.basename in seen:
+            continue
+        seen.add(note.basename)
+        ranked.append(note)
+
+    ranked = ranked[: config.MAX_SYNTHESIS_NOTES]
+    ranked = _enforce_char_budget(ranked, window_basenames)
+    logger.info(
+        "connection assembly: %d candidates (%d new) from %d-note corpus",
+        len(ranked),
+        len(window_basenames),
+        len(corpus),
+    )
+    return CandidateSet(ranked, window_basenames)
