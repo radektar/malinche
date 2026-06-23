@@ -35,6 +35,7 @@ class AppState:
         self._error_message: Optional[str] = None
         self._recorder_name: Optional[str] = None
         self._pending_count: Optional[int] = None
+        self._digest_ready: Optional[str] = None
 
     @property
     def status(self) -> AppStatus:
@@ -95,6 +96,18 @@ class AppState:
         """Set pending files count for current recorder."""
         with self._lock:
             self._pending_count = value
+
+    @property
+    def digest_ready(self) -> Optional[str]:
+        """Filename of a freshly written synthesis digest, or None."""
+        with self._lock:
+            return self._digest_ready
+
+    @digest_ready.setter
+    def digest_ready(self, value: Optional[str]) -> None:
+        """Set the freshly written synthesis digest filename."""
+        with self._lock:
+            self._digest_ready = value
 
     def get_status_string(self) -> str:
         """Get human-readable status string.

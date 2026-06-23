@@ -23,6 +23,7 @@ class FeatureFlags:
     ai_summaries: bool = False
     ai_smart_tags: bool = False
     ai_naming: bool = False
+    connection_synthesis: bool = False  # "Zestawianie": cross-note synthesis digest
     speaker_diarization: bool = False  # Local diarization
 
     # PRO Organization features
@@ -39,6 +40,7 @@ class FeatureFlags:
                 ai_summaries=True,
                 ai_smart_tags=True,
                 ai_naming=True,
+                connection_synthesis=True,
                 speaker_diarization=True,
                 cloud_sync=True,
                 shared_speaker_db=True,
@@ -50,6 +52,7 @@ class FeatureFlags:
                 ai_summaries=True,
                 ai_smart_tags=True,
                 ai_naming=True,
+                connection_synthesis=True,
                 speaker_diarization=True,
             )
         # FREE defaults
