@@ -178,6 +178,7 @@ class MalincheMenuApp(rumps.App):
 
         self._status_panel = None
         self._dashboard = build_dashboard_window()
+        self._refresh_insights_badge()
 
         # Start status update timer
         rumps.Timer(self._update_status, 2).start()  # Update every 2 seconds
@@ -919,7 +920,8 @@ class MalincheMenuApp(rumps.App):
         digest = state.digest_ready
         if digest:
             state.digest_ready = None
-            send_notification("Malinche", "New synthesis digest ready", digest)
+            self._notify_digest_ready(digest)
+            self._refresh_insights_badge()
 
     def _open_logs(self, _):
         """Open the in-app log viewer (newest entries first, with live tail)."""
@@ -945,11 +947,48 @@ class MalincheMenuApp(rumps.App):
                 self._dashboard = build_dashboard_window()
             if self._dashboard is not None:
                 self._dashboard.showWindow()
+                self._refresh_insights_badge()
             else:
                 logger.warning("Insights window unavailable (AppKit missing)")
                 rumps.alert("Malinche", "Insights view needs macOS AppKit.", ok="OK")
         except Exception as exc:  # pragma: no cover - defensive
             logger.error("Could not open Insights window: %s", exc)
+
+    def _notify_digest_ready(self, digest_name: str) -> None:
+        """Notify carrying the *thesis* of the top connection, not "digest ready".
+
+        Per the tone-of-voice + Insights design, the signal should land the
+        observation itself. Falls back to the plain note if no structured
+        connection is available.
+        """
+        top = None
+        try:
+            from src.ui.insight_pipeline import latest_deck
+
+            deck = latest_deck()
+            if deck is not None and not deck.is_empty:
+                top = deck.active()
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug("could not load insights for notification: %s", exc)
+        if top is not None:
+            send_notification("Malinche", top.resolved_label(), top.rationale)
+        else:
+            send_notification("Malinche", "New synthesis digest ready", digest_name)
+
+    def _refresh_insights_badge(self) -> None:
+        """Show the count of connections in the latest digest on the menu item."""
+        n = 0
+        try:
+            from src.ui.insight_pipeline import latest_deck
+
+            deck = latest_deck()
+            n = deck.unseen_count if deck is not None else 0
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.debug("could not refresh insights badge: %s", exc)
+        try:
+            self.insights_item.title = f"✦ Insights ({n})" if n else "Insights…"
+        except Exception:  # pragma: no cover - cosmetic
+            pass
 
     def _open_latest_digest(self, _):
         """Open the most recent synthesis digest note in the default app."""
