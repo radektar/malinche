@@ -32,7 +32,9 @@ v1 scope = czytnik + szyna + sygnał. Activity tab + skeleton are in-design but 
 - [x] **Dark surface depth** — backdrop drawRect subview fills deep obsidian (#100E15) + soft top
       halo; pixel-verified (18,17,23). ✅ (Full-window offscreen capture greys it — capture artifact,
       not the real render; the constellation/text capture fine.)
-- [ ] **Activity tab** — recent transcripts + connection counts (reuse `PanelModel`). [v1.1]
+- [ ] **Activity tab** — recent transcripts + connection counts (reuse `PanelModel`). **[v1.1 —
+      deferred on purpose:** standing v1 rec was reader + rail + signal; the tab is a second surface
+      that doesn't change validation. Build after the digest-window bet is tested.]
 - [x] **Menu integration** — native `NSMenu` is the click surface again (popover hijack
       retired: `_install_status_panel` removed, `_status_panel=None`); `Insights…` item opens
       the window; dashboard controller built in `__init__`. ✅ py_compile + flake8-neutral.
@@ -45,6 +47,25 @@ v1 scope = czytnik + szyna + sygnał. Activity tab + skeleton are in-design but 
       (type/notes/rationale/directions) on each digest; `insight_pipeline.py` loads it into an
       `InsightDeck`; the window defaults to `latest_deck() or sample_deck()`. ✅ 7 tests.
       Sidecar write is best-effort (never disturbs the digest).
-- [ ] **Token reconciliation (Faza 0)** — decide jade `#057857` vs `#46B17E`; dark-surface
-      insight tokens in `theme.py`; native titlebar vs custom dark chrome.
-- [ ] **Wire into `menu_app.py`** + `make lint` + `make test` green.
+- [ ] **Token reconciliation (Faza 0)** — *not a bug:* the dashboard's dark-surface jade `#46B17E`
+      is intentionally brighter than the light-UI `theme.jade()` `#057857` (dark needs brighter
+      tints). Open *cleanup:* centralise the dark-surface insight tints into `theme.py`. Chrome:
+      shipped with the **native dark titlebar** (cheaper, consistent) per the v1 rec.
+- [x] **Wire into `menu_app.py`** ✅ + new suite green (47 tests) + flake8 clean on all changed
+      files + `menu_app` py_compile clean (can't import on the 3.9 venv — pre-existing `match` in
+      `volume_utils`; the app runs 3.12+).
+
+---
+
+## Status — v1 complete (2026-06-26)
+
+The Insights "Konstelacja" window is implemented natively per the design and wired into the app.
+**10 commits** on `feat/insights-dashboard`; **47 tests**; flake8 clean. Done: constellation engine
++ Core Graphics view (3 types), window (chrome / rail / reader / empty / skeleton / keep-flash),
+native-menu entry (popover-as-click retired), real-digest pipeline, signal (thesis notification +
+`✦ Insights (N)` badge + gold-dot icon), deep-obsidian surface.
+
+**Open decisions (user's call, not autonomous):** (1) Activity tab — build now or keep deferred?
+(2) push / open PR — the branch is **stacked on `fix/llm-key-hot-reload-401`** (its 2 commits are
+included; `rebase --onto main` once that merges) and there is **uncommitted WIP** left untouched.
+(3) token-centralisation cleanup.
