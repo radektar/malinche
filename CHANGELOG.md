@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Insights "Konstelacja" window + validation signal.** A native AppKit window
+  (`src/ui/dashboard_window.py`) renders the digest's connections as a
+  constellation (terracotta nodes, golden bloom) with Zachowaj/Odrzuć; each
+  triage appends one line to `{vault}/.malinche/signal.jsonl` (`validation_signal`)
+  so kept-vs-dismissed by connection type can be measured over time.
+- **Distance-injection synthesis.** `candidate_assembly` injects
+  `SYNTHESIS_BRIDGE_COUNT` cross-topic "bridge" notes (far in topic, joined by a
+  shared rare token) so the synthesis sees combinations pure similarity retrieval
+  cannot surface — the source of surprising, cross-time/cross-domain connections.
+
+### Changed
+- **Sharper synthesis prompt is now the default.** A horoscope guard (reject
+  connections true of any random notes), a real shared-thread vs emergent-idea
+  split, and a 2-3 sentence rationale that names the specific tension/transfer.
+  In an A/B/C run it eliminated generic shared-thread noise and deepened every
+  rationale. `SYNTHESIS_MAX_TOKENS` raised 2048 → 4096 (the old verbose prompt
+  truncated mid tool-call at 2048 and returned zero connections).
+
 ### Fixed
 - **Olympus DSS/DS2 dictaphone recordings were ignored.** `.dss` / `.ds2` (Digital Speech Standard, the native format of Olympus DS-series voice recorders — Malinche's own heritage) were not in the accepted-formats set, so those files were skipped on ingest. They are now accepted and transcoded to 16 kHz WAV by the existing ffmpeg step (ffmpeg can decode DSS/DS2). They are decode-only — the test audio factory can't render them — so the format-sync guard treats them as accept-only.
 - **FAT/exFAT recorder cards re-prompted on relabel and could be confused with same-size cards.** These cards usually have no `VolumeUUID`, so identity fell straight back to a `name:size:fs` composite that changed when the card was renamed. `get_volume_uuid` now prefers any stable disk-bound id — `VolumeUUID` → `DiskUUID` (GPT partition GUID) → `MediaUUID` — before that composite, so a card exposing a partition/media UUID keeps a stable identity across relabels and readers. The name-based fallback remains only for cards that expose none of these.
