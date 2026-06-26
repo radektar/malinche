@@ -86,7 +86,10 @@ def _parse_payload(payload: object) -> ConnectionList:
 # --------------------------------------------------------------------------- #
 _LANG_NAMES = {"pl": "Polish", "en": "English"}
 
-_SYSTEM_PROMPT = (
+# Legacy prompt — superseded in production by the sharpened _SYSTEM_PROMPT below.
+# Kept only so scripts/compare_distance_experiment.py can still reproduce the
+# pre-promotion baseline (condition A). Do not use in the pipeline.
+_SYSTEM_PROMPT_LEGACY = (
     "You read a person's own voice notes (transcribed) and find GENUINE "
     "connections across them. You are a thinking partner, not an assistant that "
     "gives orders.\n\n"
@@ -110,11 +113,13 @@ _SYSTEM_PROMPT = (
     "Return your answer ONLY through the emit_connections tool."
 )
 
-# Experimental, sharpened variant. Adds a surprise target: a horoscope guard
-# (reject connections that would be true of any random notes), a real separation
-# of shared-thread vs emergent-idea, and permission for a deeper 2-3 sentence
-# rationale that names the specific tension/transfer, not the topic.
-_SYSTEM_PROMPT_SHARP = (
+# Production prompt. A surprise target: a horoscope guard (reject connections
+# that would be true of any random notes), a real separation of shared-thread vs
+# emergent-idea, and a deeper 2-3 sentence rationale that names the specific
+# tension/transfer, not the topic. Promoted from the distance experiment, where
+# it eliminated generic shared-thread noise and deepened every rationale; it is
+# also terse enough to fit SYNTHESIS_MAX_TOKENS (the legacy prompt truncated).
+_SYSTEM_PROMPT = (
     "You read a person's own voice notes (transcribed) and surface the few "
     "GENUINELY surprising connections across them. A connection is worth showing "
     "only if it is both PLAUSIBLE (it really holds, grounded in the notes) and "
