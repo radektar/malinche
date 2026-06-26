@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from typing import Callable, Dict, List, Optional
 
+from src.connections import validation_signal as vsig
 from src.logger import logger
 from src.ui import insight_model as im
 from src.ui.constellation_view import build_constellation_view
@@ -571,8 +572,27 @@ if _APPKIT_AVAILABLE:
             self._deck.select(int(sender.tag()))
             self._render()
 
+        @objc.python_method
+        def _emit_signal(self, action):
+            """Record the user's triage on the *currently active* connection.
+
+            Called at click time, before any deck mutation, so the type of the
+            acted-on connection is captured even when ``dismiss`` is about to
+            delete it and even if the window is closed mid keep-flash. Best-effort
+            — `record_signal` never raises (it logs and swallows)."""
+            conn = self._deck.active()
+            if conn is None:
+                return
+            vsig.record_signal(
+                action,
+                conn.conn_type,
+                conn.resolved_label(),
+                notes=conn.notes,
+            )
+
         def keepClicked_(self, sender):
             # The quiet punchline: a gold micro-bloom + "Zachowane", then advance.
+            self._emit_signal(vsig.KEPT)
             if not self._show_keep_flash():
                 self._deck.keep()
                 self._render()
@@ -626,6 +646,7 @@ if _APPKIT_AVAILABLE:
             return True
 
         def dismissClicked_(self, sender):
+            self._emit_signal(vsig.DISMISSED)
             self._deck.dismiss()
             self._render()
 
