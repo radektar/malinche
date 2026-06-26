@@ -30,8 +30,8 @@ from src.config import config  # noqa: E402
 from src.connections.candidate_assembly import assemble_candidates  # noqa: E402
 from src.connections.dismissals import DismissalStore  # noqa: E402
 from src.connections.synthesis import (  # noqa: E402
-    _SYSTEM_PROMPT,
-    _SYSTEM_PROMPT_SHARP,
+    _SYSTEM_PROMPT,  # production (sharpened) prompt — condition C
+    _SYSTEM_PROMPT_LEGACY,  # pre-promotion baseline — conditions A/B
     ConnectionSynthesizer,
 )
 
@@ -96,10 +96,11 @@ def main() -> int:
     synth = ConnectionSynthesizer(api_key=api_key, model=args.model)
 
     conditions = [
-        ("A  baseline (similarity + baseline prompt)", base, _SYSTEM_PROMPT, set()),
-        ("B  + distance (bridges + baseline prompt)", brdg, _SYSTEM_PROMPT,
+        ("A  baseline (similarity + legacy prompt)", base, _SYSTEM_PROMPT_LEGACY,
+         set()),
+        ("B  + distance (bridges + legacy prompt)", brdg, _SYSTEM_PROMPT_LEGACY,
          brdg.bridge_basenames),
-        ("C  + distance + sharp prompt", brdg, _SYSTEM_PROMPT_SHARP,
+        ("C  + distance + sharp prompt (production)", brdg, _SYSTEM_PROMPT,
          brdg.bridge_basenames),
     ]
 

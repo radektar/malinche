@@ -105,8 +105,15 @@ class Config:
     MAX_SYNTHESIS_NOTE_CHARS: int = 1200
     MAX_SYNTHESIS_NOTES: int = 25
     MAX_SYNTHESIS_PROMPT_CHARS: int = 30000
-    SYNTHESIS_MAX_TOKENS: int = 2048
+    # 4096 (was 2048): the verbose legacy prompt truncated mid tool-call at 2048
+    # and returned zero connections. The production prompt is terse and fits, but
+    # the headroom keeps a multi-connection digest from ever being cut off.
+    SYNTHESIS_MAX_TOKENS: int = 4096
     SYNTHESIS_TIMEOUT: float = 60.0
+    # Cross-topic "bridge" notes injected per digest (distance channel): notes far
+    # from the recent window in topic but joined by a shared rare token. 0 = pure
+    # similarity (legacy). Validated at 4 in the distance experiment.
+    SYNTHESIS_BRIDGE_COUNT: int = 4
     # Digest scheduling: weekly calm container + pattern-triggered escalation.
     CONNECTIONS_DIGEST_INTERVAL_DAYS: int = 7
     CONNECTIONS_PATTERN_TRIGGER_MIN: int = 6

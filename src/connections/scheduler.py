@@ -190,7 +190,12 @@ def run_digest_if_due(
         vault = Path(config.TRANSCRIBE_DIR)
         dismissals = DismissalStore(vault).load()
         dismissals.sync_frontmatter_dismissals()
-        candidates = assemble_candidates(vault, scheduler.last_digest_at, dismissals)
+        candidates = assemble_candidates(
+            vault,
+            scheduler.last_digest_at,
+            dismissals,
+            inject_bridges=config.SYNTHESIS_BRIDGE_COUNT,
+        )
         if len(candidates.notes) < 2:
             logger.info("synthesis: fewer than 2 candidate notes, skipping")
             return None
