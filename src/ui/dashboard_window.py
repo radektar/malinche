@@ -17,7 +17,7 @@ AppKit-optional: :func:`build_dashboard_window` returns ``None`` without AppKit.
 
 from __future__ import annotations
 
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, Optional
 
 from src.connections import validation_signal as vsig
 from src.logger import logger
@@ -152,7 +152,7 @@ if _APPKIT_AVAILABLE:
             v.layer().setCornerRadius_(radius)
         return v
 
-    def _label(text, size, color, weight="regular", bold=False):
+    def _label(text, size, color, bold=False):
         field = NSTextField.labelWithString_(text)
         f = NSFont.boldSystemFontOfSize_(size) if bold else NSFont.systemFontOfSize_(size)
         field.setFont_(f)
@@ -212,8 +212,8 @@ if _APPKIT_AVAILABLE:
             self._deck = deck if deck is not None else im.InsightDeck()
             self._callbacks: Dict[str, Callable] = callbacks or {}
             self._window = None
-            self._row_buttons: List[object] = []
             self._keep_timer = None
+            self._dismiss_timer = None
             self._transcribing = False
             return self
 
@@ -336,7 +336,6 @@ if _APPKIT_AVAILABLE:
             view.addSubview_(count)
             cy += 24
 
-            self._row_buttons = []
             for i, conn in enumerate(self._deck.items):
                 self._add_rail_row(view, conn, i, NSMakeRect(8, cy, frame.size.width - 16, _ROW_H - 6))
                 cy += _ROW_H
@@ -426,7 +425,6 @@ if _APPKIT_AVAILABLE:
             if kept:
                 btn.setAlphaValue_(0.46)
             view.addSubview_(btn)
-            self._row_buttons.append(btn)
 
         @objc.python_method
         def _build_reader(self, frame):

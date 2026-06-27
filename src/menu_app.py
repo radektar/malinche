@@ -76,8 +76,6 @@ from src.ui.constants import TEXTS
 from src.ui.settings_window import show_settings_window
 from src.ui.pro_activation import show_pro_status
 from src.ui.download_window import DownloadWindow
-from src.config.license import license_manager
-from src.config.features import FeatureTier
 
 
 class MalincheMenuApp(rumps.App):
@@ -181,11 +179,9 @@ class MalincheMenuApp(rumps.App):
         # Menu-bar click opens the native NSMenu (system surface, like Docker /
         # Cursor). The designed "home" is the Insights window (dashboard_window),
         # reached from the "Insights…" item above — we no longer hijack the click
-        # with an NSPopover. The old status-panel card is retired as a surface;
-        # ``_status_panel = None`` keeps the guard in ``_update_icon`` a no-op.
+        # with an NSPopover. The old status-panel popover is retired entirely.
         from src.ui.dashboard_window import build_dashboard_window
 
-        self._status_panel = None
         self._dashboard = build_dashboard_window(callbacks=self._dashboard_callbacks())
         self._refresh_insights_badge()
 
@@ -252,46 +248,6 @@ class MalincheMenuApp(rumps.App):
         self._icon_paths_dot = dot_resolved
         return resolved
 
-    def _build_panel_model(self, status: AppStatus):
-        """Gather current state into a PanelModel for the status panel."""
-        from src.ui.status_panel_model import PanelRow, build_panel_model
-
-        current_file = None
-        recent = []
-        error_message = recorder_name = pending_count = None
-        if self.transcriber is not None:
-            state = self.transcriber.state
-            current_file = getattr(state, "current_file", None)
-            error_message = getattr(state, "error_message", None)
-            recorder_name = getattr(state, "recorder_name", None)
-            pending_count = getattr(state, "pending_count", None)
-            try:
-                for entry in self.transcriber.vault_index.recent_entries(5):
-                    name = entry.markdown_path or entry.source_filename or "Transcript"
-                    name = name.rsplit("/", 1)[-1]
-                    if name.endswith(".md"):
-                        name = name[:-3]
-                    recent.append(PanelRow(symbol="doc.text", title=name))
-            except Exception:  # pragma: no cover - cosmetic
-                pass
-        if self._retranscription_in_progress:
-            current_file = self._retranscription_file or current_file
-        try:
-            retranscribe_files = [f.name for f in self._get_staged_files()]
-        except Exception:  # pragma: no cover - cosmetic
-            retranscribe_files = []
-        tier = license_manager.get_current_tier()
-        return build_panel_model(
-            status,
-            current_file=current_file,
-            recent=recent,
-            pro_active=(tier != FeatureTier.FREE),
-            error_message=error_message,
-            recorder_name=recorder_name,
-            pending_count=pending_count,
-            retranscribe_files=retranscribe_files,
-        )
-
     def _update_icon(self, status: AppStatus) -> None:
         """Update menu bar icon based on app status.
 
@@ -301,14 +257,6 @@ class MalincheMenuApp(rumps.App):
         """
         # Docker-style status dot on the header item, keyed by state.
         self._apply_status_icon(status)
-
-        # Mirror the full state into the popover panel (rendered on next open).
-        panel = getattr(self, "_status_panel", None)
-        if panel is not None:
-            try:
-                panel.update_(self._build_panel_model(status))
-            except Exception:  # pragma: no cover - cosmetic, never fatal
-                pass
 
         # Let an open Insights window show its loading state while we work.
         dash = getattr(self, "_dashboard", None)
@@ -709,12 +657,18 @@ class MalincheMenuApp(rumps.App):
 
         def progress_callback(name: str, progress: float):
             percent = int(progress * 100)
-            self.status_item.title = f"Status: Downloading {name}… {percent}%"
-            if self._download_window is not None:
-                self._download_window.update(
-                    detail=f"Downloading: {name}",
-                    progress=progress,
-                )
+
+            def _on_main() -> None:
+                self.status_item.title = f"Status: Downloading {name}… {percent}%"
+                if self._download_window is not None:
+                    self._download_window.update(
+                        detail=f"Downloading: {name}",
+                        progress=progress,
+                    )
+
+            # Fired from the DependencyDownload worker thread — AppKit mutation
+            # (menu title + window) must hop to the main thread, like done/error.
+            _run_on_main_thread(_on_main)
             logger.debug(f"Downloading {name}: {percent}%")
 
         def done_callback():
@@ -836,12 +790,17 @@ class MalincheMenuApp(rumps.App):
 
         def progress_callback(name: str, progress: float) -> None:
             percent = int(progress * 100)
-            self.status_item.title = f"Status: Repairing {name}… {percent}%"
-            if self._download_window is not None:
-                self._download_window.update(
-                    detail=f"Downloading: {name}",
-                    progress=progress,
-                )
+
+            def _on_main() -> None:
+                self.status_item.title = f"Status: Repairing {name}… {percent}%"
+                if self._download_window is not None:
+                    self._download_window.update(
+                        detail=f"Downloading: {name}",
+                        progress=progress,
+                    )
+
+            # Worker-thread callback — AppKit mutation hops to the main thread.
+            _run_on_main_thread(_on_main)
 
         def done_callback() -> None:
             def _on_main() -> None:
