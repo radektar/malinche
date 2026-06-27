@@ -747,7 +747,10 @@ if _APPKIT_AVAILABLE:
 
         def updateDeck_(self, deck):
             self._deck = deck if deck is not None else im.InsightDeck()
-            if self._window is not None:
+            # Render in place only when already on screen. On the open path the
+            # caller refreshes the deck just before showWindow(), which renders
+            # anyway — rendering here too would rebuild the view tree twice.
+            if self._window is not None and self._window.isVisible():
                 self._render()
 
         def setTranscribing_(self, flag):
