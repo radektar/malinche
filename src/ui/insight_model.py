@@ -252,49 +252,102 @@ class InsightDeck:
 
 
 def sample_deck() -> "InsightDeck":
-    """An :class:`InsightDeck` of the real digest connections (placeholder)."""
+    """An :class:`InsightDeck` of the real digest connections (placeholder).
+
+    Mirrors the approved dashboard redesign: a high-level ``rationale`` (the
+    spark) with the dated quotes moved into ``evidence`` (the ground layer), and
+    fuller, self-contained ``directions``.
+    """
     return InsightDeck(
         [
             make_connection(
                 CONTRADICTION,
-                "17.06 projekt stoi na naturalnych materiałach i jakości dla "
-                "świadomego klienta; 18.06 — budżet przekroczony 2×, rozważasz "
-                "obniżenie jakości materiałów.",
+                "Założenie o jakości przesunęło się w miesiąc — z fundamentu "
+                "projektu w pozycję do negocjacji pod presją budżetu.",
                 ["Haetta — rozmowa z konstruktorem", "8Moons — filmiki 2"],
                 [
-                    "Co wymusiło zmianę założenia jakościowego?",
-                    "Czy filary projektu trzeba zrewidować, czy bronić mimo budżetu?",
+                    "Co wymusiło zmianę założenia jakościowego — jednorazowy "
+                    "kompromis pod presją budżetu, czy trwała zmiana kierunku, "
+                    "którą warto nazwać wprost?",
+                    "Filary projektu — naturalne materiały, jakość dla świadomego "
+                    "klienta — bronić mimo budżetu, czy zrewidować i szukać "
+                    "oszczędności gdzie indziej?",
                 ],
                 snippet="Założenie o jakości przesunęło się w miesiąc — budżet 2× w górę.",
+                synthesis_type="contradiction-over-time",
+                evidence=[
+                    EvidenceItem(
+                        "Haetta — rozmowa z konstruktorem", "17.06",
+                        "…projekt stoi na naturalnych materiałach i jakości dla "
+                        "świadomego klienta…",
+                    ),
+                    EvidenceItem(
+                        "8Moons — filmiki 2", "18.06",
+                        "…budżet przekroczony 2×, rozważasz obniżenie jakości "
+                        "materiałów…",
+                    ),
+                ],
             ),
             make_connection(
                 SHARED,
-                "Okna wracają w obu notatkach jako krytyczne wąskie gardło — brak "
-                "odpowiedzi producentów i niepewna dostępność przed sierpniem.",
+                "Okna wracają w obu notatkach jako to samo wąskie gardło — brak "
+                "potwierdzeń od producentów napina sierpniowy termin z dwóch "
+                "stron naraz.",
                 [
                     "Planowanie budowy domu — materiały okna dach",
                     "Przygotowania do Eight Moons — okna i fundamenty",
                 ],
                 [
-                    "Poszukać alternatywnych producentów już teraz?",
-                    "Jak wyglądałby plan B na okna?",
+                    "Poszukać alternatywnych producentów już teraz, zanim "
+                    "sierpniowy termin zacznie dyktować wybór za ciebie?",
+                    "Jak wyglądałby realny plan B na okna — i który element "
+                    "harmonogramu zwalnia, jeśli okna się obsuną?",
                 ],
                 snippet="Okna jako wąskie gardło wracają w dwóch notatkach.",
+                synthesis_type="shared-thread",
+                evidence=[
+                    EvidenceItem(
+                        "Planowanie budowy domu — materiały okna dach", "09.06",
+                        "…producenci okien nie odpowiadają, a bez nich dach i tak "
+                        "stoi w miejscu…",
+                    ),
+                    EvidenceItem(
+                        "Przygotowania do Eight Moons — okna i fundamenty", "14.06",
+                        "…dostępność okien przed sierpniem niepewna — to blokuje "
+                        "fundamenty…",
+                    ),
+                ],
             ),
             make_connection(
                 EMERGENT,
-                "W różnych projektach wraca ten sam dylemat: skalować przez "
-                "automatyzację, czy utrzymać ręczny udział kosztem skali.",
+                "Ten sam dylemat skali wraca w trzech projektach: skalować przez "
+                "automatyzację, czy utrzymać ręczny udział kosztem zasięgu — i za "
+                "każdym razem rozstrzygasz go od nowa, bez nazwanej zasady.",
                 [
                     "Strategia TekTutoreski",
                     "8Moons — filmiki 2",
                     "Harmonogram 2-tyg. projektu",
                 ],
                 [
-                    "Czy to jedna „zasada skalowania”, którą stosujesz wszędzie?",
-                    "Gdzie hands-on buduje jakość, a gdzie tylko blokuje skalę?",
+                    "Czy to jedna „zasada skalowania”, którą stosujesz wszędzie — "
+                    "a jeśli tak, jak brzmi wypowiedziana wprost, w jednym zdaniu?",
+                    "Gdzie hands-on realnie buduje jakość i przewagę, a gdzie "
+                    "tylko blokuje skalę z przyzwyczajenia?",
                 ],
                 snippet="Ten sam dylemat skali wraca w różnych projektach.",
+                synthesis_type="emergent-idea",
+                evidence=[
+                    EvidenceItem(
+                        "Strategia TekTutoreski", "03.06",
+                        "…automatyzacja daje zasięg, ale gubi to, za co ludzie cię "
+                        "cenią — ręczną robotę…",
+                    ),
+                    EvidenceItem(
+                        "Harmonogram 2-tyg. projektu", "24.06",
+                        "…znowu zaplanowałem ręczny montaż, mimo że plan zakładał "
+                        "oddanie tego na zewnątrz…",
+                    ),
+                ],
             ),
         ]
     )
