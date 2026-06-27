@@ -27,15 +27,42 @@ import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable, List, Optional
 
+from src.connections.signature import connection_signature
 from src.logger import logger
 
-#: Bump when the record shape changes in a non-additive way.
+#: Bump when the record shape changes in a non-additive way. v1 = legacy
+#: kept/dismissed (``record_signal``); v2 = ``action_taken`` (``record_action``).
 SCHEMA_VERSION = 1
+ACTION_SCHEMA_VERSION = 2
 
 KEPT = "kept"
 DISMISSED = "dismissed"
+
+# action_taken targets (where the insight was handed off) and the kind of move
+# each implies. "none" = dismissed; "save" = the quiet Zachowaj archive.
+TARGET_LLM = "llm"
+TARGET_TASK = "task"
+TARGET_CALENDAR = "calendar"
+TARGET_CLIPBOARD = "clipboard"
+TARGET_SAVE = "save"
+TARGET_NONE = "none"
+
+#: target → kind (develop | do | decide | none). The instrument's core axis.
+_KIND_FOR_TARGET = {
+    TARGET_LLM: "develop",
+    TARGET_CLIPBOARD: "develop",
+    TARGET_TASK: "do",
+    TARGET_CALENDAR: "decide",
+    TARGET_SAVE: "none",
+    TARGET_NONE: "none",
+}
+
+
+def kind_for_target(target: str) -> str:
+    """The move-kind a handoff target implies (develop/do/decide/none)."""
+    return _KIND_FOR_TARGET.get(target, "none")
 
 
 def signal_log_path() -> Optional[Path]:
@@ -114,4 +141,65 @@ def record_signal(
         # A1: best-effort for the UI, but never silent — a broken path must show
         # up in `make logs`, or a whole validation run is lost without a trace.
         logger.warning("could not record validation signal: %s", exc)
+        return False
+
+
+def record_action(
+    target: str,
+    *,
+    sig: str = "",
+    conn_type: str = "",
+    notes: Optional[Iterable[str]] = None,
+    directions: Optional[Iterable[int]] = None,
+    tool: str = "",
+    kind: str = "",
+    label: str = "",
+    path: Optional[Path] = None,
+    now: Optional[datetime] = None,
+) -> bool:
+    """Append one ``action_taken`` event to the signal log (ADR-004, schema v2).
+
+    This is the instrument that replaces kept/dismissed: it records *what the
+    user did with an insight* — the only honest signal of value. Action-rate
+    (share of surfaced connections that produce at least one non-``none`` action)
+    is the core KPI.
+
+    ``target`` is one of the ``TARGET_*`` constants; ``kind`` is derived from it
+    unless given. ``sig`` is the canonical connection signature (carried from the
+    deck so it never drifts); if absent it is recomputed from ``notes`` +
+    ``conn_type``. ``directions`` are the indices of the selected directions the
+    handoff acted on (selection is multi). Never raises — failures are logged and
+    swallowed (A1).
+    """
+    try:
+        out = Path(path) if path is not None else signal_log_path()
+        if out is None:
+            logger.warning("action signal dropped: no log path (config?)")
+            return False
+
+        if not sig:
+            sig = connection_signature(notes or [], conn_type) if notes else ""
+
+        dir_list: List[int] = [int(i) for i in (directions or [])]
+        stamp = (now or datetime.now()).isoformat(timespec="seconds")
+        record = {
+            "v": ACTION_SCHEMA_VERSION,
+            "ts": stamp,
+            "action": "action_taken",
+            "kind": kind or kind_for_target(target),
+            "target": str(target),
+            "conn_type": str(conn_type),
+            "sig": sig,
+            "directions": dir_list,
+            "n_dir": len(dir_list),
+            "tool": str(tool or ""),
+            "label": str(label or ""),
+        }
+
+        out.parent.mkdir(parents=True, exist_ok=True)
+        with out.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+        return True
+    except Exception as exc:
+        logger.warning("could not record action signal: %s", exc)
         return False
