@@ -13,6 +13,7 @@ dispatch is a thin wrapper over one ``_run`` seam the tests monkeypatch.
 
 from __future__ import annotations
 
+import hashlib
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -137,7 +138,7 @@ def ics_text(summary: str, description: str, *, now: Optional[datetime] = None) 
             "PRODID:-//Malinche//Insights//PL",
             "CALSCALE:GREGORIAN",
             "BEGIN:VEVENT",
-            f"UID:{stamp}-{abs(hash(summary)) % 10**8}@malinche",
+            f"UID:{stamp}-{hashlib.sha1(summary.encode('utf-8')).hexdigest()[:8]}@malinche",
             f"DTSTAMP:{stamp}",
             f"DTSTART:{dtstart}",
             "DURATION:PT30M",
@@ -150,16 +151,25 @@ def ics_text(summary: str, description: str, *, now: Optional[datetime] = None) 
     )
 
 
-def _osa_escape(text: str) -> str:
-    return text.replace("\\", "\\\\").replace('"', '\\"')
+def _osa_string(text: str) -> str:
+    """An AppleScript string *expression* for ``text``.
+
+    AppleScript has no ``\\n`` escape and cannot span a quoted literal across
+    physical lines, so embedded newlines (the seeded prompt is always multi-line)
+    are spliced in via the ``linefeed`` constant — otherwise the script fails to
+    compile and the Reminders handoff silently never works.
+    """
+    esc = text.replace("\\", "\\\\").replace('"', '\\"')
+    esc = esc.replace("\r\n", "\n").replace("\r", "\n")
+    return '"' + esc.replace("\n", '" & linefeed & "') + '"'
 
 
 def reminders_script(title: str, body: str) -> str:
     """AppleScript that creates a reminder in Reminders.app (local, no OAuth)."""
     return (
         'tell application "Reminders"\n'
-        f'  make new reminder with properties {{name:"{_osa_escape(title)}", '
-        f'body:"{_osa_escape(body)}"}}\n'
+        f"  make new reminder with properties {{name:{_osa_string(title)}, "
+        f"body:{_osa_string(body)}}}\n"
         "end tell"
     )
 
@@ -239,16 +249,19 @@ def dispatch(
         name = tool_name(tool)
         if url:
             ok = _open_url(url)
-            return HandoffResult(ok, "open", f"Wysłano do {name}")
+            return HandoffResult(ok, "open", f"Wysłano do {name}" if ok else "Nie udało się")
         # no prefill (Gemini / too long): copy the prompt, open the bare tool
         ok = _copy(prompt) and _open_url(llm_base_url(tool))
-        return HandoffResult(ok, "clipboard", f"Prompt skopiowany — wklej w {name}")
+        return HandoffResult(
+            ok, "clipboard",
+            f"Prompt skopiowany — wklej w {name}" if ok else "Nie udało się",
+        )
 
     if target == CALENDAR:
         summary = (directions[0].strip() if directions and directions[0].strip()
                    else (label or "Insight"))
         ok = _open_ics(ics_text(summary, prompt, now=now))
-        return HandoffResult(ok, "open", "Otwórz w Kalendarzu")
+        return HandoffResult(ok, "open", "Otwórz w Kalendarzu" if ok else "Nie udało się")
 
     if target == TASK:
         title = (directions[0].strip() if directions and directions[0].strip()

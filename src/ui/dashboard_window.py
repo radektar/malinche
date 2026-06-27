@@ -306,6 +306,8 @@ if _APPKIT_AVAILABLE:
             self._transcribing = False
             self._selected: Set[int] = set()
             self._grounded = False
+            self._scroll = None
+            self._scroll_y = 0.0
             return self
 
         # -- window lifecycle ------------------------------------------------ #
@@ -343,11 +345,14 @@ if _APPKIT_AVAILABLE:
             self._render()
 
         def showWindow(self):
+            existed = self._window is not None
             self._ensure_window()
             win = self._window
             if win is None:  # pragma: no cover - defensive
                 return
-            self._render()
+            # _ensure_window renders on first creation; only re-render on reopen.
+            if existed:
+                self._render()
             win.makeKeyAndOrderFront_(None)
             try:
                 from AppKit import NSApp
@@ -357,8 +362,21 @@ if _APPKIT_AVAILABLE:
                 pass
 
         def windowDidResize_(self, _note):
-            # Absolute layout + cheap rebuild beats autoresizing math for a
-            # pinned-footer/scrolling reader.
+            # Absolute layout + rebuild beats autoresizing math for a
+            # pinned-footer/scrolling reader — but coalesce the rebuild so a
+            # live-resize drag doesn't re-measure the whole tree every tick.
+            # performSelector:afterDelay: won't fire until the drag's
+            # event-tracking run loop ends, so this effectively rebuilds once,
+            # on resize-end.
+            from Foundation import NSObject
+
+            NSObject.cancelPreviousPerformRequestsWithTarget_selector_object_(
+                self, "renderNow:", None
+            )
+            self.performSelector_withObject_afterDelay_("renderNow:", None, 0.05)
+
+        def renderNow_(self, _arg):
+            self._capture_scroll()
             self._render()
 
         # -- rendering ------------------------------------------------------- #
@@ -559,6 +577,14 @@ if _APPKIT_AVAILABLE:
                 NSMakeRect(0, 0, frame.size.width, max(content_h, scroll_h))
             )
             scroll.setDocumentView_(doc)
+            self._scroll = scroll
+            # Preserve scroll position across the full rebuild — otherwise ticking
+            # a direction (which lives below the fold) or expanding evidence would
+            # jump the reader back to the top each time.
+            if self._scroll_y > 0:
+                clip = scroll.contentView()
+                clip.scrollToPoint_(NSMakePoint(0, self._scroll_y))
+                scroll.reflectScrolledClipView_(clip)
             view.addSubview_(scroll)
 
             # pinned handoff bar (only when ≥1 direction selected)
@@ -904,10 +930,12 @@ if _APPKIT_AVAILABLE:
                 self._selected.discard(i)
             else:
                 self._selected.add(i)
+            self._capture_scroll()
             self._render()
 
         def toggleEvidenceClicked_(self, sender):
             self._grounded = not self._grounded
+            self._capture_scroll()
             self._render()
 
         def noteClicked_(self, sender):
@@ -947,6 +975,7 @@ if _APPKIT_AVAILABLE:
                 s.save()
             except Exception as exc:  # pragma: no cover - best effort
                 logger.debug("could not persist handoff tool: %s", exc)
+            self._capture_scroll()
             self._render()
 
         @objc.python_method
@@ -969,7 +998,7 @@ if _APPKIT_AVAILABLE:
             vsig.record_action(
                 target,
                 sig=conn.sig or "",
-                conn_type=conn.synthesis_type or conn.conn_type,
+                conn_type=conn.synthesis_type,  # raw type only — never the display constant (keeps the canonical sig joinable)
                 notes=conn.notes,
                 directions=idxs,
                 tool=(tool if target == ho.LLM else ""),
@@ -980,6 +1009,17 @@ if _APPKIT_AVAILABLE:
         def _reset_card_state(self):
             self._selected = set()
             self._grounded = False
+            self._scroll_y = 0.0  # a new connection starts at the top
+
+        @objc.python_method
+        def _capture_scroll(self):
+            """Remember the reader's scroll offset before a full rebuild."""
+            s = getattr(self, "_scroll", None)
+            if s is not None:
+                try:
+                    self._scroll_y = float(s.contentView().bounds().origin.y)
+                except Exception:  # pragma: no cover - defensive
+                    pass
 
         @objc.python_method
         def _invoke_callback(self, name, *args):
@@ -1016,7 +1056,7 @@ if _APPKIT_AVAILABLE:
             vsig.record_action(
                 target,
                 sig=conn.sig or "",
-                conn_type=conn.synthesis_type or conn.conn_type,
+                conn_type=conn.synthesis_type,  # raw type only — never the display constant (keeps the canonical sig joinable)
                 notes=conn.notes,
             )
 

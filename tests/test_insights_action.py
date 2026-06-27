@@ -97,6 +97,12 @@ def test_continue_in_llm_dispatches_selection_and_logs(log_path, monkeypatch):
     assert rows[0]["kind"] == "develop"
     assert rows[0]["directions"] == [0]
     assert rows[0]["tool"] == "claude"
+    # end-to-end join (Decision 2): the logged sig is the canonical signature of
+    # the very connection the window rendered.
+    from src.connections.signature import connection_signature
+
+    assert rows[0]["sig"] == connection_signature(conn.notes, conn.synthesis_type)
+    assert rows[0]["conn_type"] == conn.synthesis_type  # raw type, not display
 
 
 def test_handoff_without_selection_is_noop(log_path, monkeypatch):
@@ -134,6 +140,22 @@ def test_switch_llm_cycles_and_persists(monkeypatch):
     monkeypatch.setattr("src.config.settings.UserSettings.load", classmethod(lambda cls: _S()))
 
     ctrl = _ctrl()
+    # full 3-way wraparound: claude → chatgpt → gemini → claude
     ctrl.switchLLMClicked_(None)
     assert config.LLM_HANDOFF_TOOL == "chatgpt"
-    assert saved["tool"] == "chatgpt"
+    ctrl.switchLLMClicked_(None)
+    assert config.LLM_HANDOFF_TOOL == "gemini"
+    ctrl.switchLLMClicked_(None)
+    assert config.LLM_HANDOFF_TOOL == "claude"
+    assert saved["tool"] == "claude"
+
+
+def test_dismiss_is_signal_not_suppressor(log_path, tmp_path, monkeypatch):
+    # Odrzuć logs a none-signal but must NOT write the dismissal store
+    # (connections.json) — durable suppression stays the Obsidian frontmatter path.
+    monkeypatch.setattr(config, "TRANSCRIBE_DIR", tmp_path)
+    ctrl = _ctrl()
+    ctrl.dismissClicked_(None)
+    rows = _rows(log_path)
+    assert rows[0]["target"] == "none" and rows[0]["kind"] == "none"
+    assert not (tmp_path / ".malinche" / "connections.json").exists()

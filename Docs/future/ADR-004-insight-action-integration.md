@@ -207,5 +207,8 @@ window's primary-CTA caret (⌄). All three ship in v1 (Radek's call).
 3. [ ] Sidecar + `deck_from_dicts`: carry `evidence`, `sig`, `synthesis_type`; `InsightConnection` gains `sig`, `synthesis_type`, `evidence`.
 4. [ ] `validation_signal`: `record_action(kind,target,sig,conn_type,directions,tool)` writing `v:2`; reader tolerates `v:1`.
 5. [ ] Handoff module: per-tool URL builders + length cap, `.ics` writer, Reminders AppleScript, clipboard; seeded-prompt template.
-6. [ ] `config.LLM_HANDOFF_TOOL` + settings surface + window caret switcher.
+6. [ ] `config.LLM_HANDOFF_TOOL` + window caret switcher. (A separate
+   `settings_window` picker is deferred — the in-context caret is the
+   discoverable control; the caret persists via `UserSettings.ai_handoff_tool`,
+   so a settings duplicate adds no capability before N=1.)
 7. [ ] UI port (separate task) consumes the above.

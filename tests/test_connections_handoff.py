@@ -58,6 +58,15 @@ def test_reminders_script_escapes_quotes():
     assert '\\"to\\"' in s
 
 
+def test_reminders_script_splices_multiline_body():
+    # The seeded prompt is always multi-line; AppleScript can't hold a newline
+    # inside a quoted literal, so it must be spliced via `linefeed` or the script
+    # fails to compile and the Task handoff silently never works.
+    s = ho.reminders_script("t", "line one\nline two")
+    assert "\n" not in s.split("make new reminder", 1)[1].split("body:", 1)[1].split("}", 1)[0]
+    assert '" & linefeed & "' in s
+
+
 # --- dispatch (side effects stubbed) ------------------------------------- #
 
 

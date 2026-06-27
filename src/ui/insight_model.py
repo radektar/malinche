@@ -244,10 +244,10 @@ class InsightDeck:
 
 
 # --------------------------------------------------------------------------- #
-# Placeholder data — the real 8moons digest connections, used by the window
-# until the pipeline carries rationale/directions/notes from the digest. Mirrors
-# the `QUEUE` in design-system/pages/insights-engine.js so the build matches the
-# approved mock. Replace with live digest data once the pipeline lands.
+# No-digest fallback — the window shows this only when no real digest sidecar
+# exists yet (insight_pipeline.latest_deck returns None). Content mirrors the
+# approved dashboard redesign (high-level spark + evidence + fuller directions),
+# so even the empty-corpus first run looks like the real thing.
 # --------------------------------------------------------------------------- #
 
 
