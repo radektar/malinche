@@ -97,7 +97,7 @@ flake8 clean on all changed files.
   US-6 record-at-click (window closed mid-flash), US-7 empty deck.
 - ⬜ Manual M-1…M-4 — Radek, live app on 3.12 after merge.
 
-**Note (pre-existing, not from this change):** `tests/test_status_panel.py` +
-`tests/test_dashboard_window.py` can't be collected in one process — both register
-an ObjC class `_FlippedView` (collision lives in `main` since PR #37). Run the ui
-tests scoped, or rename one class as a separate cleanup.
+**Note (RESOLVED, PR #43/#45):** the old `_FlippedView` ObjC class collision was
+fixed by renaming the dashboard's class to `_DashFlippedView`, and the retired
+`tests/test_status_panel.py` was deleted with its module. The full ui suite now
+collects in one process.

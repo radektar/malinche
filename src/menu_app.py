@@ -1033,7 +1033,7 @@ class MalincheMenuApp(rumps.App):
                 rp = p.resolve()
                 if ".malinche" in rp.parts:
                     continue
-                if str(rp).startswith(str(digest_dir)):
+                if rp == digest_dir or digest_dir in rp.parents:
                     continue
                 hits.append((p.stat().st_mtime, p))
             hits.sort(key=lambda it: it[0], reverse=True)
