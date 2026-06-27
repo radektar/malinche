@@ -122,15 +122,43 @@ core KPI. The act of using an insight is the measurement; no separate survey.
 4. Only if it converts: API integrations + the smart-default ("first move")
    router trained on the collected `action_taken` data.
 
+## Design locks (decided during the 2026-06-27 code review)
+
+These are constraints the integration spec must honour — locked now so step 2
+builds on them rather than retrofitting:
+
+- **One canonical connection signature.** Today three writers disagree:
+  `validation_signal.signal_key` (no type, truncated, `\n` join),
+  `dismissals.connection_signature` (with type, full sha1, `|` join), and the
+  digest `conn_meta.sig`. The `action_taken` instrument is worthless if its
+  events can't be joined back to the connection they measure — so step 2
+  unifies on a **single `signature(notes, synthesis_type)`** shared by the
+  digest sidecar, the dismissal store, and the action log. **The sidecar/deck
+  must carry the original `synthesis_type` (or the precomputed sig)** — today
+  `deck_from_dicts` maps synthesis→UI type and loses it, so the window can't
+  reconstruct the signature. Add it to the sidecar contract.
+- **"Odrzuć" is a signal, not a suppressor.** The window dismiss records
+  `action_taken: {kind: none}` only; it does **not** persist to the dismissal
+  store. Durable suppression stays the Obsidian-native `dismissed:` frontmatter
+  path. (Resolves the "nie wróci" copy: change it, don't wire persistence.)
+
 ## Next deliverable (explicit TODO)
 
 **The integration / call spec** — the concrete list of targets, their handoff
 mechanisms (URL schemes, `.ics` shape, clipboard payload format), the seeded-
-prompt templates per insight type, and the `action_taken` schema. Out of scope
-for this doc; it is the next step, to be written before implementation.
+prompt templates per insight type, and the `action_taken` schema (carrying the
+canonical signature above). Out of scope for this doc; it is the next step, to
+be written before implementation.
 
 ## Open / parked
 
 - Smart-default router (Option A) and the subtle-hint hybrid — parked until
   `action_taken` data justifies them.
 - Non-doer (reflection) audience — explicitly *not* served by this direction.
+- **Transcript-corpus divergence** (code-review #3). `candidate_assembly` scans
+  top-level `*.md` only; the Insights recent-rail disk fallback scans
+  recursively. A transcript nested in a subfolder would show in the rail but be
+  invisible to synthesis. **Low impact for now** — Malinche writes transcripts
+  flat to the vault root, so the live data agrees. Parked; fix by extracting one
+  `iter_transcript_notes(vault)` if/when we touch the corpus loader, or by
+  declaring top-level the contract and making the rail match.

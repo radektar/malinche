@@ -49,7 +49,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rationale. `SYNTHESIS_MAX_TOKENS` raised 2048 → 4096 (the old verbose prompt
   truncated mid tool-call at 2048 and returned zero connections).
 
+### Removed
+- **Retired status-panel popover surface.** `src/ui/status_panel.py` and
+  `src/ui/status_panel_model.py` (plus their tests) backed the old left-click
+  `NSPopover`, replaced by the native menu + Insights window. They were dead at
+  runtime (`_status_panel` was hardwired `None`, `build_status_panel` never
+  called) but read as live. Removed them and the dead `_build_panel_model` /
+  panel branch in `_update_icon`, along with unused dashboard helpers
+  (`_row_buttons` accumulator, the ignored `_label(weight=)` parameter) and the
+  now-orphaned `license_manager` / `FeatureTier` imports.
+
 ### Fixed
+- **Dependency download/repair updated the menu bar off the main thread.** The
+  `done`/`error` callbacks correctly hopped to the main thread via
+  `_run_on_main_thread`, but the `progress` callbacks set `status_item.title`
+  and updated the progress window directly from the worker thread — an AppKit
+  mutation off-main that can corrupt UI or crash. Both progress callbacks now
+  hop to the main thread too.
 - **Insights window showed placeholder connections even after a real digest.**
   The window is built once at launch (when no digest exists yet, so it renders
   the `sample_deck()` placeholder), and opening it only called `showWindow()` —

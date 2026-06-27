@@ -4,8 +4,8 @@ The "Konstelacja" window is a thin AppKit renderer over this data: a queue of
 connections Malinche found across notes (contradictions over time, shared
 threads, emergent ideas), each carrying the full rationale / source notes /
 directions that the digest produces. Keeping it pure (no AppKit) makes
-navigation and keep/dismiss fully unit-testable, the same split as
-``status_panel_model.py``.
+navigation and keep/dismiss fully unit-testable — the view-model / renderer
+split.
 
 Spec: ``design-system/pages/dashboard-screens.html`` + ``insights-engine.js``.
 The AppKit window (``dashboard_window.py``) consumes :class:`InsightDeck`.
