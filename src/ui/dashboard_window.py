@@ -71,10 +71,15 @@ except ImportError:  # pragma: no cover - non-mac
 
 
 # Dimensions (points).
-_WIN_W = 860.0
+_WIN_W = 860.0  # fallback only — see _initial_window_size()
 _WIN_H = 560.0
 _WIN_MIN_W = 740.0
 _WIN_MIN_H = 460.0
+# The window opens proportional to the screen so it isn't a tiny dialog on a big
+# display; clamped so it stays sane on both a 13" laptop and a 27" external.
+_WIN_FRAC = 0.62
+_WIN_MAX_W = 1800.0
+_WIN_MAX_H = 1100.0
 _HEADER_H = 40.0
 _RAIL_W = 236.0
 _PAD = 16.0
@@ -82,6 +87,22 @@ _READER_PAD_X = 24.0
 _ROW_H = 58.0
 _FOOTER_H = 46.0
 _BAR_H = 48.0
+
+
+def _initial_window_size():
+    """Opening size: ~62% of the visible screen, clamped to a sane range."""
+    try:
+        from AppKit import NSScreen
+
+        screen = NSScreen.mainScreen()
+        if screen is not None:
+            vis = screen.visibleFrame()
+            w = min(_WIN_MAX_W, max(_WIN_MIN_W, vis.size.width * _WIN_FRAC))
+            h = min(_WIN_MAX_H, max(_WIN_MIN_H, vis.size.height * _WIN_FRAC))
+            return float(w), float(h)
+    except Exception:  # pragma: no cover - headless / non-mac
+        pass
+    return _WIN_W, _WIN_H
 
 
 def _c(r: float, g: float, b: float, a: float = 1.0):
@@ -584,8 +605,9 @@ if _APPKIT_AVAILABLE:
                 | NSWindowStyleMaskResizable
                 | NSWindowStyleMaskFullSizeContentView
             )
+            win_w, win_h = _initial_window_size()
             win = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-                NSMakeRect(0, 0, _WIN_W, _WIN_H), mask, NSBackingStoreBuffered, False
+                NSMakeRect(0, 0, win_w, win_h), mask, NSBackingStoreBuffered, False
             )
             win.setTitle_("Malinche — Konstelacja")
             win.setReleasedWhenClosed_(False)
