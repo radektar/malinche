@@ -36,8 +36,9 @@ def test_llm_url_prefills_claude_and_chatgpt():
     assert "hej%20tam" in cl  # space encoded, not '+'
 
 
-def test_llm_url_gemini_has_no_prefill():
-    assert ho.llm_url("gemini", "x") is None
+def test_llm_url_unknown_tool_has_no_prefill():
+    assert ho.llm_url("gemini", "x") is None  # retired
+    assert ho.llm_url("totally-unknown", "x") is None
 
 
 def test_llm_url_none_when_too_long():
@@ -87,12 +88,14 @@ def test_dispatch_llm_claude_opens_prefill(monkeypatch):
     assert calls["open"].startswith("https://claude.ai/new?q=")
 
 
-def test_dispatch_llm_gemini_copies_then_opens_bare(monkeypatch):
+def test_dispatch_llm_falls_back_to_clipboard_when_payload_too_long(monkeypatch):
+    # When the prefill URL would exceed URL_MAX, the handoff degrades to
+    # copy-the-prompt + open the bare tool (the same fallback Gemini once used).
     calls = _stub(monkeypatch)
-    r = ho.dispatch(ho.LLM, rationale="r", directions=DIRS, tool="gemini")
+    r = ho.dispatch(ho.LLM, rationale="x" * (ho.URL_MAX + 1), tool="claude")
     assert r.mode == "clipboard"
-    assert "wklej w Gemini" in r.toast
-    assert "copy" in calls and calls["open"] == "https://gemini.google.com/app"
+    assert "wklej w Claude" in r.toast
+    assert "copy" in calls and calls["open"] == "https://claude.ai/new"
 
 
 def test_dispatch_calendar_stages_ics(monkeypatch):

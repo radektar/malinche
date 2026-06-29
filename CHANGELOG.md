@@ -15,11 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pressure (drops the provider name, then the selection-count label) so the
   actions never clip. The secondary actions (task / calendar / clipboard) become
   compact **icon-only** buttons (SF Symbols + tooltips), and the primary CTA now
-  carries the connected provider's **brand mark** — Claude / OpenAI(ChatGPT) /
-  Gemini — vendored locally under `assets/brands/` (offline; never fetched at
-  runtime) and tinted as a template image. Window min-width raised to keep the
-  full bar comfortable. The direction **checkbox** is now vertically centred on
-  the first text line instead of sitting low on multi-line rows.
+  carries the connected provider's **brand mark** — Claude / OpenAI (ChatGPT) —
+  vendored locally under `assets/brands/` (offline; never fetched at runtime) and
+  tinted as a template image. Window min-width raised to keep the full bar
+  comfortable. The direction **checkbox** is now vertically centred on the first
+  text line instead of sitting low on multi-line rows.
+
+### Removed
+- **Gemini dropped as a handoff LLM.** It exposes no public prompt-prefill URL,
+  so its handoff silently degraded to copy-and-paste while looking identical to
+  the one-click Claude / ChatGPT flow. The connected-LLM switcher now cycles only
+  the prefill-capable tools (Claude ↔ ChatGPT); a stale `gemini` in saved config
+  falls back to Claude. The clipboard fallback still covers over-long payloads.
 
 ### Added
 - **The action-rate KPI is now measurable — `make signal-report`.** The
