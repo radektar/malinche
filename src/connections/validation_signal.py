@@ -82,6 +82,53 @@ def signal_log_path() -> Optional[Path]:
         return None
 
 
+def triage_state_by_sig(path: Optional[Path] = None) -> "dict":
+    """Reconstruct each connection's last triage from the signal log.
+
+    Returns ``{sig: "kept" | "dismissed"}`` using the **latest** save/none event
+    per ``sig`` (by timestamp) — handoff actions (llm/task/calendar/clipboard)
+    don't change triage state. This is how the Insights window restores Zachowaj /
+    Odrzuć across sessions without a separate store (Odrzuć stays a signal, not a
+    suppressor). The string values mirror ``insight_model.KEPT / DISMISSED``;
+    kept inline to keep this module AppKit-free and import-cycle-free. Empty or
+    missing log → ``{}``; never raises.
+    """
+    try:
+        out = Path(path) if path is not None else signal_log_path()
+        if out is None or not out.exists():
+            return {}
+        latest: dict = {}  # sig -> (ts, state)
+        for line in out.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except (ValueError, TypeError):
+                continue
+            if not (
+                isinstance(rec, dict)
+                and rec.get("action") == "action_taken"
+                and rec.get("v") == ACTION_SCHEMA_VERSION
+            ):
+                continue
+            target = rec.get("target")
+            if target not in (TARGET_SAVE, TARGET_NONE):
+                continue
+            sig = str(rec.get("sig") or "")
+            if not sig:
+                continue
+            ts = str(rec.get("ts") or "")
+            state = "kept" if target == TARGET_SAVE else "dismissed"
+            prev = latest.get(sig)
+            if prev is None or ts >= prev[0]:
+                latest[sig] = (ts, state)
+        return {sig: st for sig, (ts, st) in latest.items()}
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("could not read triage state: %s", exc)
+        return {}
+
+
 def record_action(
     target: str,
     *,

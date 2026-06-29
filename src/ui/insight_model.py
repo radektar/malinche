@@ -153,19 +153,47 @@ def _clip(text: str, limit: int) -> str:
 # --------------------------------------------------------------------------- #
 
 
-class InsightDeck:
-    """Ordered queue of connections with selection + keep/dismiss.
+# Triage states a connection can be in. The window's rail filters by these.
+NEW = "new"
+KEPT = "kept"
+DISMISSED = "dismissed"
+VIEWS = (NEW, KEPT, DISMISSED)
 
-    Mutable (the user navigates and triages); the window re-reads it after each
-    action. ``keep`` marks the active connection saved (it stays in the list,
-    dimmed) and advances to the next un-kept one; ``dismiss`` removes it. Both
-    clamp the active index so :meth:`active` is always valid or ``None``.
+
+class InsightDeck:
+    """Connections with a three-state triage model and a current view filter.
+
+    Every connection is in exactly one of :data:`NEW` / :data:`KEPT` /
+    :data:`DISMISSED`. The window shows one **view** at a time (the rail's
+    segmented control); ``keep`` / ``dismiss`` retag the active connection and
+    advance to the next one *still in the current view* (so triaging the New
+    queue flows forward, and recovering a Dismissed item moves it out of that
+    view). Nothing is deleted — Odrzuć is reversible, which is the whole point of
+    the Dismissed view.
+
+    ``dismiss`` is a *signal*, not a suppressor: it never writes the dismissal
+    store. Cross-session state is seeded from the signal log via ``triage`` (a
+    ``sig -> state`` map), so the user's last Zachowaj / Odrzuć survives a restart.
     """
 
-    def __init__(self, connections: Optional[List[InsightConnection]] = None) -> None:
+    def __init__(
+        self,
+        connections: Optional[List[InsightConnection]] = None,
+        *,
+        triage: Optional[Dict[str, str]] = None,
+    ) -> None:
         self._items: List[InsightConnection] = list(connections or [])
-        self._kept: List[bool] = [False] * len(self._items)
-        self._active = 0 if self._items else -1
+        self._state: List[str] = []
+        for conn in self._items:
+            st = NEW
+            sig = getattr(conn, "sig", "") or ""
+            if triage and sig:  # an empty sig can't be joined to a logged action
+                cand = triage.get(sig)
+                if cand in VIEWS:
+                    st = cand
+            self._state.append(st)
+        self._view = NEW
+        self._active = self._first_in_view(NEW)
 
     # -- queries ------------------------------------------------------------ #
 
@@ -181,17 +209,40 @@ class InsightDeck:
         return self._active
 
     def active(self) -> Optional[InsightConnection]:
-        if 0 <= self._active < len(self._items):
+        if 0 <= self._active < len(self._items) and self._state[self._active] == self._view:
             return self._items[self._active]
         return None
 
+    def state_at(self, index: int) -> Optional[str]:
+        return self._state[index] if 0 <= index < len(self._state) else None
+
     def is_kept(self, index: int) -> bool:
-        return 0 <= index < len(self._kept) and self._kept[index]
+        return self.state_at(index) == KEPT
+
+    def counts(self) -> Dict[str, int]:
+        """Per-view connection counts, for the rail's segmented control."""
+        return {v: sum(1 for s in self._state if s == v) for v in VIEWS}
+
+    @property
+    def view(self) -> str:
+        return self._view
+
+    def visible(self) -> List[Tuple[int, InsightConnection]]:
+        """``(index, connection)`` pairs in the current view, in deck order."""
+        return [
+            (i, self._items[i])
+            for i, s in enumerate(self._state)
+            if s == self._view
+        ]
+
+    @property
+    def visible_count(self) -> int:
+        return sum(1 for s in self._state if s == self._view)
 
     @property
     def unseen_count(self) -> int:
-        """Connections not yet kept — the rail header's 'N niezobaczonych'."""
-        return sum(1 for k in self._kept if not k)
+        """Connections still in the New queue — the rail's 'Nowe' badge."""
+        return sum(1 for s in self._state if s == NEW)
 
     @property
     def is_empty(self) -> bool:
@@ -199,48 +250,67 @@ class InsightDeck:
 
     # -- navigation --------------------------------------------------------- #
 
+    def set_view(self, view: str) -> None:
+        """Switch the rail filter; active resets to the first item in that view."""
+        if view in VIEWS and view != self._view:
+            self._view = view
+            self._active = self._first_in_view(view)
+
     def select(self, index: int) -> None:
-        if 0 <= index < len(self._items):
+        if 0 <= index < len(self._items) and self._state[index] == self._view:
             self._active = index
 
     def next(self) -> None:
-        if self._active < len(self._items) - 1:
-            self._active += 1
+        nxt = self._next_in_view(forward=True, wrap=False)
+        if nxt != -1:
+            self._active = nxt
 
     def prev(self) -> None:
-        if self._active > 0:
-            self._active -= 1
+        nxt = self._next_in_view(forward=False, wrap=False)
+        if nxt != -1:
+            self._active = nxt
 
     # -- triage ------------------------------------------------------------- #
 
     def keep(self) -> None:
-        """Mark the active connection kept and advance to the next un-kept one."""
-        if not (0 <= self._active < len(self._items)):
-            return
-        self._kept[self._active] = True
-        self._advance_to_unkept()
+        """Mark the active connection Zachowane and advance within the view."""
+        self._retag(KEPT)
 
     def dismiss(self) -> None:
-        """Remove the active connection; show the next (or previous at the end)."""
+        """Mark the active connection Odrzucone (reversible) and advance."""
+        self._retag(DISMISSED)
+
+    def _retag(self, new_state: str) -> None:
         if not (0 <= self._active < len(self._items)):
             return
-        del self._items[self._active]
-        del self._kept[self._active]
-        if self._active >= len(self._items):
-            self._active = len(self._items) - 1
+        leaving_view = self._state[self._active] == self._view and new_state != self._view
+        self._state[self._active] = new_state
+        if leaving_view:
+            # The active item left the current view → show the next one in it.
+            self._active = self._next_in_view(forward=True)
 
-    @property
-    def _next_unkept_from_active(self) -> int:
-        for i in range(self._active + 1, len(self._items)):
-            if not self._kept[i]:
-                return i
-        for i in range(0, self._active):
-            if not self._kept[i]:
-                return i
-        return self._active
+    # -- helpers ------------------------------------------------------------ #
 
-    def _advance_to_unkept(self) -> None:
-        self._active = self._next_unkept_from_active
+    def _first_in_view(self, view: str) -> int:
+        for i, s in enumerate(self._state):
+            if s == view:
+                return i
+        return -1
+
+    def _next_in_view(self, *, forward: bool, wrap: bool = True) -> int:
+        n = len(self._items)
+        if n == 0:
+            return -1
+        start = self._active if 0 <= self._active < n else (0 if forward else n - 1)
+        step = 1 if forward else -1
+        for off in range(1, n + 1):
+            raw = start + off * step
+            if not wrap and not (0 <= raw < n):
+                break
+            i = raw % n
+            if self._state[i] == self._view:
+                return i
+        return -1
 
 
 # --------------------------------------------------------------------------- #

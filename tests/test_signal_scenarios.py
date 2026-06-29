@@ -60,8 +60,9 @@ def test_us1_user_keeps_an_insight(log_path):
 
 def test_us2_user_dismisses_an_insight(log_path):
     ctrl = _ctrl()
-    active = ctrl._deck.active()  # captured before deletion
+    active = ctrl._deck.active()  # captured before the retag
     before = len(ctrl._deck._items)
+    dismissed_before = ctrl._deck.counts()["dismissed"]
     ctrl.dismissClicked_(None)
     rows = _rows(log_path)
     assert len(rows) == 1
@@ -69,10 +70,12 @@ def test_us2_user_dismisses_an_insight(log_path):
     assert rows[0]["action"] == "action_taken"
     assert rows[0]["target"] == "none"
     assert rows[0]["conn_type"] == active.synthesis_type
-    # the signal is recorded at click; the deck mutation lands after the flash
-    assert len(ctrl._deck._items) == before  # not yet — flash still showing
+    # the signal is recorded at click; the deck retag lands after the flash
+    assert ctrl._deck.counts()["dismissed"] == dismissed_before  # flash showing
     ctrl.afterDismissFlash_(None)
-    assert len(ctrl._deck._items) == before - 1  # the dismiss committed
+    # Nothing is deleted — Odrzuć is reversible (the Dismissed view recovers it).
+    assert len(ctrl._deck._items) == before
+    assert ctrl._deck.counts()["dismissed"] == dismissed_before + 1
 
 
 def test_us3_user_triages_a_session(log_path):

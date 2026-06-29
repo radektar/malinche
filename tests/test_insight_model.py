@@ -103,31 +103,68 @@ def test_keep_wraps_to_earlier_unkept():
     assert deck.unseen_count == 2
 
 
-def test_dismiss_removes_and_shows_next():
+def test_dismiss_retags_and_advances_within_new_view():
     deck = _deck3()
     deck.select(1)
-    deck.dismiss()  # remove #1 (r2); r3 shifts into slot 1
-    assert len(deck) == 2
-    assert deck.active_index == 1
+    deck.dismiss()  # r2 leaves the New view → advance to the next New (r3)
+    assert len(deck) == 3  # nothing deleted — Odrzuć is reversible
+    assert deck.counts()["dismissed"] == 1
     assert deck.active().rationale == "r3"
+    # r2 is now recoverable from the Dismissed view
+    deck.set_view(im.DISMISSED)
+    assert [c.rationale for _, c in deck.visible()] == ["r2"]
 
 
-def test_dismiss_at_end_steps_back():
+def test_dismiss_at_end_wraps_to_first_new():
     deck = _deck3()
     deck.select(2)
-    deck.dismiss()
-    assert len(deck) == 2
-    assert deck.active_index == 1
-    assert deck.active().rationale == "r2"
+    deck.dismiss()  # no later New → wrap to the first New (r1)
+    assert len(deck) == 3
+    assert deck.active().rationale == "r1"
+    assert deck.counts()["dismissed"] == 1
 
 
-def test_dismiss_until_empty():
+def test_dismiss_all_leaves_new_view_empty_but_deck_intact():
     deck = _deck3()
     deck.dismiss()
     deck.dismiss()
     deck.dismiss()
-    assert deck.is_empty
-    assert deck.active() is None
+    assert not deck.is_empty  # the connections still exist…
+    assert deck.active() is None  # …but the New view is now empty
+    assert deck.counts() == {"new": 0, "kept": 0, "dismissed": 3}
+    deck.set_view(im.DISMISSED)
+    assert deck.visible_count == 3
+
+
+def test_recover_a_dismissed_connection_via_keep():
+    deck = _deck3()
+    deck.select(0)
+    deck.dismiss()
+    deck.set_view(im.DISMISSED)
+    deck.select(0)  # r1, now in the Dismissed view
+    deck.keep()  # recover → moves to Kept, leaves the Dismissed view
+    assert deck.counts()["dismissed"] == 0
+    assert deck.counts()["kept"] == 1
+
+
+def test_triage_seed_from_signal_applies_prior_state():
+    a = im.make_connection(im.CONTRADICTION, "r1", ["A", "B"], sig="sig-a")
+    b = im.make_connection(im.SHARED, "r2", ["C", "D"], sig="sig-b")
+    c = im.make_connection(im.EMERGENT, "r3", ["E", "F"], sig="sig-c")
+    triage = {"sig-a": "kept", "sig-b": "dismissed"}  # c has no prior signal
+    deck = im.InsightDeck([a, b, c], triage=triage)
+    assert deck.counts() == {"new": 1, "kept": 1, "dismissed": 1}
+    deck.set_view(im.KEPT)
+    assert [conn.rationale for _, conn in deck.visible()] == ["r1"]
+    deck.set_view(im.NEW)
+    assert [conn.rationale for _, conn in deck.visible()] == ["r3"]
+
+
+def test_empty_sig_is_never_seeded_from_triage():
+    # A connection with no sig can't be joined to a logged action — stays New.
+    a = im.make_connection(im.CONTRADICTION, "r1", ["A", "B"])  # sig defaults ""
+    deck = im.InsightDeck([a], triage={"": "dismissed"})
+    assert deck.counts()["new"] == 1
 
 
 def test_sample_deck_is_the_three_real_connections():
