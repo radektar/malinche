@@ -86,3 +86,37 @@ def test_record_action_never_raises_on_bad_path(tmp_path):
     blocker.write_text("file", encoding="utf-8")
     bad = blocker / "sub" / "signal.jsonl"
     assert vsig.record_action(vsig.TARGET_LLM, sig="x", path=bad) is False
+
+
+# -- triage_state_by_sig (cross-session restore of Zachowaj / Odrzuć) -------
+
+
+def test_triage_state_latest_save_or_none_wins(tmp_path):
+    p = tmp_path / "signal.jsonl"
+    base = datetime(2026, 6, 27, 10, 0, 0)
+    # sig a: dismissed, then later saved → latest (save) wins → kept
+    vsig.record_action(vsig.TARGET_NONE, sig="a", path=p, now=base)
+    vsig.record_action(
+        vsig.TARGET_SAVE, sig="a", path=p, now=datetime(2026, 6, 27, 11, 0, 0)
+    )
+    # sig b: saved once → kept
+    vsig.record_action(vsig.TARGET_SAVE, sig="b", path=p, now=base)
+    # sig c: dismissed → dismissed
+    vsig.record_action(vsig.TARGET_NONE, sig="c", path=p, now=base)
+    state = vsig.triage_state_by_sig(p)
+    assert state == {"a": "kept", "b": "kept", "c": "dismissed"}
+
+
+def test_triage_state_ignores_handoff_actions(tmp_path):
+    p = tmp_path / "signal.jsonl"
+    # A handoff (llm/task/...) is engagement, not triage — it must not set state.
+    vsig.record_action(vsig.TARGET_LLM, sig="a", path=p)
+    vsig.record_action(vsig.TARGET_TASK, sig="b", path=p)
+    assert vsig.triage_state_by_sig(p) == {}
+
+
+def test_triage_state_skips_empty_sig_and_missing_file(tmp_path):
+    p = tmp_path / "signal.jsonl"
+    assert vsig.triage_state_by_sig(p) == {}  # missing file
+    vsig.record_action(vsig.TARGET_SAVE, sig="", path=p)  # no sig → unjoinable
+    assert vsig.triage_state_by_sig(p) == {}

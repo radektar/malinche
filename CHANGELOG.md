@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Triage navigation — Nowe / Zachowane / Odrzucone.** The rail now has a
+  segmented control (count over label) to switch among the three triage views,
+  so Zachowaj and Odrzuć finally lead somewhere: kept connections have a home to
+  return to, and dismissed ones can be **recovered** (Odrzuć is now reversible —
+  it retags rather than deletes). `InsightDeck` becomes a three-state model
+  (`new` / `kept` / `dismissed`) with a current-view filter; keep/dismiss retag
+  the active connection and advance within the view. State **persists across
+  sessions**, reconstructed from the signal log via
+  `validation_signal.triage_state_by_sig` (latest Zachowaj/Odrzuć per canonical
+  `sig`) — no new store, so Odrzuć stays a signal, not a suppressor. Each view
+  has its own empty state. (This model is a deliberate extension; it is not in
+  the current Claude Design reference, which only specs per-insight triage.)
+
 ### Changed
 - **Insights buttons now read as interactive — hover, pressed, cursor.** Per the
   Claude Design system (which specs `cursor:pointer`, a hover brighten + lift,

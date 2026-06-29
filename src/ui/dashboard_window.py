@@ -430,6 +430,13 @@ if _APPKIT_AVAILABLE:
             self._pressed = False
             self._apply()
 
+        def hitTest_(self, point):
+            # The whole pill is one target; decorative count/label children (the
+            # rail segments) must not swallow the click.
+            if objc.super(_PillButton, self).hitTest_(point) is not None:
+                return self
+            return None
+
     def _pill_button(title, frame, fg, bg, border, target, action, size=13.0):
         """A text pill button with hover/pressed/cursor states (see _PillButton).
 
@@ -654,13 +661,17 @@ if _APPKIT_AVAILABLE:
             backdrop = _DarkBackground.alloc().initWithFrame_(NSMakeRect(0, 0, w, h))
             bg.addSubview_(backdrop)
 
-            total = len(self._deck)
-            idx = self._deck.active_index
-            nav = (
-                "0 połączeń"
-                if self._deck.is_empty
-                else f"połączenie {idx + 1} z {total}"
-            )
+            vis = self._deck.visible()
+            if self._deck.is_empty:
+                nav = "0 połączeń"
+            elif not vis:
+                nav = "—"
+            else:
+                pos = next(
+                    (k for k, (i, _conn) in enumerate(vis) if i == self._deck.active_index),
+                    -1,
+                )
+                nav = f"{pos + 1} z {len(vis)}" if pos >= 0 else f"{len(vis)} w widoku"
             nav_label = _label(nav, 11.5, _muted())
             nav_label.setFrame_(NSMakeRect(w - 200, 11, 180, 18))
             nav_label.setAlignment_(2)
@@ -694,15 +705,18 @@ if _APPKIT_AVAILABLE:
             head = _eyebrow("Połączenia", _muted())
             head.setFrame_(NSMakeRect(pad, cy, 120, 14))
             view.addSubview_(head)
-            count = _label(
-                f"{self._deck.unseen_count} niezobaczonych", 10.5, _c(111, 102, 90)
-            )
-            count.setFrame_(NSMakeRect(frame.size.width - 130, cy, 118, 14))
-            count.setAlignment_(2)
-            view.addSubview_(count)
-            cy += 24
+            cy += 22
 
-            for i, conn in enumerate(self._deck.items):
+            # Triage segmented control: Nowe / Zachowane / Odrzucone (+ counts).
+            cy = self._build_rail_segments(view, frame, cy) + 10
+
+            vis = self._deck.visible()
+            if not vis:
+                empty = _label("—", 11, _c(111, 102, 90))
+                empty.setFrame_(NSMakeRect(pad + 2, cy + 2, frame.size.width - 2 * pad, 14))
+                view.addSubview_(empty)
+                cy += _ROW_H
+            for i, conn in vis:
                 self._add_rail_row(
                     view, conn, i, NSMakeRect(8, cy, frame.size.width - 16, _ROW_H - 6)
                 )
@@ -750,6 +764,57 @@ if _APPKIT_AVAILABLE:
                 view.addSubview_(btn)
                 ry += 19
             return view
+
+        @objc.python_method
+        def _build_rail_segments(self, view, frame, cy):
+            """A 3-cell segmented control (count over label) for the triage views."""
+            counts = self._deck.counts()
+            cur = self._deck.view
+            segs = (("new", "Nowe"), ("kept", "Zachowane"), ("dismissed", "Odrzucone"))
+            pad = 12.0
+            gap = 6.0
+            n = len(segs)
+            cw = (frame.size.width - 2 * pad - gap * (n - 1)) / n
+            h = 40.0
+            for tag, (key, label) in enumerate(segs):
+                active = key == cur
+                x = pad + tag * (cw + gap)
+                cell = _PillButton.alloc().initWithFrame_(NSMakeRect(x, cy, cw, h))
+                cell.setTarget_(self)
+                cell.setAction_("viewSegmentClicked:")
+                cell.setTag_(tag)
+                cell.setToolTip_(label)
+                if cell.layer() is not None:
+                    cell.layer().setCornerRadius_(9.0)
+                if active:
+                    cell.configure(
+                        bg=_c(224, 99, 58, 0.16),
+                        bg_hover=_c(224, 99, 58, 0.24),
+                        bg_press=_c(224, 99, 58, 0.30),
+                        border=_terracotta(),
+                        border_hover=_terracotta(),
+                    )
+                else:
+                    cell.configure(
+                        bg=None,
+                        bg_hover=_c(255, 255, 255, 0.05),
+                        bg_press=_c(255, 255, 255, 0.09),
+                        border=_c(255, 255, 255, 0.10),
+                        border_hover=_c(255, 255, 255, 0.22),
+                    )
+                cnt = _label(
+                    str(counts.get(key, 0)), 15,
+                    _cream() if active else _cream_soft(), bold=True,
+                )
+                cnt.setFrame_(NSMakeRect(0, 5, cw, 18))
+                cnt.setAlignment_(1)
+                cell.addSubview_(cnt)
+                lab = _label(label, 9.5, _gold() if active else _muted())
+                lab.setFrame_(NSMakeRect(0, 24, cw, 12))
+                lab.setAlignment_(1)
+                cell.addSubview_(lab)
+                view.addSubview_(cell)
+            return cy + h
 
         @objc.python_method
         def _add_rail_row(self, view, conn, index, frame):
@@ -812,6 +877,12 @@ if _APPKIT_AVAILABLE:
             if conn is None:
                 if self._transcribing:
                     return self._build_skeleton(view, frame)
+                if not self._deck.is_empty:
+                    # The deck has connections, just none in the current view.
+                    title, subtitle = self._EMPTY_VIEW_COPY.get(
+                        self._deck.view, (None, None)
+                    )
+                    return self._build_empty(view, frame, title, subtitle)
                 return self._build_empty(view, frame)
 
             has_sel = bool(self._selected)
@@ -1176,26 +1247,46 @@ if _APPKIT_AVAILABLE:
             view.addSubview_(foot)
 
         @objc.python_method
-        def _build_empty(self, view, frame):
+        def _build_empty(self, view, frame, title=None, subtitle=None):
+            title = title or "Cisza w korpusie"
+            subtitle = subtitle or (
+                "Wszystkie połączenia przejrzane. Malinche czyta dalej — gdy coś "
+                "się zapali, wróci tu rozbłysk."
+            )
             view.addSubview_(
                 _sigil(
                     NSMakeRect(frame.size.width / 2 - 27, frame.size.height / 2 - 96, 54, 54),
                     "triad", "#E3C16B",
                 )
             )
-            h = _label("Cisza w korpusie", 20, _cream(), bold=True)
+            h = _label(title, 20, _cream(), bold=True)
             h.setFrame_(NSMakeRect(0, frame.size.height / 2, frame.size.width, 26))
             h.setAlignment_(1)
             view.addSubview_(h)
             p = _wrapping_label(
-                "Wszystkie połączenia przejrzane. Malinche czyta dalej — gdy coś "
-                "się zapali, wróci tu rozbłysk.",
+                subtitle,
                 13.5, _muted(),
                 NSMakeRect(frame.size.width / 2 - 150, frame.size.height / 2 + 30, 300, 50),
             )
             p.setAlignment_(1)
             view.addSubview_(p)
             return view
+
+        # Per-view empty copy when the deck has items but the active view is empty.
+        _EMPTY_VIEW_COPY = {
+            "new": (
+                "Wszystko przejrzane",
+                "Nowe połączenia pojawią się po kolejnym przeglądzie korpusu.",
+            ),
+            "kept": (
+                "Nic zachowanego",
+                "Połączenia, które zachowasz, wylądują tutaj — by wrócić do nich później.",
+            ),
+            "dismissed": (
+                "Nic odrzuconego",
+                "Odrzucone połączenia trafiają tu — możesz je stąd odzyskać (Zachowaj).",
+            ),
+        }
 
         @objc.python_method
         def _build_skeleton(self, view, frame):
@@ -1245,6 +1336,14 @@ if _APPKIT_AVAILABLE:
             self._deck.select(int(sender.tag()))
             self._reset_card_state()
             self._render()
+
+        def viewSegmentClicked_(self, sender):
+            views = ("new", "kept", "dismissed")
+            tag = int(sender.tag())
+            if 0 <= tag < len(views):
+                self._deck.set_view(views[tag])
+                self._reset_card_state()
+                self._render()
 
         def directionClicked_(self, sender):
             i = int(sender.tag())

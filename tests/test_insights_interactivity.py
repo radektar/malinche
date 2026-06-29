@@ -72,10 +72,14 @@ def test_unwired_callback_click_is_silent():
 def test_dismiss_shows_feedback_then_advances():
     ctrl = _ctrl({})
     before = len(ctrl._deck._items)
+    dismissed_before = ctrl._deck.counts()["dismissed"]
     ctrl.dismissClicked_(None)
-    assert len(ctrl._deck._items) == before  # flash showing, not yet mutated
+    # flash showing — state not yet committed
+    assert ctrl._deck.counts()["dismissed"] == dismissed_before
     ctrl.afterDismissFlash_(None)
-    assert len(ctrl._deck._items) == before - 1
+    # Odrzuć is reversible now: nothing deleted, the item just moves to Dismissed.
+    assert len(ctrl._deck._items) == before
+    assert ctrl._deck.counts()["dismissed"] == dismissed_before + 1
 
 
 def test_empty_deck_recent_transcripts_renders_without_rows():

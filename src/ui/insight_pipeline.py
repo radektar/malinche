@@ -63,11 +63,15 @@ def connection_dict_to_insight(d: dict) -> im.InsightConnection:
     )
 
 
-def deck_from_dicts(dicts: List[dict]) -> im.InsightDeck:
+def deck_from_dicts(
+    dicts: List[dict], triage: Optional[Dict[str, str]] = None
+) -> im.InsightDeck:
     """Build an :class:`InsightDeck` from a list of connection dicts.
 
     Dicts missing the minimum (a type/rationale and 2+ notes) are skipped so a
-    partially-malformed sidecar still yields a usable deck.
+    partially-malformed sidecar still yields a usable deck. ``triage`` (a
+    ``sig -> state`` map) seeds the prior Zachowaj / Odrzuć so triage survives a
+    restart; ``None`` leaves every connection New.
     """
     conns: List[im.InsightConnection] = []
     for d in dicts or []:
@@ -77,7 +81,7 @@ def deck_from_dicts(dicts: List[dict]) -> im.InsightDeck:
         if len(notes) < 2:
             continue
         conns.append(connection_dict_to_insight(d))
-    return im.InsightDeck(conns)
+    return im.InsightDeck(conns, triage=triage)
 
 
 def latest_insights_file():
@@ -108,5 +112,12 @@ def latest_deck() -> Optional[im.InsightDeck]:
         logger.warning("could not read insights sidecar: %s", exc)
         return None
     conns = data.get("connections", []) if isinstance(data, dict) else []
-    deck = deck_from_dicts(conns)
+    triage = None
+    try:
+        from src.connections.validation_signal import triage_state_by_sig
+
+        triage = triage_state_by_sig()
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.debug("could not seed triage state: %s", exc)
+    deck = deck_from_dicts(conns, triage=triage)
     return deck if not deck.is_empty else None
