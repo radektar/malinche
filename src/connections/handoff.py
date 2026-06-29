@@ -30,10 +30,12 @@ CALENDAR = "calendar"
 CLIPBOARD = "clipboard"
 
 #: Connected LLM tools: id → (display name, base URL, supports ?q= prefill).
+#: Only tools that can open a *new thread with the insight prefilled* belong
+#: here — Gemini was dropped because it exposes no public prompt-prefill URL, so
+#: its handoff degraded to silent copy-and-paste (ADR-004 / clipboard fallback).
 LLM_TOOLS = {
     "claude": ("Claude", "https://claude.ai/new", True),
     "chatgpt": ("ChatGPT", "https://chatgpt.com/", True),
-    "gemini": ("Gemini", "https://gemini.google.com/app", False),  # no public prefill
 }
 
 #: claude.ai / chatgpt truncate very long ?q= values — past this many encoded
@@ -88,8 +90,8 @@ def seeded_prompt(
 def llm_url(tool: str, prompt: str) -> Optional[str]:
     """Deep-link that opens ``prompt`` in the connected LLM, or ``None``.
 
-    ``None`` means "no prefill available" — either the tool has no public
-    prompt-prefill URL (Gemini) or the encoded payload exceeds :data:`URL_MAX`.
+    ``None`` means "no prefill available" — either the tool is unknown / has no
+    public prompt-prefill URL, or the encoded payload exceeds :data:`URL_MAX`.
     The caller then falls back to clipboard-seed + opening the bare tool.
     """
     entry = LLM_TOOLS.get(tool)
@@ -250,7 +252,7 @@ def dispatch(
         if url:
             ok = _open_url(url)
             return HandoffResult(ok, "open", f"Wysłano do {name}" if ok else "Nie udało się")
-        # no prefill (Gemini / too long): copy the prompt, open the bare tool
+        # no prefill (unknown tool / payload too long): copy, open the bare tool
         ok = _copy(prompt) and _open_url(llm_base_url(tool))
         return HandoffResult(
             ok, "clipboard",

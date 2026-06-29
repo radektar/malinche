@@ -66,7 +66,7 @@ class UserSettings:
     # AI (PRO)
     enable_ai_summaries: bool = defaults.DEFAULT_ENABLE_AI_SUMMARIES
     ai_api_key: Optional[str] = None
-    # Connected LLM for the Insights action handoff (claude | chatgpt | gemini).
+    # Connected LLM for the Insights action handoff (claude | chatgpt).
     ai_handoff_tool: str = "claude"
 
     # UI

@@ -308,7 +308,6 @@ if _APPKIT_AVAILABLE:
     _BRAND_FILE = {
         "claude": "claude.svg",
         "chatgpt": "openai.svg",
-        "gemini": "gemini.svg",
     }
 
     def _asset_path(rel):
@@ -883,6 +882,8 @@ if _APPKIT_AVAILABLE:
             white = _c(255, 255, 255)
 
             tool = getattr(config, "LLM_HANDOFF_TOOL", "claude")
+            if tool not in ho.LLM_TOOLS:  # stale config (e.g. retired Gemini)
+                tool = "claude"
             name = ho.tool_name(tool)
 
             # Secondary actions: compact, icon-only with tooltips. Keeping them
@@ -955,7 +956,7 @@ if _APPKIT_AVAILABLE:
                 white, _c(224, 99, 58, 0.85), _terracotta(),
                 self, "switchLLMClicked:",
             )
-            caret.setToolTip_("Zmień narzędzie (Claude / ChatGPT / Gemini)")
+            caret.setToolTip_("Zmień narzędzie (Claude / ChatGPT)")
             bar.addSubview_(caret)
 
             sx = x + cta_w + GAP_CTA_CARET + CARET_W + GAP_CLUSTER
@@ -1108,7 +1109,7 @@ if _APPKIT_AVAILABLE:
             self._do_handoff(ho.CLIPBOARD)
 
         def switchLLMClicked_(self, sender):
-            order = ["claude", "chatgpt", "gemini"]
+            order = list(ho.LLM_TOOLS.keys())  # only prefill-capable tools
             cur = getattr(config, "LLM_HANDOFF_TOOL", "claude")
             nxt = order[(order.index(cur) + 1) % len(order)] if cur in order else "claude"
             config.LLM_HANDOFF_TOOL = nxt

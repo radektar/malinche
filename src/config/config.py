@@ -96,7 +96,7 @@ class Config:
 
     # Connection synthesis ("Zestawianie") configuration
     ENABLE_CONNECTION_SYNTHESIS: bool = True
-    # Connected LLM for the Insights action handoff (claude | chatgpt | gemini).
+    # Connected LLM for the Insights action handoff (claude | chatgpt).
     # The window's primary CTA reads "Kontynuuj w <active>" (ADR-004).
     LLM_HANDOFF_TOOL: str = "claude"
     # Per-stage model overrides (None -> fall back to LLM_MODEL via model_router).

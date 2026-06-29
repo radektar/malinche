@@ -140,11 +140,9 @@ def test_switch_llm_cycles_and_persists(monkeypatch):
     monkeypatch.setattr("src.config.settings.UserSettings.load", classmethod(lambda cls: _S()))
 
     ctrl = _ctrl()
-    # full 3-way wraparound: claude → chatgpt → gemini → claude
+    # full wraparound over the prefill-capable tools: claude → chatgpt → claude
     ctrl.switchLLMClicked_(None)
     assert config.LLM_HANDOFF_TOOL == "chatgpt"
-    ctrl.switchLLMClicked_(None)
-    assert config.LLM_HANDOFF_TOOL == "gemini"
     ctrl.switchLLMClicked_(None)
     assert config.LLM_HANDOFF_TOOL == "claude"
     assert saved["tool"] == "claude"
