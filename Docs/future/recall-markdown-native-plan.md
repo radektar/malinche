@@ -87,6 +87,7 @@ The `embeddings.py` engine + `sqlite-vec` store built here are exactly what ADR-
 - Chunker (recursive ~350 tok, speaker/topic-aware, small-to-big, contextual header).
 - Generalize `candidate_assembly._bm25_ranked` to **query→corpus** (currently window→older); add dense top-k; fuse RRF(k=60); return parent blocks.
 - **Gate:** CLI `make ask Q="..."` returns hybrid-ranked top-k parent blocks with full provenance, **fully offline**; tests pass with a mocked embedder (no model download in CI).
+- **✅ SHIPPED 2026-07-01** — `src/connections/recall/` (chunking · sqlite-vec store · swappable EmbeddingProvider (fastembed) · BM25 lexical · hybrid RRF retriever · indexer · RecallEngine facade · CLI · gated transcription seam). 24 tests green incl. real-fastembed multilingual e2e (PL query → right PL note, offline). Deps auto-install via `runtime_deps`. Embedding model = `paraphrase-multilingual-MiniLM-L12-v2` (light, configurable; e5/EmbeddingGemma are drop-in swaps to eval). Seam opt-in (`ENABLE_RECALL_INDEX`, default off).
 
 ### Phase 3 — C results presentation (NO LLM) + optional synthesis escalation (2–3 days)
 - **Search results UI (no LLM):** present ranked cited passages — each = note title + date + verbatim quote + char/ts anchor; click → open source in the configured app; honest empty state ("nothing in your notes about X — closest match: …"). Pure retrieval; zero hallucination surface.
