@@ -105,6 +105,29 @@ def test_reindex_reflects_edits(engine, tmp_path):
     assert "kalendarz" in res[0].quote.lower()
 
 
+def test_title_proper_noun_retrieves_even_when_absent_from_body(tmp_path):
+    """A name that lives in the title/filename but not the spoken body must still hit.
+
+    Mirrors the real-vault miss ("Haetta"): whisper doesn't repeat the proper noun in
+    the transcript, so only the note_id/title carries it. The lexical channel folds the
+    note_id in, so BM25 can match it.
+    """
+    store = VaultVectorStore(tmp_path / ".malinche" / "t.db", dim=FakeEmbedder.dim)
+    emb = FakeEmbedder()
+    _note(tmp_path, "Haetta - rozmowa z konstruktorem", "Haetta - rozmowa z konstruktorem", "17.06",
+          "Ustalenia dotyczace nosnosci belek i harmonogramu prac na dachu.")
+    _note(tmp_path, "inne-spotkanie", "Priorytety projektow", "10.06",
+          "Przeglad zadan zespolu i strategia rozwoju na kolejny kwartal.")
+    for n in ("Haetta - rozmowa z konstruktorem", "inne-spotkanie"):
+        assert index_note(tmp_path / f"{n}.md", store, emb) >= 1
+    try:
+        top = HybridRetriever(store, emb).search("rozmowa z konstruktorem o projekcie Haetta", k=3)
+        assert top and top[0].note_id == "Haetta - rozmowa z konstruktorem"
+        assert "lexical" in top[0].channels
+    finally:
+        store.close()
+
+
 def test_rrf_rewards_agreement():
     fused = reciprocal_rank_fusion([[1, 2, 3], [2, 4, 5]], k=60)
     assert fused[0][0] == 2  # ranked highly by both lists

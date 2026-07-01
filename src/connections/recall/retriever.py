@@ -66,8 +66,14 @@ class HybridRetriever:
 
         query_vec = self._embedder.embed_query(query)
         dense_ids = [h.chunk_id for h in self._store.knn(query_vec, self._dense_k)]
+        # Fold the note_id (the filename/title) into each chunk's lexical doc. Proper
+        # nouns, names and codes often live in the title but barely in the spoken body
+        # (whisper rarely repeats a name) — without this, BM25 can't match them and the
+        # channel loses exactly the named-entity queries it's meant to win.
         lexical_ids = bm25_rank(
-            query, [(h.chunk_id, h.text) for h in all_hits], limit=self._lexical_k
+            query,
+            [(h.chunk_id, f"{h.note_id}\n{h.text}") for h in all_hits],
+            limit=self._lexical_k,
         )
 
         dense_set, lex_set = set(dense_ids), set(lexical_ids)
