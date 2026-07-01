@@ -107,6 +107,18 @@ The `embeddings.py` engine + `sqlite-vec` store built here are exactly what ADR-
 - (Optional) reranker if eval shows the need; (optional) audio-timestamp citations if transcript-format retains whisper segment timestamps.
 - **Gate:** a fresh vault of N transcripts indexes in the background with honest progress; recall stays current as new recordings arrive; privacy copy is accurate to behavior.
 
+### Phase 6 — Light markdown browser/reader (self-sufficient standalone; post-lens)
+
+Position: Malinche stands alone on a bare folder — no Obsidian/Pile required. This is the **minimum to browse, read, understand, and lightly edit** notes in-app, **not** an Obsidian replacement. Sequenced after the lens (recall) ships; design (Claude Design brief) can run in parallel now.
+
+- **Browse:** all-notes list (title + date, sort, filter/search → jump). Later: browse-by-topic (direction B — meaning, not folders).
+- **Read + understand:** render markdown; frontmatter shown cleanly; summary (card) + transcript sections; **Malinche context on the note** (related insights/connections + tags — what makes it Malinche's reader, not Notepad); recall/insight citations open **here, in-app**, with the fragment highlighted; copy.
+- **Edit (minimal):** edit the note body (simple markdown editor / render↔edit toggle), save to disk; light tag/title edit. Caveat: external-edit conflict (Obsidian open on the same file) → save + reload + stale-file warning, no merge.
+- **Out of scope (anti-replacement guardrail):** wikilinks/backlinks/graph; plugins/templates/daily-notes/canvas; folder management / file moves; split-view/tabs; WYSIWYG; sync/mobile/collaboration.
+- **Gate:** on a bare folder with no Obsidian installed, a user can browse → open → read (with Malinche context) → fix a transcript typo → save; a recall citation opens in the in-app reader.
+
+Reuses: the note-opener strategy (Phase 1) — "open in-app" becomes a first-class opener alongside Obsidian/Pile/Finder; the markdown parsing helpers; the reader surface extends the Konstelacja window grammar.
+
 ---
 
 ## Key files (grounded in current code)
@@ -133,6 +145,7 @@ The `embeddings.py` engine + `sqlite-vec` store built here are exactly what ADR-
 - **Search = embeddings + tags + BM25, NO LLM.** Recall surfaces ranked cited passages; the LLM is reserved for insights. Search stays 100% local — nothing leaves the Mac. Fully resolves the landing privacy gap (search needs no disclosure; only insights touch the cloud key).
 - **LLM (Claude, BYOK) only at insights:** the existing proactive digest + an optional on-demand "synthesize these results" escalation. Local-LLM for insights deferred to GA.
 - **Provider + model swappable at every step.** Stay on Claude now; build the abstraction so embeddings · summarizer · synthesis · results-synthesis are each independently configurable (no hardcoded provider).
+- **Positioning refined (2026-07-01): self-sufficient standalone, NOT lens-only and NOT an Obsidian replacement.** The recall/insights layer stays the moat, but Malinche must also stand alone on a **bare folder** — a user with no Obsidian/Pile still gets value. A **light in-app browse/read/edit** (Phase 6) delivers that minimum; handoff-to-external-app becomes **optional**, not required. Corrects the earlier "lens + handoff-only" framing, which re-introduced the very dependency the pivot rejected. Browsing is by **meaning** (topics), never a raw folder tree (that duplicates Obsidian at its strongest). Guardrail against replacement: no wikilinks/backlinks/graph, plugins, folder management, or WYSIWYG.
 
 ## UX must-haves (condensed; full set in research)
 
