@@ -54,9 +54,13 @@ class VaultVectorStore:
         self._db.execute(
             f"CREATE VIRTUAL TABLE IF NOT EXISTS chunk_vec USING vec0(embedding float[{self.dim}])"
         )
+        self._db.execute("CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT)")
         self._db.commit()
 
     def _load_extension(self) -> None:
+        from src.runtime_deps import ensure_importable
+
+        ensure_importable("sqlite_vec")
         import sqlite_vec  # lazy: only when a store is actually opened
 
         self._db.enable_load_extension(True)
@@ -138,6 +142,18 @@ class VaultVectorStore:
 
     def note_ids(self) -> List[str]:
         return [r[0] for r in self._db.execute("SELECT DISTINCT note_id FROM chunks").fetchall()]
+
+    def set_meta(self, key: str, value: str) -> None:
+        self._db.execute(
+            "INSERT INTO meta(key, value) VALUES(?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, str(value)),
+        )
+        self._db.commit()
+
+    def get_meta(self, key: str) -> Optional[str]:
+        row = self._db.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+        return row[0] if row else None
 
     def close(self) -> None:
         try:
